@@ -11,9 +11,9 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "test:rules": "vitest run --passWithNoTests"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --passWithNoTests --config vitest.config.ts",
+    "test:rules": "vitest run --config vitest.rules.config.ts"
   },
   "dependencies": {
     "firebase-admin": "13.0.2",
@@ -26,7 +26,7 @@
     "@eslint/js": "9.18.0",
     "@firebase/rules-unit-testing": "4.0.1",
     "@types/node": "^24.0.0",
-    "firebase-tools": "13.29.1",
+    "firebase": "^12.0.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "vitest": "2.1.8"

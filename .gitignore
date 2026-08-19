@@ -29,6 +29,14 @@ firestore-debug.log
 ui-debug.log
 pubsub-debug.log
 database-debug.log
+hub-debug.log
+extensions-debug.log
+firestore-export-metadata.json
+
+# Local Firebase Emulator data exports — not used yet (checkpoint 1A.3 keeps
+# emulator state fresh/deterministic, no --export-on-exit configured), but
+# ignored proactively so accidental local exports are never committed.
+emulator-data/
 
 # Testing
 coverage/

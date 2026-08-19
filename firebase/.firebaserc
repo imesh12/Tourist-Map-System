@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "REPLACE_WITH_DEV_FIREBASE_PROJECT_ID",
+    "default": "touristmap-local",
     "dev": "REPLACE_WITH_DEV_FIREBASE_PROJECT_ID",
     "staging": "REPLACE_WITH_STAGING_FIREBASE_PROJECT_ID",
     "prod": "REPLACE_WITH_PROD_FIREBASE_PROJECT_ID"

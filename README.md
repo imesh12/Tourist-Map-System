@@ -47,8 +47,10 @@ pnpm install
 cp apps/admin-web/.env.example apps/admin-web/.env.local
 cp apps/tourist-web/.env.example apps/tourist-web/.env.local
 
-# Start the Firebase Emulator Suite (Auth + Firestore + Functions + Storage):
-firebase emulators:start
+# Start the Firebase Emulator Suite (Auth + Firestore + Functions; Storage
+# emulator is deferred until Phase 1A has an actual upload workflow — see
+# firebase/firebase.json and the 1A.3 completion report):
+pnpm firebase:emulators
 
 # In separate terminals:
 pnpm --filter admin-web dev
@@ -59,6 +61,10 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+
+# Firestore security-rules smoke test (starts the emulator, runs the test,
+# shuts the emulator down automatically — no manual emulator management):
+pnpm test:rules
 ```
 
-No real Firebase project, credentials, or secrets are checked into this repository. `.env.example` files list variable names only — see `docs/stages/STAGE_1A_TECHNICAL_PLAN.md` §5 for the full environment-variable reference and the dev/staging/production project strategy.
+The emulator commands above always run against the `touristmap-local` project identity (`firebase/.firebaserc`) — an obviously local-only alias, never a real Firebase project. No real Firebase project, credentials, or secrets are checked into this repository. `.env.example` files list variable names only — see `docs/stages/STAGE_1A_TECHNICAL_PLAN.md` §5 for the full environment-variable reference and the dev/staging/production project strategy.

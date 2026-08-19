@@ -13,15 +13,19 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "test:rules": "firebase emulators:exec --only firestore,auth \"pnpm --filter firebase-functions run test:rules\"",
-    "test:e2e": "firebase emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\"",
     "build": "pnpm -r run build",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "firebase:emulators": "cd firebase && firebase --project touristmap-local emulators:start",
+    "firebase:emulators:exec": "cd firebase && firebase --project touristmap-local emulators:exec",
+    "firebase:functions:build": "pnpm --filter firebase-functions run build",
+    "test:rules": "cd firebase && firebase --project touristmap-local emulators:exec --only firestore \"pnpm --filter firebase-functions run test:rules\"",
+    "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\""
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",
     "eslint": "9.18.0",
+    "firebase-tools": "13.29.1",
     "prettier": "3.4.2",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0"
