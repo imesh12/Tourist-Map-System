@@ -10,9 +10,13 @@
   "packageManager": "pnpm@11.22.0",
   "type": "module",
   "scripts": {
+    "build:packages": "pnpm --filter shared-types run build && pnpm --filter validation run build",
     "lint": "pnpm -r run lint",
+    "pretypecheck": "pnpm run build:packages",
     "typecheck": "pnpm -r run typecheck",
+    "pretest": "pnpm run build:packages",
     "test": "pnpm -r run test",
+    "prebuild": "pnpm run build:packages",
     "build": "pnpm -r run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,12 +24,13 @@
     "firebase:emulators:exec": "cd firebase && firebase --project touristmap-local emulators:exec",
     "firebase:functions:build": "pnpm --filter firebase-functions run build",
     "test:rules": "cd firebase && firebase --project touristmap-local emulators:exec --only firestore \"pnpm --filter firebase-functions run test:rules\"",
-    "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\""
+    "test:provisioning": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore \"pnpm --filter firebase-functions run test:provisioning\"",
+    "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth \"pnpm --filter admin-web run test:e2e\""
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",
     "eslint": "9.18.0",
-    "firebase-tools": "13.29.1",
+    "firebase-tools": "15.27.0",
     "prettier": "3.4.2",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0"

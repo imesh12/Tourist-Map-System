@@ -4,11 +4,22 @@
   "private": true,
   "description": "Framework-agnostic domain types and enums shared across admin-web, tourist-web, and firebase/functions. Zero runtime dependencies by design — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §2/§14.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "lint": "eslint .",
+    "pretypecheck": "pnpm run build",
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {},

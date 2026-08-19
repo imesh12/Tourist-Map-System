@@ -1,6 +1,6 @@
-import type { CustomerId, Uid } from './ids';
-import type { Role, UserStatus } from './enums';
-import type { FirestoreTimestampLike } from './timestamp';
+import type { CustomerId, Uid } from './ids.js';
+import type { Role, UserStatus } from './enums.js';
+import type { FirestoreTimestampLike } from './timestamp.js';
 
 /**
  * `users/{uid}` — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §8.

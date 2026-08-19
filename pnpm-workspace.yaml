@@ -3,6 +3,9 @@ packages:
   - "packages/*"
   - "firebase/functions"
 
+allowBuilds:
+  re2: false
+
 # Deliberate, explicit build-script allowlist (pnpm blocks all dependency
 # lifecycle/postinstall scripts by default). Only these four are approved,
 # because each is a known, legitimate transitive dependency of packages this

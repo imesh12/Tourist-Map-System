@@ -4,11 +4,23 @@
   "private": true,
   "description": "Zod schemas shared between admin-web (client-side pre-validation) and firebase/functions (authoritative server-side validation). See docs/stages/STAGE_1A_TECHNICAL_PLAN.md §2/§14.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "lint": "eslint .",
+    "prebuild": "pnpm --filter shared-types run build",
+    "pretypecheck": "pnpm run build",
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

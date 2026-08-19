@@ -9,11 +9,13 @@
     "node": "24"
   },
   "scripts": {
-    "build": "tsc",
+    "build:deps": "pnpm --filter shared-types run build && pnpm --filter validation run build",
+    "build": "pnpm run build:deps && tsc",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run --passWithNoTests --config vitest.config.ts",
-    "test:rules": "vitest run --config vitest.rules.config.ts"
+    "typecheck": "pnpm run build:deps && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "pnpm run build:deps && vitest run --passWithNoTests --config vitest.config.ts",
+    "test:rules": "vitest run --config vitest.rules.config.ts",
+    "test:provisioning": "pnpm run build:deps && vitest run --config vitest.provisioning.config.ts"
   },
   "dependencies": {
     "firebase-admin": "13.0.2",
@@ -24,7 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",
-    "@firebase/rules-unit-testing": "4.0.1",
+    "@firebase/rules-unit-testing": "5.0.1",
     "@types/node": "^24.0.0",
     "firebase": "^12.0.0",
     "typescript": "6.0.3",

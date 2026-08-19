@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LANGUAGES, MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
-import { customerIdSchema, mapIdSchema } from './ids';
-import { firestoreTimestampLikeSchema } from './timestamp';
+import { customerIdSchema, mapIdSchema } from './ids.js';
+import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
  * Mirrors shared-types' `TouristMap` interface. `customerId` is the

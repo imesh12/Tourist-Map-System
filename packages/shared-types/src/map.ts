@@ -1,6 +1,6 @@
-import type { CustomerId, MapId } from './ids';
-import type { Language, MapAreaType, MapProviderName, MapStatus, MapStyle } from './enums';
-import type { FirestoreTimestampLike } from './timestamp';
+import type { CustomerId, MapId } from './ids.js';
+import type { Language, MapAreaType, MapProviderName, MapStatus, MapStyle } from './enums.js';
+import type { FirestoreTimestampLike } from './timestamp.js';
 
 export interface MapProviderConfig {
   readonly provider: MapProviderName;

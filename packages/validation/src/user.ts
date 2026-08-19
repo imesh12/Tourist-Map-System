@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ROLES, USER_STATUSES } from 'shared-types';
-import { customerIdSchema, uidSchema } from './ids';
-import { firestoreTimestampLikeSchema } from './timestamp';
+import { customerIdSchema, uidSchema } from './ids.js';
+import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
  * Mirrors shared-types' `User` interface. `role` accepts the full `ROLES`

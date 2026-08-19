@@ -15,9 +15,9 @@
  * are intentionally not defined here yet.
  */
 
-export * from './timestamp';
-export * from './ids';
-export * from './enums';
-export * from './customer';
-export * from './user';
-export * from './map';
+export * from './timestamp.js';
+export * from './ids.js';
+export * from './enums.js';
+export * from './customer.js';
+export * from './user.js';
+export * from './map.js';

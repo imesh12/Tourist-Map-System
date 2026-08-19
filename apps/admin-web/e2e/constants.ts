@@ -1,0 +1,67 @@
+// Shared between playwright.config.ts and the spec/helper files, so the
+// port/base URL/Firebase project identity can't drift between them.
+export const E2E_PORT = 3100;
+export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
+
+// Matches the "default" project alias in firebase/.firebaserc (checkpoint
+// 1A.3) — an obviously local-only identity, never a real Firebase project.
+export const E2E_FIREBASE_PROJECT_ID = 'touristmap-local';
+
+export const E2E_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
+
+/**
+ * The application's own trusted origin for local E2E — matches
+ * `E2E_BASE_URL` exactly (same value, same source of truth) and is what
+ * `lib/auth/origin-check.ts`'s server-only `APP_ORIGIN` env var is set to
+ * for this suite. Kept as its own named constant (rather than inlining
+ * `E2E_BASE_URL` below) so it reads clearly as "the trusted origin", not
+ * just "the base URL Playwright happens to navigate to".
+ */
+export const E2E_APP_ORIGIN = E2E_BASE_URL;
+
+/**
+ * Deterministic, emulator-only application configuration injected into the
+ * `next dev` process Playwright starts (`playwright.config.ts`'s
+ * `webServer.env`) — checkpoint 1A.4 repair. Named `E2E_APP_ENV` (not
+ * `E2E_FIREBASE_ENV`) because it now carries both the Firebase emulator
+ * config and the server-only `APP_ORIGIN` CSRF trust boundary — it is no
+ * longer Firebase-specific.
+ *
+ * The E2E suite must be runnable without a developer having created
+ * `apps/admin-web/.env.local` first: `.env.example` is documentation only
+ * and Next.js never loads it automatically, so an uncommitted, developer-
+ * specific `.env.local` cannot be something CI (or a fresh checkout) relies
+ * on existing. None of the Firebase values here are secrets — the Firebase
+ * Web SDK config is not secret by design (access control is enforced by
+ * security rules, not by hiding these values — see
+ * apps/admin-web/.env.example), and the Auth Emulator does not validate
+ * `apiKey`/`authDomain` at all; any well-formed string is accepted.
+ * `NEXT_PUBLIC_FIREBASE_PROJECT_ID` must match `E2E_FIREBASE_PROJECT_ID`
+ * exactly, since that's also the project ID `e2e/helpers/emulator-auth.ts`
+ * uses to create/clear emulator users — a mismatch here would make the
+ * browser SDK and the REST-seeded test users talk to two different
+ * emulator "projects" and sign-in would fail with user-not-found even
+ * though the emulator is running correctly. `APP_ORIGIN` must match
+ * `E2E_BASE_URL` exactly, since a mismatch there would make
+ * `POST /api/auth/session`/`POST /api/auth/logout` reject every request as
+ * an untrusted origin even though the browser is the legitimate app.
+ */
+export const E2E_APP_ENV: Record<string, string> = {
+  NEXT_PUBLIC_USE_FIREBASE_EMULATORS: 'true',
+  NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: E2E_AUTH_EMULATOR_HOST,
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: E2E_FIREBASE_PROJECT_ID,
+  NEXT_PUBLIC_FIREBASE_API_KEY: 'e2e-emulator-fake-api-key',
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: `${E2E_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: `${E2E_FIREBASE_PROJECT_ID}.appspot.com`,
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
+  NEXT_PUBLIC_FIREBASE_APP_ID: '1:000000000000:web:e2eemulatorfakeappid',
+  // Server-only — read by the Firebase Admin SDK (`lib/firebase/admin.ts`)
+  // and directly by `resolveFirebaseAdminAppOptions` for `projectId`. Must
+  // agree with the client-side project ID above for the same reason.
+  FIREBASE_AUTH_EMULATOR_HOST: E2E_AUTH_EMULATOR_HOST,
+  FIREBASE_PROJECT_ID: E2E_FIREBASE_PROJECT_ID,
+  // Server-only CSRF trust boundary — see lib/auth/origin-check.ts. Never
+  // NEXT_PUBLIC_: the browser has no legitimate need to read this, it's a
+  // server-side decision about which Origin header value to trust.
+  APP_ORIGIN: E2E_APP_ORIGIN,
+};

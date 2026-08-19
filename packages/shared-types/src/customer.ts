@@ -1,6 +1,6 @@
-import type { CustomerId } from './ids';
-import type { ClientType, CustomerStatus, ProvisioningStatus } from './enums';
-import type { FirestoreTimestampLike } from './timestamp';
+import type { CustomerId } from './ids.js';
+import type { ClientType, CustomerStatus, ProvisioningStatus } from './enums.js';
+import type { FirestoreTimestampLike } from './timestamp.js';
 
 export interface CustomerProvisioningInfo {
   readonly status: ProvisioningStatus;

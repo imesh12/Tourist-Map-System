@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CLIENT_TYPES, CUSTOMER_STATUSES, PROVISIONING_STATUSES } from 'shared-types';
-import { customerIdSchema } from './ids';
-import { firestoreTimestampLikeSchema } from './timestamp';
+import { customerIdSchema } from './ids.js';
+import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
  * Mirrors shared-types' `Customer` interface for defense-in-depth validation
