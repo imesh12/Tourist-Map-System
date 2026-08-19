@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "firebase/functions"
+
+# Deliberate, explicit build-script allowlist (pnpm blocks all dependency
+# lifecycle/postinstall scripts by default). Only these four are approved,
+# because each is a known, legitimate transitive dependency of packages this
+# workspace already depends on directly:
+#   - esbuild            → required by vitest (dev-time bundling/transform)
+#   - protobufjs          → required by firebase-admin's gRPC/Firestore transport
+#   - "@firebase/util"     → required by the firebase-admin / firebase-tools dependency tree
+#   - unrs-resolver        → native module-resolution binary used by the ESLint/typescript-eslint toolchain
+# Do not add packages here without confirming they are a real, needed
+# dependency first — this is not a blanket allow-all.
+onlyBuiltDependencies:
+  - esbuild
+  - protobufjs
+  - "@firebase/util"
+  - unrs-resolver

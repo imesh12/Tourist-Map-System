@@ -1,0 +1,29 @@
+{
+  "name": "tourist-map-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tourist Map Platform monorepo — Stage 1 Web Platform (Phase 1A: Foundation).",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "type": "module",
+  "scripts": {
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:rules": "firebase emulators:exec --only firestore,auth \"pnpm --filter firebase-functions run test:rules\"",
+    "test:e2e": "firebase emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\"",
+    "build": "pnpm -r run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "9.18.0",
+    "eslint": "9.18.0",
+    "prettier": "3.4.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0"
+  }
+}

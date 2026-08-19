@@ -1,0 +1,34 @@
+{
+  "name": "firebase-functions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloud Functions for the Tourist Map System. Phase 1A owns tenant provisioning (registerClient) — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §10, §15.",
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:rules": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "firebase-admin": "13.0.2",
+    "firebase-functions": "6.2.0",
+    "shared-types": "workspace:*",
+    "validation": "workspace:*",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.18.0",
+    "@firebase/rules-unit-testing": "4.0.1",
+    "@types/node": "^24.0.0",
+    "firebase-tools": "13.29.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "2.1.8"
+  }
+}

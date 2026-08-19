@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Phase 1A baseline: deny-by-default. No file uploads are implemented in
+// Phase 1A (branding logos and place images start in Phase 1B/1C) — there is
+// no legitimate Phase 1A path that needs Storage access, so this is the
+// correct baseline rather than a placeholder to relax later without review.
+// See docs/stages/STAGE_1A_TECHNICAL_PLAN.md §13.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

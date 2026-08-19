@@ -1,0 +1,28 @@
+{
+  "name": "tourist-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public Tourist Web Map application — Tourist Map System. Foundation scaffold only in Phase 1A; the real Tourist Map UI is built starting Phase 1E.",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "next": "16.3.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "eslint": "9.18.0",
+    "eslint-config-next": "16.3.1",
+    "typescript": "6.0.3",
+    "vitest": "2.1.8"
+  }
+}
