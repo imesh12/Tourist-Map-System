@@ -19,6 +19,9 @@ next-env.d.ts.bak
 dist/
 build/
 
+# Firebase Cloud Functions compiled output (tsc outDir, see firebase/functions/tsconfig.json)
+firebase/functions/lib/
+
 # Firebase
 .firebase/
 firebase-debug.log

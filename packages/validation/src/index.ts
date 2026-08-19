@@ -2,23 +2,24 @@
  * packages/validation
  *
  * Zod schemas for anything that crosses a trust boundary in the Tourist Map
- * System: registration input, login input, and (from 1A.5 onward) the
- * Firestore document shapes written by the tenant-provisioning Cloud
- * Function. Imported by admin-web for client-side pre-validation and by
- * firebase/functions for authoritative server-side validation — see
+ * System, plus defense-in-depth schemas mirroring the Phase 1A Firestore
+ * document shapes. Imported by admin-web for client-side pre-validation and
+ * by firebase/functions for authoritative server-side validation — see
  * docs/stages/STAGE_1A_TECHNICAL_PLAN.md §14.
  *
- * Phase 1A.1 scope: package skeleton only, to prove the workspace wiring
- * (build, typecheck, cross-package import of `shared-types`) works end to
- * end. Registration/login schemas are added in checkpoint 1A.2 per
- * docs/stages/STAGE_1A_TECHNICAL_PLAN.md §23. Intentionally not implemented
- * here yet.
+ * Server-side validation remains authoritative in all cases; client-side use
+ * of these same schemas is a UX convenience only.
+ *
+ * Phase 1A scope only: registration input and the Customer/User/TouristMap
+ * document schemas. Login input, Firebase Auth calls, Firestore access, and
+ * the actual `registerClient` provisioning logic are out of scope for this
+ * checkpoint (1A.2) — they belong to later checkpoints (1A.4/1A.5) per
+ * docs/stages/STAGE_1A_TECHNICAL_PLAN.md §23.
  */
-import { z } from 'zod';
-import { SHARED_TYPES_PACKAGE_READY } from 'shared-types';
 
-// Placeholder schema proving the zod + shared-types wiring compiles.
-// Replaced by real registration/login schemas in checkpoint 1A.2.
-export const placeholderSchema = z.object({
-  ok: z.literal(SHARED_TYPES_PACKAGE_READY),
-});
+export * from './timestamp';
+export * from './ids';
+export * from './registration';
+export * from './customer';
+export * from './user';
+export * from './map';

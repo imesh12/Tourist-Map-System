@@ -1,0 +1,48 @@
+import type { CustomerId, MapId } from './ids';
+import type { Language, MapAreaType, MapProviderName, MapStatus, MapStyle } from './enums';
+import type { FirestoreTimestampLike } from './timestamp';
+
+export interface MapProviderConfig {
+  readonly provider: MapProviderName;
+  readonly style: MapStyle;
+}
+
+export interface MapAreaBounds {
+  readonly north: number;
+  readonly south: number;
+  readonly east: number;
+  readonly west: number;
+}
+
+export interface MapAreaConfig {
+  readonly type: MapAreaType;
+  readonly center?: { readonly lat: number; readonly lng: number };
+  readonly defaultZoom?: number;
+  readonly bounds?: MapAreaBounds;
+}
+
+/**
+ * `maps/{mapId}` — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §8/§11.
+ *
+ * Named `TouristMap` rather than `Map` deliberately, to avoid shadowing the
+ * built-in JavaScript `Map` collection type in any file that imports it.
+ *
+ * `customerId` is the ownership field. It is written exclusively by trusted
+ * backend code at creation time and is never derived from, or overwritable
+ * by, client input — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §10.
+ * `enabledLanguages` must always include `defaultLanguage` — see
+ * packages/validation's `mapSchema`, which enforces this invariant at
+ * runtime.
+ */
+export interface TouristMap {
+  readonly mapId: MapId;
+  readonly customerId: CustomerId;
+  readonly name: string;
+  readonly status: MapStatus;
+  readonly defaultLanguage: Language;
+  readonly enabledLanguages: readonly Language[];
+  readonly mapProvider: MapProviderConfig;
+  readonly area: MapAreaConfig;
+  readonly createdAt: FirestoreTimestampLike;
+  readonly updatedAt: FirestoreTimestampLike;
+}
