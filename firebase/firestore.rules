@@ -1,15 +1,75 @@
 rules_version = '2';
 
-// Phase 1A.1 baseline: deny everything by default.
+// Checkpoint 1A.6 — claims-based tenant-isolation rules, per
+// docs/stages/STAGE_1A_TECHNICAL_PLAN.md §12 (the representative rules
+// documented there are implemented here essentially verbatim).
 //
-// The real claims-based, tenant-isolated rules for `customers/{customerId}`,
-// `users/{uid}`, and `maps/{mapId}` are implemented in checkpoint 1A.6 per
-// docs/stages/STAGE_1A_TECHNICAL_PLAN.md §12 and §23. Until then, this file
-// intentionally allows nothing at all — there is no temporary allow-all rule
-// at any point in this project, including during local development (see
-// docs/stages/STAGE_1A_TECHNICAL_PLAN.md §12).
+// Ownership is verified via custom claims on the verified ID token
+// (`request.auth.token.customerId`, `request.auth.token.role`) — never via
+// a `get()` lookup of the caller's own document inside a rule, and never
+// via anything the client includes in a request body. Custom claims are
+// only ever set server-side (`setCustomUserClaims`, called exclusively
+// from `registerClient` — see firebase/functions/src/provisioning/
+// provision-client.ts, checkpoint 1A.5), so a rule that checks
+// `request.auth.token.customerId == resource.data.customerId` cannot be
+// spoofed by the client: there is no field the browser can send that any
+// rule below trusts for identity, tenant, or role.
+//
+// No temporary allow-all rule exists anywhere in this file, including for
+// local development — the final `match /{document=**}` below is a
+// deny-by-default fallback for any collection not explicitly matched
+// (present or future), so a newly-added collection is denied by default
+// until a rule is deliberately written for it.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    match /customers/{customerId} {
+      // Own-tenant read only. A missing/malformed/wrong customerId claim,
+      // or no auth at all, all fail this the same way — there is no
+      // permissive fallback path.
+      allow read: if request.auth != null
+                   && request.auth.token.customerId == customerId;
+      // customers/* is written exclusively by the Admin SDK inside
+      // registerClient (checkpoint 1A.5) — the Admin SDK bypasses security
+      // rules by design, which is the intended trust boundary, not a
+      // loophole. No client write path exists at all in Phase 1A.
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      // A user may always read their own doc; any authenticated member of
+      // the same tenant may read a teammate's doc (Phase 1A member-list
+      // groundwork — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §9).
+      allow read: if request.auth != null
+                   && (request.auth.uid == uid
+                       || request.auth.token.customerId == resource.data.customerId);
+      // Self-service update, and ONLY for the two fields users are allowed
+      // to change themselves. `hasOnly` means any write that touches
+      // `uid`/`customerId`/`role`/`email`/`status`/`createdAt` — whether by
+      // itself or bundled alongside a legitimate `displayName` change — is
+      // rejected outright. `role`/`customerId` ownership fields are never
+      // in this allow-list, which is what makes self-role-assignment and
+      // "move myself to another tenant" both structurally impossible here,
+      // not just discouraged.
+      allow update: if request.auth != null
+                     && request.auth.uid == uid
+                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+      // Creation (provisioning) and deletion are backend-only (Admin SDK,
+      // registerClient) — no client path in Phase 1A.
+      allow create, delete: if false;
+    }
+
+    match /maps/{mapId} {
+      allow read: if request.auth != null
+                   && request.auth.token.customerId == resource.data.customerId;
+      // Map editing starts in a later phase (Phase 1B+) — Phase 1A has no
+      // client-writable path to `maps/*` at all.
+      allow write: if false;
+    }
+
+    // Deny-by-default fallback for any collection not explicitly matched
+    // above — including any future collection added before this file is
+    // deliberately revisited for it. Never an allow-all, at any point.
     match /{document=**} {
       allow read, write: if false;
     }

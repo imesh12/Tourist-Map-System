@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_ERROR_CODES, AuthAppError, mapFirebaseAuthError } from './errors';
+import { AUTH_ERROR_CODES, AuthAppError, mapFirebaseAuthError, mapRegistrationError } from './errors';
 
 describe('mapFirebaseAuthError', () => {
   beforeEach(() => {
@@ -58,5 +58,49 @@ describe('mapFirebaseAuthError', () => {
 
   it('returns an AuthAppError instance', () => {
     expect(mapFirebaseAuthError({ code: 'auth/wrong-password' })).toBeInstanceOf(AuthAppError);
+  });
+});
+
+describe('mapRegistrationError', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('maps a validation/invalid-input details.code to REGISTRATION_INVALID_INPUT', () => {
+    const result = mapRegistrationError({
+      code: 'functions/invalid-argument',
+      message: 'raw functions transport detail should never leak',
+      details: { code: 'validation/invalid-input' },
+    });
+    expect(result.code).toBe(AUTH_ERROR_CODES.REGISTRATION_INVALID_INPUT);
+    expect(result.message).not.toContain('raw functions transport detail');
+  });
+
+  it('maps a provisioning/duplicate-email details.code to REGISTRATION_DUPLICATE_EMAIL with a sign-in hint', () => {
+    const result = mapRegistrationError({
+      code: 'functions/already-exists',
+      details: { code: 'provisioning/duplicate-email' },
+    });
+    expect(result.code).toBe(AUTH_ERROR_CODES.REGISTRATION_DUPLICATE_EMAIL);
+    expect(result.message).toContain('sign in');
+  });
+
+  it('maps a provisioning/failed details.code to the generic REGISTRATION_FAILED', () => {
+    const result = mapRegistrationError({ code: 'functions/internal', details: { code: 'provisioning/failed' } });
+    expect(result.code).toBe(AUTH_ERROR_CODES.REGISTRATION_FAILED);
+  });
+
+  it('falls back to REGISTRATION_FAILED for a transport-level failure with no details at all (e.g. network error)', () => {
+    const result = mapRegistrationError(new Error('failed to fetch'));
+    expect(result.code).toBe(AUTH_ERROR_CODES.REGISTRATION_FAILED);
+    expect(result.message).not.toContain('failed to fetch');
+  });
+
+  it('returns an AuthAppError instance', () => {
+    expect(mapRegistrationError({ details: { code: 'provisioning/failed' } })).toBeInstanceOf(AuthAppError);
   });
 });

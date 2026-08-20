@@ -1,5 +1,6 @@
 import { cert, getApp, getApps, initializeApp, type App, type AppOptions } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
 /**
  * Server-only Firebase Admin initialization — checkpoint 1A.4.
@@ -21,10 +22,17 @@ import { getAuth, type Auth } from 'firebase-admin/auth';
  *   `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` environment variables —
  *   never a committed JSON key file (see the root `.gitignore`).
  *
- * This module does not implement tenant provisioning and does not load
- * customer/map ownership data — see `lib/auth/verify-session.ts` for the
- * only thing this checkpoint actually needs the Admin SDK for (verifying a
- * Firebase ID token / session cookie).
+ * This module does not implement tenant provisioning. Through 1A.7 it was
+ * only ever used for `lib/auth/verify-session.ts` (verifying a Firebase ID
+ * token / session cookie). Checkpoint 1A.8 adds `getFirebaseAdminFirestore()`
+ * for authenticated tenant data loading (`lib/tenant/client-context.ts`) —
+ * it reuses the exact same cached `App` as `getFirebaseAdminAuth()` rather
+ * than initializing a second Admin app, and needs no credential of its own:
+ * `FIRESTORE_EMULATOR_HOST` is the same kind of Admin-SDK-native,
+ * automatically-read env var as `FIREBASE_AUTH_EMULATOR_HOST` already is
+ * for Auth. Firestore *security rules* (1A.6) do not apply to Admin SDK
+ * reads — tenant authorization for data loaded through this module is
+ * enforced explicitly in `lib/tenant/client-context.ts`, not by rules.
  */
 
 function assertServer(): void {
@@ -118,4 +126,15 @@ export function getFirebaseAdminAuth(): Auth {
   }
   cachedAuth = getAuth(getFirebaseAdminApp());
   return cachedAuth;
+}
+
+let cachedFirestore: Firestore | undefined;
+
+export function getFirebaseAdminFirestore(): Firestore {
+  assertServer();
+  if (cachedFirestore) {
+    return cachedFirestore;
+  }
+  cachedFirestore = getFirestore(getFirebaseAdminApp());
+  return cachedFirestore;
 }

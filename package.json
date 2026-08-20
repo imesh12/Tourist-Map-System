@@ -25,7 +25,8 @@
     "firebase:functions:build": "pnpm --filter firebase-functions run build",
     "test:rules": "cd firebase && firebase --project touristmap-local emulators:exec --only firestore \"pnpm --filter firebase-functions run test:rules\"",
     "test:provisioning": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore \"pnpm --filter firebase-functions run test:provisioning\"",
-    "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth \"pnpm --filter admin-web run test:e2e\""
+    "pretest:e2e": "pnpm run firebase:functions:build",
+    "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\""
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",

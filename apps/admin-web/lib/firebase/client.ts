@@ -1,13 +1,18 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
+import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions';
 
 /**
- * Browser-only Firebase client initialization — checkpoint 1A.4.
+ * Browser-only Firebase client initialization — checkpoint 1A.4, extended in
+ * 1A.9 with a Functions accessor for the `/register` form's call to the
+ * `registerClient` Callable Function (see docs/stages/STAGE_1A_TECHNICAL_PLAN.md
+ * §10/§15 — the browser never creates the Auth user or provisions a tenant
+ * directly; it only invokes this trusted backend operation).
  *
- * Scope deliberately minimal: only the Firebase App + Auth SDKs are
- * initialized here. Firestore is NOT initialized in this checkpoint — no
- * client-side Firestore reads/writes are part of the authentication
- * foundation (the dashboard's own Firestore reads arrive in 1A.8).
+ * Firestore is still NOT initialized here — no client-side Firestore reads/
+ * writes are part of the authentication/registration foundation (the
+ * dashboard's own Firestore reads go through the Admin SDK server-side,
+ * per 1A.8).
  *
  * Safety properties:
  * - `assertBrowser()` throws immediately if this module is evaluated on the
@@ -68,7 +73,9 @@ function readFirebaseWebConfig(): FirebaseWebConfig {
 
 let cachedApp: FirebaseApp | undefined;
 let cachedAuth: Auth | undefined;
+let cachedFunctions: Functions | undefined;
 let authEmulatorConnected = false;
+let functionsEmulatorConnected = false;
 
 export function getFirebaseApp(): FirebaseApp {
   assertBrowser();
@@ -97,4 +104,23 @@ export function getFirebaseAuth(): Auth {
 
   cachedAuth = auth;
   return cachedAuth;
+}
+
+export function getFirebaseFunctions(): Functions {
+  assertBrowser();
+  if (cachedFunctions) {
+    return cachedFunctions;
+  }
+
+  const functions = getFunctions(getFirebaseApp());
+
+  if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true' && !functionsEmulatorConnected) {
+    const host = process.env.NEXT_PUBLIC_FIREBASE_FUNCTIONS_EMULATOR_HOST ?? '127.0.0.1:5001';
+    const [hostname, portString] = host.split(':');
+    connectFunctionsEmulator(functions, hostname!, Number(portString));
+    functionsEmulatorConnected = true;
+  }
+
+  cachedFunctions = functions;
+  return cachedFunctions;
 }

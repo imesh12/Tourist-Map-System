@@ -9,6 +9,7 @@
  */
 
 import { E2E_AUTH_EMULATOR_HOST, E2E_FIREBASE_PROJECT_ID } from '../constants';
+import { getE2eAdminAuth } from './e2e-admin-app';
 
 // Prefer the live env var if set (e.g. `firebase emulators:exec` can assign
 // a different port than the default), falling back to the same constant
@@ -48,4 +49,23 @@ export async function clearEmulatorUsers(): Promise<void> {
   if (!response.ok) {
     throw new Error(`Failed to clear emulator users (${response.status}): ${await response.text()}`);
   }
+}
+
+/**
+ * Disables an existing emulator test user — checkpoint 1A.7 §5/§11 ("if
+ * practical and supported by emulator").
+ *
+ * The Auth Emulator's own Identity Toolkit REST surface only accepts
+ * `disableUser` from a *privileged* (OAuth2-authenticated) caller — plain
+ * unauthenticated REST calls (the pattern `createEmulatorUser`/
+ * `clearEmulatorUsers` above use) cannot set it. Rather than guess at an
+ * emulator-only bearer-token convention for that REST endpoint, this uses
+ * the shared `firebase-admin` app from `./e2e-admin-app` — the same,
+ * already-proven-in-this-repo mechanism checkpoint 1A.5's provisioning
+ * tests use against the Auth+Firestore emulators.
+ */
+export async function disableEmulatorUser(email: string): Promise<void> {
+  const auth = await getE2eAdminAuth();
+  const user = await auth.getUserByEmail(email);
+  await auth.updateUser(user.uid, { disabled: true });
 }

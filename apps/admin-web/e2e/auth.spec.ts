@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { SESSION_COOKIE_NAME } from '../lib/auth/session-config';
 import { E2E_BASE_URL } from './constants';
-import { clearEmulatorUsers, createEmulatorUser } from './helpers/emulator-auth';
+import { clearEmulatorUsers } from './helpers/emulator-auth';
+import { provisionTestTenant } from './helpers/tenant-fixture';
 
 /**
  * Checkpoint 1A.4 auth-emulator integration tests — real Firestore/Auth
@@ -15,6 +16,14 @@ import { clearEmulatorUsers, createEmulatorUser } from './helpers/emulator-auth'
  * 1A.4 completion report for why that path isn't automated here (the
  * emulator's debug popup DOM isn't a stable Playwright automation target
  * across emulator versions).
+ *
+ * checkpoint 1A.8 §13: `/admin` now requires real tenant context, so "valid
+ * authenticated user" here means a fully-provisioned tenant
+ * (`provisionTestTenant`), not just a bare Auth Emulator account — an
+ * unprovisioned account would only ever render the generic "Account
+ * unavailable" fallback state, which would no longer be testing what these
+ * tests are actually meant to prove. The authentication behavior under test
+ * is unchanged; only the fixture got more realistic.
  */
 
 const TEST_EMAIL = 'checkpoint-1a4-test-user@example.com';
@@ -23,7 +32,12 @@ const TEST_PASSWORD = 'correct-horse-battery-staple';
 test.describe('1A.4 authentication foundation', () => {
   test.beforeEach(async () => {
     await clearEmulatorUsers();
-    await createEmulatorUser(TEST_EMAIL, TEST_PASSWORD);
+    await provisionTestTenant({
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      companyName: 'Checkpoint 1A.4 Test Co',
+      displayName: 'Checkpoint 1A.4 Test User',
+    });
   });
 
   test('unauthenticated access to /admin redirects to /login', async ({ page }) => {

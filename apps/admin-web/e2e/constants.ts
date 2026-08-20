@@ -9,6 +9,21 @@ export const E2E_FIREBASE_PROJECT_ID = 'touristmap-local';
 
 export const E2E_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
 
+// checkpoint 1A.8: /admin and /admin/account now load real tenant data from
+// Firestore, so the E2E harness needs the Firestore Emulator running
+// alongside Auth — matches firebase/firebase.json's configured port. The
+// root `pnpm test:e2e` script was updated to `--only auth,firestore` for
+// exactly this reason (see package.json).
+export const E2E_FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
+
+// checkpoint 1A.9: the /register form calls the real `registerClient`
+// Callable Function over the Functions Emulator transport (not the
+// `provisionTestTenant()` Admin SDK fixture used by the rest of this
+// suite), so this is the first checkpoint where the Functions Emulator
+// actually needs to be running — the root `pnpm test:e2e` script now
+// includes it (`--only auth,firestore,functions`, see package.json).
+export const E2E_FUNCTIONS_EMULATOR_HOST = '127.0.0.1:5001';
+
 /**
  * The application's own trusted origin for local E2E — matches
  * `E2E_BASE_URL` exactly (same value, same source of truth) and is what
@@ -49,6 +64,7 @@ export const E2E_APP_ORIGIN = E2E_BASE_URL;
 export const E2E_APP_ENV: Record<string, string> = {
   NEXT_PUBLIC_USE_FIREBASE_EMULATORS: 'true',
   NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST: E2E_AUTH_EMULATOR_HOST,
+  NEXT_PUBLIC_FIREBASE_FUNCTIONS_EMULATOR_HOST: E2E_FUNCTIONS_EMULATOR_HOST,
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: E2E_FIREBASE_PROJECT_ID,
   NEXT_PUBLIC_FIREBASE_API_KEY: 'e2e-emulator-fake-api-key',
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: `${E2E_FIREBASE_PROJECT_ID}.firebaseapp.com`,
@@ -60,6 +76,11 @@ export const E2E_APP_ENV: Record<string, string> = {
   // agree with the client-side project ID above for the same reason.
   FIREBASE_AUTH_EMULATOR_HOST: E2E_AUTH_EMULATOR_HOST,
   FIREBASE_PROJECT_ID: E2E_FIREBASE_PROJECT_ID,
+  // checkpoint 1A.8 — read automatically by the Admin SDK's Firestore
+  // client (`getFirebaseAdminFirestore()`), the same "no code needs to
+  // check for it explicitly" convention `FIREBASE_AUTH_EMULATOR_HOST`
+  // already documents in lib/firebase/admin.ts.
+  FIRESTORE_EMULATOR_HOST: E2E_FIRESTORE_EMULATOR_HOST,
   // Server-only CSRF trust boundary — see lib/auth/origin-check.ts. Never
   // NEXT_PUBLIC_: the browser has no legitimate need to read this, it's a
   // server-side decision about which Origin header value to trust.

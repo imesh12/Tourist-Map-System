@@ -19,6 +19,9 @@ export const AUTH_ERROR_CODES = {
   INVALID_SESSION: 'auth/invalid-session',
   SESSION_CREATION_FAILED: 'auth/session-creation-failed',
   UNAUTHORIZED: 'auth/unauthorized',
+  REGISTRATION_INVALID_INPUT: 'registration/invalid-input',
+  REGISTRATION_DUPLICATE_EMAIL: 'registration/duplicate-email',
+  REGISTRATION_FAILED: 'registration/failed',
 } as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
@@ -104,4 +107,50 @@ export function mapFirebaseAuthError(error: unknown): AuthAppError {
     default:
       return new AuthAppError(AUTH_ERROR_CODES.AUTH_PROVIDER_ERROR, 'Sign-in failed. Please try again.');
   }
+}
+
+/**
+ * Maps an error thrown by the `registerClient` Callable Function (invoked
+ * via the client SDK's `httpsCallable`) to a safe `AuthAppError` — checkpoint
+ * 1A.9. `registerClient` (firebase/functions/src/register-client.ts) always
+ * throws a `functions.https.HttpsError` carrying a `details.code` from its
+ * own reviewed set (`validation/invalid-input`, `provisioning/duplicate-email`,
+ * `provisioning/failed`) — switching on that inner code, rather than the
+ * outer `functions/*` transport-level code, is what stays in sync with the
+ * server's actual error taxonomy instead of a generic HTTP-status mapping.
+ * A network failure (no `details` at all — the call never reached the
+ * function) falls through to the generic registration-failed message.
+ */
+export function mapRegistrationError(error: unknown): AuthAppError {
+  const detailCode = registrationDetailCode(error);
+
+  if (typeof console !== 'undefined') {
+    console.warn('[registration] registerClient call failed', { code: detailCode ?? 'unknown' });
+  }
+
+  switch (detailCode) {
+    case 'validation/invalid-input':
+      return new AuthAppError(AUTH_ERROR_CODES.REGISTRATION_INVALID_INPUT, 'Please check the registration form and try again.');
+
+    case 'provisioning/duplicate-email':
+      return new AuthAppError(
+        AUTH_ERROR_CODES.REGISTRATION_DUPLICATE_EMAIL,
+        'An account with this email already exists. Please sign in instead.',
+      );
+
+    default:
+      return new AuthAppError(AUTH_ERROR_CODES.REGISTRATION_FAILED, 'Registration could not be completed. Please try again.');
+  }
+}
+
+function registrationDetailCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('details' in error)) {
+    return undefined;
+  }
+  const details = (error as { details?: unknown }).details;
+  if (typeof details !== 'object' || details === null || !('code' in details)) {
+    return undefined;
+  }
+  const code = (details as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
 }
