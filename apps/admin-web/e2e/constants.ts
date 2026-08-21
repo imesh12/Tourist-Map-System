@@ -44,9 +44,16 @@ export const E2E_APP_ORIGIN = E2E_BASE_URL;
  *
  * The E2E suite must be runnable without a developer having created
  * `apps/admin-web/.env.local` first: `.env.example` is documentation only
- * and Next.js never loads it automatically, so an uncommitted, developer-
- * specific `.env.local` cannot be something CI (or a fresh checkout) relies
- * on existing. None of the Firebase values here are secrets — the Firebase
+ * and Next.js never loads it automatically. `.env.local` is different —
+ * `next dev` DOES load it automatically, but only for variables not
+ * already present in `process.env`; every var this object sets is already
+ * present by the time `next dev` starts (Playwright passes this as
+ * `webServer.env`), so a developer's own `.env.local` values are correctly
+ * ignored for all of them (checkpoint 1A.10 confirmed this explicitly for
+ * `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` below, after a real local `.env.local`
+ * with a real key was found to otherwise leak into this "deterministic"
+ * env and silently break the no-API-key-fallback assertions in
+ * e2e/map-preview.spec.ts). None of the Firebase values here are secrets — the Firebase
  * Web SDK config is not secret by design (access control is enforced by
  * security rules, not by hiding these values — see
  * apps/admin-web/.env.example), and the Auth Emulator does not validate
@@ -71,6 +78,13 @@ export const E2E_APP_ENV: Record<string, string> = {
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: `${E2E_FIREBASE_PROJECT_ID}.appspot.com`,
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
   NEXT_PUBLIC_FIREBASE_APP_ID: '1:000000000000:web:e2eemulatorfakeappid',
+  // Deliberately empty, not omitted — checkpoint 1B.1-D's fallback-path
+  // tests (e2e/map-preview.spec.ts) require the Google Maps live adapter to
+  // be unreachable. Explicitly setting this key (even to '') is what makes
+  // Next.js treat it as "already present in process.env" and skip loading
+  // any value from a developer's own local .env.local — see this file's
+  // doc comment above for how this was actually discovered as a real gap.
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: '',
   // Server-only — read by the Firebase Admin SDK (`lib/firebase/admin.ts`)
   // and directly by `resolveFirebaseAdminAppOptions` for `projectId`. Must
   // agree with the client-side project ID above for the same reason.

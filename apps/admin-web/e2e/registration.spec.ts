@@ -53,13 +53,18 @@ test.describe('1A.9 registration integration', () => {
     // hang. 20s leaves ample margin without masking a genuine regression.
     await expect(page).toHaveURL(/\/admin$/, { timeout: 20000 });
     await expect(page.getByRole('heading', { name: 'Client Admin' })).toBeVisible();
-    // exact: true — /admin also renders the derived map name ("Checkpoint
-    // 1A.9 Registration Co Tourist Map"), which would otherwise ambiguously
+    // Scoped to `main` (not a bare `page.getByText`) — checkpoint 1A.10's
+    // admin shell header also shows the signed-in user's display name and
+    // company on every page (components/admin-shell/header.tsx), so an
+    // unscoped match would now find two elements instead of one; `main` is
+    // the shell's page-content region, excluding the header. exact: true —
+    // /admin also renders the derived map name ("Checkpoint 1A.9
+    // Registration Co Tourist Map"), which would otherwise ambiguously
     // match this same substring (see e2e/dashboard.spec.ts's identical
     // reasoning for the same assertion pattern).
-    await expect(page.getByText('Checkpoint 1A.9 Registration Co', { exact: true })).toBeVisible();
-    await expect(page.getByText('Rita Registrant', { exact: false })).toBeVisible();
-    await expect(page.getByText('CLIENT_ADMIN')).toBeVisible();
+    await expect(page.locator('main').getByText('Checkpoint 1A.9 Registration Co', { exact: true })).toBeVisible();
+    await expect(page.locator('main').getByText('Rita Registrant', { exact: false })).toBeVisible();
+    await expect(page.locator('main').getByText('CLIENT_ADMIN')).toBeVisible();
   });
 
   test('registering with an email that already completed registration is rejected and never reaches /admin', async ({

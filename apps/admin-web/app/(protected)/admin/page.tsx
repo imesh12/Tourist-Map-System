@@ -1,4 +1,4 @@
-import { SignOutButton } from '@/components/sign-out-button';
+import Link from 'next/link';
 import { describeClientContextDenial, getCurrentClientContext } from '@/lib/tenant/client-context';
 
 /**
@@ -18,8 +18,11 @@ import { describeClientContextDenial, getCurrentClientContext } from '@/lib/tena
  * failure) renders a dedicated message in place of the dashboard — never a
  * redirect (checkpoint 1A.8 §3: "prefer a dedicated server-rendered state
  * over an infinite redirect loop") and never the real error detail (§3: "do
- * not expose internal Firebase errors"). `SignOutButton` stays available in
- * both states so a user is never trapped here.
+ * not expose internal Firebase errors"). Checkpoint 1A.10 moved the actual
+ * `SignOutButton` into the shared admin shell header
+ * (components/admin-shell/header.tsx), which renders unconditionally
+ * regardless of this result — a user is still never trapped here, just via
+ * the header now rather than page-local content.
  */
 export default async function AdminPage() {
   const result = await getCurrentClientContext();
@@ -27,40 +30,73 @@ export default async function AdminPage() {
   if (!result.ok) {
     const { heading, message } = describeClientContextDenial(result);
     return (
-      <main style={{ fontFamily: 'system-ui, sans-serif', padding: '3rem' }}>
-        <h1>Client Admin</h1>
-        <h2>{heading}</h2>
-        <p>{message}</p>
-        <SignOutButton />
-      </main>
+      <div className="card">
+        <h1 className="page-title">Client Admin</h1>
+        <h2 className="card-title" style={{ marginTop: 'var(--space-4)' }}>
+          {heading}
+        </h2>
+        <p className="card-description">{message}</p>
+      </div>
     );
   }
 
   const { user, customer, map } = result.context;
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '3rem' }}>
-      <h1>Client Admin</h1>
-      <dl>
-        <dt>Company</dt>
-        <dd>{customer.companyName}</dd>
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Client Admin</h1>
+          <p className="page-description">Your organization, identity, and initial map — proof that provisioning worked.</p>
+        </div>
+      </div>
 
-        <dt>Signed in as</dt>
-        <dd>
-          {user.displayName} ({user.email})
-        </dd>
+      <div className="card">
+        <div className="card-title">Organization</div>
+        <dl className="field-row" style={{ rowGap: 'var(--space-3)' }}>
+          <div>
+            <div className="field-hint">Company</div>
+            <div>{customer.companyName}</div>
+          </div>
+          <div>
+            <div className="field-hint">Customer ID</div>
+            <div>{customer.customerId}</div>
+          </div>
+          <div>
+            <div className="field-hint">Signed in as</div>
+            <div>
+              {user.displayName} ({user.email})
+            </div>
+          </div>
+          <div>
+            <div className="field-hint">Role</div>
+            <div>{user.role}</div>
+          </div>
+          <div>
+            <div className="field-hint">Map</div>
+            <div>{map.name}</div>
+          </div>
+        </dl>
+      </div>
 
-        <dt>Role</dt>
-        <dd>{user.role}</dd>
-
-        <dt>Map</dt>
-        <dd>{map.name}</dd>
-
-        <dt>Customer ID</dt>
-        <dd>{customer.customerId}</dd>
-      </dl>
-      <p>Map configuration and publishing arrive in a later phase.</p>
-      <SignOutButton />
-    </main>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+        <div>
+          <div className="card-title" style={{ marginBottom: 0 }}>
+            Places and publishing
+          </div>
+          <p className="card-description" style={{ marginBottom: 0 }}>
+            Arrive in a later phase.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Link href="/admin/map" className="btn btn-secondary">
+            Edit map settings
+          </Link>
+          <Link href="/admin/categories" className="btn btn-secondary">
+            Manage categories
+          </Link>
+        </div>
+      </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { ClientAssignableRole } from 'shared-types';
 import { CLIENT_ASSIGNABLE_ROLES } from 'shared-types';
 import { customerSchema, mapSchema, userSchema, type CustomerParsed, type MapParsed, type UserParsed } from 'validation';
@@ -74,7 +75,7 @@ function isClientAssignableRole(value: string): value is ClientAssignableRole {
   return (CLIENT_ASSIGNABLE_ROLES as readonly string[]).includes(value);
 }
 
-export async function getCurrentClientContext(): Promise<ClientContextResult> {
+async function resolveClientContext(): Promise<ClientContextResult> {
   const { session } = await verifySession();
   if (!session) {
     // Should not normally be reachable — the `(protected)` layout already
@@ -168,6 +169,19 @@ export async function getCurrentClientContext(): Promise<ClientContextResult> {
 
   return { ok: true, context: { uid, email, role, user, customer, map } };
 }
+
+/**
+ * Checkpoint 1A.10: wrapped in React's `cache()` so the new admin shell
+ * layout (`app/(protected)/admin/layout.tsx`, header data) and each page
+ * under it (`/admin`, `/admin/account`, `/admin/map`, `/admin/categories`)
+ * can all call this independently — the natural way to consume it from a
+ * Server Component tree — without each one repeating the underlying
+ * `verifySession()` + Firestore reads. `cache()` dedupes by function
+ * identity + arguments *within a single request's render pass only*; nothing
+ * persists across requests, so this changes nothing about the trust
+ * boundary or the fail-closed checks above, only how many times they run.
+ */
+export const getCurrentClientContext = cache(resolveClientContext);
 
 /**
  * Safe, reviewed copy for a denied `ClientContextResult` — shared by

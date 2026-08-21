@@ -24,3 +24,7 @@ export * from './login.js';
 export * from './customer.js';
 export * from './user.js';
 export * from './map.js';
+export * from './branding.js';
+export * from './map-settings.js';
+export * from './category.js';
+export * from './poi.js';

@@ -22,6 +22,20 @@ export interface MapAreaConfig {
 }
 
 /**
+ * Basic client-controlled branding — checkpoint 1B.1, see
+ * docs/stages/STAGE_1B_TECHNICAL_PLAN.md §2. A small, explicit set of
+ * theme fields (matching SYSTEM_BLUEPRINT.md §11's "controlled theme
+ * options, not arbitrary CSS"), not the full future theme system.
+ * `logoUrl` is a plain URL string for 1B.1 — real Storage upload UI is
+ * deferred to a later checkpoint; a client may paste an already-hosted URL.
+ */
+export interface MapBranding {
+  readonly logoUrl?: string;
+  readonly primaryColor?: string;
+  readonly secondaryColor?: string;
+}
+
+/**
  * `maps/{mapId}` — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §8/§11.
  *
  * Named `TouristMap` rather than `Map` deliberately, to avoid shadowing the
@@ -43,6 +57,8 @@ export interface TouristMap {
   readonly enabledLanguages: readonly Language[];
   readonly mapProvider: MapProviderConfig;
   readonly area: MapAreaConfig;
+  /** Optional — absent until a Client Admin first saves branding (checkpoint 1B.1). */
+  readonly branding?: MapBranding;
   readonly createdAt: FirestoreTimestampLike;
   readonly updatedAt: FirestoreTimestampLike;
 }

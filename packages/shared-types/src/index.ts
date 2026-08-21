@@ -21,3 +21,6 @@ export * from './enums.js';
 export * from './customer.js';
 export * from './user.js';
 export * from './map.js';
+export * from './category.js';
+export * from './platform-category.js';
+export * from './poi.js';

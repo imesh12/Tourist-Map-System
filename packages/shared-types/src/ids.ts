@@ -14,9 +14,13 @@ export type Branded<TValue, TBrand extends string> = TValue & { readonly __brand
  */
 export const CUSTOMER_ID_PREFIX = 'cust_' as const;
 export const MAP_ID_PREFIX = 'map_' as const;
+export const CATEGORY_ID_PREFIX = 'cat_' as const;
+export const POI_ID_PREFIX = 'poi_' as const;
 
 export type CustomerId = Branded<string, 'CustomerId'>;
 export type MapId = Branded<string, 'MapId'>;
+export type CategoryId = Branded<string, 'CategoryId'>;
+export type PoiId = Branded<string, 'PoiId'>;
 
 /**
  * Firebase Authentication UID. Deliberately branded but otherwise treated as

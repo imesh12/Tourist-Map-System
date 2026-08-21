@@ -18,6 +18,21 @@ async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'pass
   await page.getByRole('button', { name: 'Sign In' }).click();
 }
 
+/**
+ * Checkpoint 1A.10: the admin shell's header now also shows the signed-in
+ * user's display name and company (see components/admin-shell/header.tsx)
+ * on every `/admin/**` page, alongside the same page's own tenant-data
+ * content — so a bare, unscoped `page.getByText(...)` for that same text
+ * now legitimately matches two elements instead of one. Scoping to `main`
+ * (the shell's page-content region; the header/sidebar render as siblings
+ * outside it — see components/admin-shell/admin-shell.tsx) isolates these
+ * assertions back to the page's own content, which is what they were
+ * always actually testing.
+ */
+function pageMain(page: Page) {
+  return page.locator('main');
+}
+
 test.describe('1A.8 client admin dashboard + real tenant data', () => {
   test.beforeEach(async () => {
     await clearEmulatorUsers();
@@ -39,11 +54,11 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     // substring match on the bare company name would ALSO match the map
     // name's <dd> and hit a Playwright strict-mode ambiguity — exact:true
     // pins each assertion to the one <dd> whose full text equals it.
-    await expect(page.getByText('Acme Tourist Co', { exact: true })).toBeVisible(); // A
-    await expect(page.getByText('Ada Admin', { exact: false })).toBeVisible(); // B
-    await expect(page.getByText(tenant.email, { exact: false })).toBeVisible(); // B
-    await expect(page.getByText('CLIENT_ADMIN')).toBeVisible(); // B
-    await expect(page.getByText('Acme Tourist Co Tourist Map', { exact: true })).toBeVisible(); // C
+    await expect(pageMain(page).getByText('Acme Tourist Co', { exact: true })).toBeVisible(); // A
+    await expect(pageMain(page).getByText('Ada Admin', { exact: false })).toBeVisible(); // B
+    await expect(pageMain(page).getByText(tenant.email, { exact: false })).toBeVisible(); // B
+    await expect(pageMain(page).getByText('CLIENT_ADMIN')).toBeVisible(); // B
+    await expect(pageMain(page).getByText('Acme Tourist Co Tourist Map', { exact: true })).toBeVisible(); // C
   });
 
   test('/admin/account renders real account and customer data (D)', async ({ page }) => {
@@ -70,10 +85,10 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     await page.goto('/admin/account');
 
     await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
-    await expect(page.getByText('Bea Admin')).toBeVisible();
-    await expect(page.getByText(tenant.email)).toBeVisible();
-    await expect(page.getByText('CLIENT_ADMIN')).toBeVisible();
-    await expect(page.getByText('Beta Tours Ltd')).toBeVisible();
+    await expect(pageMain(page).getByText('Bea Admin')).toBeVisible();
+    await expect(pageMain(page).getByText(tenant.email)).toBeVisible();
+    await expect(pageMain(page).getByText('CLIENT_ADMIN')).toBeVisible();
+    await expect(pageMain(page).getByText('Beta Tours Ltd')).toBeVisible();
     await expect(page.getByText(tenant.customerId)).toBeVisible();
     await expect(page.getByText('COMPLETE')).toBeVisible();
   });
@@ -90,15 +105,15 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     // Tourist Map"), which would otherwise ambiguously match this same
     // substring (see the (A/B/C) test's comment for the full reasoning).
     await login(page, tenant);
-    await expect(page.getByText('Gamma Resorts', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Gamma Resorts', { exact: true })).toBeVisible();
 
     await page.reload();
     await expect(page).toHaveURL(/\/admin$/);
-    await expect(page.getByText('Gamma Resorts', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Gamma Resorts', { exact: true })).toBeVisible();
 
     await page.goto('/admin/account');
     await expect(page).toHaveURL(/\/admin\/account$/);
-    await expect(page.getByText('Gamma Resorts', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Gamma Resorts', { exact: true })).toBeVisible();
   });
 
   test('tenant A never renders tenant B data through a supported URL/query mechanism (F)', async ({ page }) => {
@@ -119,17 +134,17 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     // Tourist Map"), which would otherwise ambiguously match this same
     // substring (see the (A/B/C) test's comment for the full reasoning).
     await login(page, tenantA);
-    await expect(page.getByText('Tenant A Company', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Tenant A Company', { exact: true })).toBeVisible();
 
     // No query parameter is ever read for tenant selection by
     // getCurrentClientContext() — this proves that's actually true, not
     // just documented, against every plausible attempt.
     await page.goto(`/admin?customerId=${tenantB.customerId}`);
-    await expect(page.getByText('Tenant A Company', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Tenant A Company', { exact: true })).toBeVisible();
     await expect(page.getByText('Tenant B Company')).toHaveCount(0);
 
     await page.goto(`/admin/account?customerId=${tenantB.customerId}&mapId=${tenantB.mapId}`);
-    await expect(page.getByText('Tenant A Company', { exact: true })).toBeVisible();
+    await expect(pageMain(page).getByText('Tenant A Company', { exact: true })).toBeVisible();
     await expect(page.getByText('Tenant B Company')).toHaveCount(0);
   });
 

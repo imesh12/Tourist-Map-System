@@ -451,4 +451,159 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
       await assertFails(getDoc(doc(aAdminDb(), 'unknownCollection/doc1')));
     });
   });
+
+  describe('maps/{mapId}/categories subcollection — checkpoint 1B.2', () => {
+    // Category CMS data is server-only (docs/stages/STAGE_1B_TECHNICAL_PLAN.md
+    // 1B.2): all reads/writes go through the trusted `/api/map/categories`
+    // Route Handler (Admin SDK, which bypasses rules by design), never the
+    // browser's own Firestore client. No explicit `match` block exists for
+    // this nested collection, so the deny-by-default `match /{document=**}`
+    // fallback already covers it — these tests prove that remains true,
+    // rather than assuming it, exactly like `unknown collection` above does
+    // for a bare top-level example.
+    it('denies an own-tenant category read, even for the map owner', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/categories/cat_seed`), {
+          categoryId: 'cat_seed',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          name: 'Restaurants',
+          icon: 'FOOD',
+          enabled: true,
+          order: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/categories/cat_seed`)));
+    });
+
+    it('denies an own-tenant category write', async () => {
+      await seedFixtures();
+      await assertFails(
+        setDoc(doc(aAdminDb(), `maps/${MAP_A}/categories/cat_forged`), {
+          categoryId: 'cat_forged',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          name: 'Forged',
+          icon: 'OTHER',
+          enabled: true,
+          order: 0,
+        }),
+      );
+    });
+
+    it('denies an unauthenticated category read', async () => {
+      await seedFixtures();
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/categories/cat_seed`)));
+    });
+  });
+
+  describe('maps/{mapId}/pois subcollection — checkpoint 1B.3', () => {
+    // Same "server-only, deny-by-default fallback" shape as the categories
+    // block immediately above: POI data goes exclusively through the
+    // trusted `/api/map/pois` Route Handlers (Admin SDK, which bypasses
+    // rules by design), never the browser's own Firestore client. No
+    // explicit `match` block exists for this nested collection either, so
+    // the deny-by-default `match /{document=**}` fallback already covers
+    // it — these tests prove that remains true for POIs specifically,
+    // rather than assuming the categories proof generalizes.
+    it('denies an own-tenant POI read, even for the map owner', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/pois/poi_seed`), {
+          poiId: 'poi_seed',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          categoryId: 'cat_seed',
+          name: 'Sakura Restaurant',
+          location: { latitude: 35.6812, longitude: 139.7671 },
+          sourceType: 'CLIENT_CUSTOM',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_seed`)));
+    });
+
+    it('denies an own-tenant POI write', async () => {
+      await seedFixtures();
+      await assertFails(
+        setDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_forged`), {
+          poiId: 'poi_forged',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          categoryId: 'cat_seed',
+          name: 'Forged',
+          location: { latitude: 0, longitude: 0 },
+          sourceType: 'CLIENT_CUSTOM',
+          status: 'ENABLED',
+        }),
+      );
+    });
+
+    it('denies an own-tenant POI update and delete', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/pois/poi_seed_2`), {
+          poiId: 'poi_seed_2',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          categoryId: 'cat_seed',
+          name: 'Sakura Restaurant',
+          location: { latitude: 35.6812, longitude: 139.7671 },
+          sourceType: 'CLIENT_CUSTOM',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_seed_2`), { status: 'DISABLED' }));
+      await assertFails(deleteDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_seed_2`)));
+    });
+
+    it('denies an unauthenticated POI read', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/pois/poi_seed`), {
+          poiId: 'poi_seed',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          categoryId: 'cat_seed',
+          name: 'Sakura Restaurant',
+          location: { latitude: 35.6812, longitude: 139.7671 },
+          sourceType: 'CLIENT_CUSTOM',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/pois/poi_seed`)));
+    });
+
+    it('denies a cross-tenant POI read even with a well-formed but wrong-tenant path', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_B}/pois/poi_tenant_b`), {
+          poiId: 'poi_tenant_b',
+          customerId: TENANT_B,
+          mapId: MAP_B,
+          categoryId: 'cat_seed_b',
+          name: 'Tenant B Cafe',
+          location: { latitude: 1, longitude: 1 },
+          sourceType: 'CLIENT_CUSTOM',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      // Tenant A's own authenticated client, reading tenant B's POI path —
+      // denied the same way the top-level cross-tenant map/category tests
+      // above are, and for the same reason (deny-by-default fallback, no
+      // rule exists to even consider `request.auth.token.customerId` here).
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_B}/pois/poi_tenant_b`)));
+    });
+  });
 });

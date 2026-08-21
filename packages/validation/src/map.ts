@@ -1,7 +1,62 @@
 import { z } from 'zod';
 import { LANGUAGES, MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
+import { mapBrandingSchema } from './branding.js';
 import { customerIdSchema, mapIdSchema } from './ids.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
+
+/**
+ * Map area geometry — checkpoint 1B.1, see
+ * docs/stages/STAGE_1B_TECHNICAL_PLAN.md §2. Exported (not inlined into
+ * `mapSchema`) so the same validated shape — including the coordinate/zoom
+ * ranges and the BOUNDED/UNBOUNDED invariants below — is reused for both
+ * reading a stored map doc (defense-in-depth, via `mapSchema`) and
+ * validating the untrusted map-settings mutation input (`mapSettingsUpdateSchema`
+ * in map-settings.ts), rather than duplicating the rules in two places.
+ *
+ * A provider-independent zoom range (0–22) is used deliberately — this is
+ * not a Google-Maps- or Mapbox-specific concept, just the common range both
+ * currently-supported `MapProviderName`s (see shared-types/enums.ts)
+ * support without clipping.
+ */
+const MIN_ZOOM = 0;
+const MAX_ZOOM = 22;
+
+// Exported (not module-private) — checkpoint 1B.3's `poiLocationSchema`
+// (poi.ts) reuses these exact same coordinate ranges rather than
+// re-declaring them, so "what counts as a valid latitude/longitude" stays
+// defined in exactly one place across map area bounds AND POI locations.
+export const latitudeSchema = z.number().min(-90).max(90);
+export const longitudeSchema = z.number().min(-180).max(180);
+const zoomSchema = z.number().min(MIN_ZOOM).max(MAX_ZOOM);
+
+const mapAreaBoundsSchema = z
+  .object({
+    north: latitudeSchema,
+    south: latitudeSchema,
+    east: longitudeSchema,
+    west: longitudeSchema,
+  })
+  .refine((bounds) => bounds.north > bounds.south, { message: 'north must be greater than south', path: ['north'] })
+  // Standard, non-antimeridian-crossing bounds only for Phase 1B — see
+  // docs/stages/STAGE_1B_TECHNICAL_PLAN.md; antimeridian-crossing bounds
+  // (east < west) are not supported.
+  .refine((bounds) => bounds.east > bounds.west, { message: 'east must be greater than west', path: ['east'] });
+
+export const mapAreaSchema = z
+  .object({
+    type: z.enum(MAP_AREA_TYPES),
+    center: z.object({ lat: latitudeSchema, lng: longitudeSchema }).optional(),
+    defaultZoom: zoomSchema.optional(),
+    bounds: mapAreaBoundsSchema.optional(),
+  })
+  // BOUNDED requires a fully-specified viewport + extent (§6 of the 1B.1
+  // prompt/plan); UNBOUNDED may still carry center/defaultZoom as an
+  // initial viewport, and any `bounds` present is still validated above
+  // but is not required and is ignored by UNBOUNDED-aware readers.
+  .refine((area) => area.type !== 'BOUNDED' || (area.center !== undefined && area.defaultZoom !== undefined && area.bounds !== undefined), {
+    message: 'A BOUNDED map area requires center, defaultZoom, and bounds',
+    path: ['type'],
+  });
 
 /**
  * Mirrors shared-types' `TouristMap` interface. `customerId` is the
@@ -29,19 +84,13 @@ export const mapSchema = z
       provider: z.enum(MAP_PROVIDER_NAMES),
       style: z.enum(MAP_STYLES),
     }),
-    area: z.object({
-      type: z.enum(MAP_AREA_TYPES),
-      center: z.object({ lat: z.number(), lng: z.number() }).optional(),
-      defaultZoom: z.number().optional(),
-      bounds: z
-        .object({
-          north: z.number(),
-          south: z.number(),
-          east: z.number(),
-          west: z.number(),
-        })
-        .optional(),
-    }),
+    area: mapAreaSchema,
+    // Optional — absent until a Client Admin first saves branding
+    // (checkpoint 1B.1). Every map document provisioned by checkpoint 1A.5
+    // predates this field, so it must stay optional here or every such
+    // existing/fixture-seeded map would fail `getCurrentClientContext()`'s
+    // read-side validation and fail closed.
+    branding: mapBrandingSchema.optional(),
     createdAt: firestoreTimestampLikeSchema,
     updatedAt: firestoreTimestampLikeSchema,
   })
