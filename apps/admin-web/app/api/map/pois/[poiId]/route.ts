@@ -87,6 +87,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
   }
 
+  // Checkpoint 1B.4: an imported (`GOOGLE_PLACES`) POI's content is owned by
+  // the external source, re-resolved authoritatively at import time
+  // (`POST /api/map/pois/import`) — its `name`/`categoryId`/`location`/
+  // `address`/`description` are never editable through this endpoint, only
+  // `status` (enable/disable). `poiUpdateInputSchema` itself has no
+  // `sourceType`/`provider`/`providerPlaceId` fields at all (so those can
+  // never be touched by either kind of POI), but it CAN'T know which POI a
+  // given request targets, so the "which OTHER fields are allowed" check has
+  // to live here, once the target's own stored `sourceType` is known.
+  if (existing.sourceType === 'GOOGLE_PLACES') {
+    const attemptedFields = Object.keys(parsed.data).filter((key) => key !== 'status');
+    if (attemptedFields.length > 0) {
+      return NextResponse.json(
+        { code: 'map/external-poi-immutable-fields', message: 'Only the status of an imported Google Places POI can be changed here.' },
+        { status: 400 },
+      );
+    }
+  }
+
   const firestore = getFirebaseAdminFirestore();
 
   if (parsed.data.categoryId !== undefined) {

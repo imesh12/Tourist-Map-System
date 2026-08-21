@@ -5,8 +5,10 @@ import type { MapAreaBounds, MapProviderName } from 'shared-types';
 import { poiCreateInputSchema, poiUpdateInputSchema, type CategoryParsed, type PoiParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import type { MapPreviewCenter } from '@/lib/map-preview/types';
+import { categorySupportsGooglePlacesDiscovery } from '@/lib/tenant/category-capabilities';
 import { CATEGORY_ICON_META } from '../categories/category-icons';
 import { DeletePoiDialog } from './delete-poi-dialog';
+import { DiscoverPlacesDrawer } from './discover-places-drawer';
 import { PoiFormDrawer, type PoiFormValues } from './poi-form-drawer';
 
 /**
@@ -25,6 +27,8 @@ import { PoiFormDrawer, type PoiFormValues } from './poi-form-drawer';
 
 type StatusFilter = 'ALL' | 'ENABLED' | 'DISABLED';
 type CategoryFilter = 'ALL' | string;
+/** checkpoint 1B.4 — mixed-source table support. */
+type SourceFilter = 'ALL' | 'MANUAL' | 'GOOGLE_PLACES';
 
 interface PoisManagerProps {
   readonly initialPois: readonly PoiParsed[];
@@ -82,8 +86,10 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
 
   const [drawer, setDrawer] = useState<DrawerState>(undefined);
+  const [isDiscoverOpen, setIsDiscoverOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
@@ -106,13 +112,20 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
       if (categoryFilter !== 'ALL' && poi.categoryId !== categoryFilter) return false;
       if (statusFilter === 'ENABLED' && poi.status !== 'ENABLED') return false;
       if (statusFilter === 'DISABLED' && poi.status !== 'DISABLED') return false;
+      if (sourceFilter === 'MANUAL' && poi.sourceType !== 'CLIENT_CUSTOM') return false;
+      if (sourceFilter === 'GOOGLE_PLACES' && poi.sourceType !== 'GOOGLE_PLACES') return false;
       if (query) {
         const haystack = `${poi.name} ${poi.address ?? ''}`.toLowerCase();
         if (!haystack.includes(query)) return false;
       }
       return true;
     });
-  }, [pois, searchQuery, categoryFilter, statusFilter]);
+  }, [pois, searchQuery, categoryFilter, statusFilter, sourceFilter]);
+
+  // checkpoint 1B.4 — which tenant categories the Discover Places drawer may
+  // offer; a category with no eligible Google Places capability is never
+  // shown there, matching the drawer's own controlled-selection contract.
+  const eligibleCategories = useMemo(() => categories.filter((category) => categorySupportsGooglePlacesDiscovery(category)), [categories]);
 
   async function refetchPois(): Promise<void> {
     setIsRefetching(true);
@@ -194,21 +207,30 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
     setFormError(undefined);
     setFieldErrors([]);
 
-    const payload = {
-      name: values.name,
-      categoryId: values.categoryId,
-      latitude: Number(values.latitude.trim()),
-      longitude: Number(values.longitude.trim()),
-      // Sending the field only when non-blank means clearing a
-      // previously-set address/description back to blank via this form
-      // isn't possible yet — a deliberate, minor, documented scope
-      // trim (matching the create payload's own convention above), not an
-      // oversight: the checkpoint's optional-field requirement is "support"
-      // address/description, not "support clearing" them.
-      ...(values.address.trim() ? { address: values.address.trim() } : {}),
-      ...(values.description.trim() ? { description: values.description.trim() } : {}),
-      status: values.status,
-    };
+    // checkpoint 1B.4: an imported (`GOOGLE_PLACES`) POI's content fields
+    // are never sent from this form — `PoiFormDrawer` already renders them
+    // read-only via `readOnlyExceptStatus`, and this is the matching
+    // client-side half of that restriction (the server enforces it
+    // authoritatively regardless — see `PATCH /api/map/pois/{poiId}`'s own
+    // `sourceType === 'GOOGLE_PLACES'` check).
+    const payload =
+      poi.sourceType === 'GOOGLE_PLACES'
+        ? { status: values.status }
+        : {
+            name: values.name,
+            categoryId: values.categoryId,
+            latitude: Number(values.latitude.trim()),
+            longitude: Number(values.longitude.trim()),
+            // Sending the field only when non-blank means clearing a
+            // previously-set address/description back to blank via this form
+            // isn't possible yet — a deliberate, minor, documented scope
+            // trim (matching the create payload's own convention above), not an
+            // oversight: the checkpoint's optional-field requirement is "support"
+            // address/description, not "support clearing" them.
+            ...(values.address.trim() ? { address: values.address.trim() } : {}),
+            ...(values.description.trim() ? { description: values.description.trim() } : {}),
+            status: values.status,
+          };
     const parsed = poiUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
@@ -293,6 +315,9 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
         </div>
         {canEdit ? (
           <div className="page-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setIsDiscoverOpen(true)}>
+              Discover Places
+            </button>
             <button type="button" className="btn btn-primary" onClick={openCreateDrawer}>
               + New POI
             </button>
@@ -340,6 +365,16 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
                 {category.name}
               </option>
             ))}
+          </select>
+          <select
+            className="select"
+            aria-label="Filter by source"
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value as SourceFilter)}
+          >
+            <option value="ALL">All sources</option>
+            <option value="MANUAL">Manual</option>
+            <option value="GOOGLE_PLACES">Google Places</option>
           </select>
           <select
             className="select"
@@ -393,7 +428,9 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
                       )}
                     </td>
                     <td>
-                      <span className="badge badge-neutral">{poi.sourceType === 'CLIENT_CUSTOM' ? 'Manual' : poi.sourceType}</span>
+                      <span className="badge badge-neutral">
+                        {poi.sourceType === 'CLIENT_CUSTOM' ? 'Manual' : poi.sourceType === 'GOOGLE_PLACES' ? 'Google Places' : poi.sourceType}
+                      </span>
                     </td>
                     <td>
                       <span className={`badge ${poi.status === 'ENABLED' ? 'badge-success' : 'badge-neutral'}`}>
@@ -445,11 +482,21 @@ export function PoisManager({ initialPois, categories, mapProvider, mapCenter, m
           fieldErrors={fieldErrors}
           onCancel={closeDrawer}
           onSubmit={(values) => (drawer.mode === 'create' ? handleCreateSubmit(values) : handleEditSubmit(drawer.poi, values))}
+          readOnlyExceptStatus={drawer.mode === 'edit' && drawer.poi.sourceType === 'GOOGLE_PLACES'}
         />
       ) : null}
 
       {deleteTarget ? (
         <DeletePoiDialog poiName={deleteTarget.name} isDeleting={isDeleting} onCancel={cancelDelete} onConfirm={confirmDelete} />
+      ) : null}
+
+      {isDiscoverOpen ? (
+        <DiscoverPlacesDrawer
+          eligibleCategories={eligibleCategories}
+          existingPois={pois}
+          onClose={() => setIsDiscoverOpen(false)}
+          onImported={refetchPois}
+        />
       ) : null}
     </>
   );

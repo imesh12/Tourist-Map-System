@@ -1,4 +1,4 @@
-import type { CategoryIcon, CategorySourceType } from './enums.js';
+import type { CategoryIcon, CategorySourceType, PoiSourceType } from './enums.js';
 
 /**
  * Future Super-Admin-owned platform category catalog — Category CMS
@@ -87,4 +87,89 @@ export interface ClientCategoryConfig {
    */
   readonly menuEnabled: boolean;
   readonly order: number;
+}
+
+/**
+ * PlatformCategoryRegistry — checkpoint 1B.4, see
+ * docs/architecture/CATEGORY_ARCHITECTURE.md §11.
+ *
+ * `PlatformCategoryDefinition` above is the FUTURE, Firestore-backed,
+ * Super-Admin-managed shape — it stays exactly as documented, with no
+ * runtime consumer. This registry is a DELIBERATELY SEPARATE, TEMPORARY
+ * stand-in: a small, developer-owned, code-based catalog that lets checkpoint
+ * 1B.4 ship the first real "released platform category" concept (unblocking
+ * Google Places integration) without building a full Super Admin console
+ * first. It is not a shortcut taken carelessly — the checkpoint's own
+ * instruction is explicit that a full Super Admin is out of scope, and that
+ * a code-based registry is the sanctioned interim shape.
+ *
+ * Design choice that matters for the future migration: every entry's
+ * `platformCategoryId` is a FIXED, STABLE, hand-chosen string (`'platcat_restaurant'`),
+ * not a randomly generated ID the way `CategoryId`/`PoiId` are. This is
+ * deliberate — `Category.platformCategoryId` (./category.js) is just a plain
+ * `string`, so when a real Super-Admin-managed `platformCategories`
+ * collection eventually replaces this registry, it only needs to be SEEDED
+ * with a document whose ID/field matches this exact same string for every
+ * tenant category that already links to it today. No migration script ever
+ * needs to rewrite `Category.platformCategoryId` on existing tenant
+ * documents, and by extension no `Poi` document ever needs touching either —
+ * exactly the "migration never requires renaming tenant categories/POIs"
+ * requirement this checkpoint calls for.
+ *
+ * Only `RESTAURANT` is released (`status: 'ACTIVE'`) today — see
+ * checkpoint 1B.4's own "Restaurant category first" scope. Adding a second
+ * released category later is a matter of adding one more entry here, not a
+ * structural change.
+ */
+export const RELEASED_PLATFORM_CATEGORY_IDS = ['platcat_restaurant'] as const;
+export type ReleasedPlatformCategoryId = (typeof RELEASED_PLATFORM_CATEGORY_IDS)[number];
+
+/** The Google Places API surface a released category maps onto — see `GooglePlacesProvider` (apps/admin-web/lib/pois/google-places-provider.ts), the only code that reads this. */
+export interface PlatformCategoryGooglePlacesMapping {
+  /** Google Places "included type" values (Places API `includedTypes`), e.g. `['restaurant']`. */
+  readonly includedTypes: readonly string[];
+}
+
+export interface PlatformCategoryRegistryEntry {
+  readonly platformCategoryId: ReleasedPlatformCategoryId;
+  /** Matches `PlatformCategoryKey` above — the same stable machine key the future Firestore-backed definition would also carry. */
+  readonly key: PlatformCategoryKey;
+  readonly label: string;
+  readonly icon: CategoryIcon;
+  readonly status: 'ACTIVE' | 'RETIRED';
+  /** Which `PoiSourceType`s a tenant category linked to this platform category may draw content from. Checkpoint 1B.4 only ever produces `GOOGLE_PLACES` content from this list — `CLIENT_CUSTOM` is always allowed regardless of linking (see docs/architecture/CATEGORY_ARCHITECTURE.md's "client custom POIs must remain intact" requirement). */
+  readonly allowedSources: readonly PoiSourceType[];
+  readonly supportsManualContent: boolean;
+  readonly supportsNearbySearch: boolean;
+  /** Present only for entries that support `GOOGLE_PLACES` discovery. */
+  readonly googlePlaces?: PlatformCategoryGooglePlacesMapping;
+}
+
+export const PLATFORM_CATEGORY_REGISTRY: Readonly<Record<ReleasedPlatformCategoryId, PlatformCategoryRegistryEntry>> = {
+  platcat_restaurant: {
+    platformCategoryId: 'platcat_restaurant',
+    key: 'RESTAURANT',
+    label: 'Restaurant',
+    icon: 'FOOD',
+    status: 'ACTIVE',
+    allowedSources: ['CLIENT_CUSTOM', 'GOOGLE_PLACES'],
+    supportsManualContent: true,
+    supportsNearbySearch: true,
+    googlePlaces: { includedTypes: ['restaurant'] },
+  },
+};
+
+/** Safe lookup by an untrusted/arbitrary string (e.g. a stored `Category.platformCategoryId`) — returns `undefined` rather than throwing for any value not in the registry. */
+export function getPlatformCategoryRegistryEntry(platformCategoryId: string): PlatformCategoryRegistryEntry | undefined {
+  return (PLATFORM_CATEGORY_REGISTRY as Readonly<Record<string, PlatformCategoryRegistryEntry | undefined>>)[platformCategoryId];
+}
+
+/** Every currently-released (`status: 'ACTIVE'`) platform category — what a Client Admin's category-linking dropdown offers (never the full registry, which may also hold `RETIRED` entries once a future checkpoint adds one). */
+export function listActivePlatformCategories(): readonly PlatformCategoryRegistryEntry[] {
+  return Object.values(PLATFORM_CATEGORY_REGISTRY).filter((entry) => entry.status === 'ACTIVE');
+}
+
+/** Whether a resolved registry entry currently supports Google Places discovery/import — the single check both the discover and import API routes, and the Discover Places UI's category-eligibility filter, share. */
+export function platformCategorySupportsGooglePlaces(entry: PlatformCategoryRegistryEntry | undefined): boolean {
+  return entry !== undefined && entry.status === 'ACTIVE' && entry.allowedSources.includes('GOOGLE_PLACES');
 }

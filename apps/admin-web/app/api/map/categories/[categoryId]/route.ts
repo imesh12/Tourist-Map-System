@@ -85,6 +85,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   if (parsed.data.icon !== undefined) update.icon = parsed.data.icon;
   if (parsed.data.enabled !== undefined) update.enabled = parsed.data.enabled;
   if (parsed.data.order !== undefined) update.order = parsed.data.order;
+  // Checkpoint 1B.4: `platformCategoryId` supports both linking (a closed
+  // registry-ID string, already validated by `categoryUpdateInputSchema`)
+  // and explicit unlinking (`null` → remove the field entirely via
+  // `FieldValue.delete()`, restoring "purely custom category" — distinct
+  // from simply omitting the field, which leaves any existing link alone).
+  if (parsed.data.platformCategoryId !== undefined) {
+    update.platformCategoryId = parsed.data.platformCategoryId === null ? FieldValue.delete() : parsed.data.platformCategoryId;
+  }
 
   await categoryRef.update(update);
 

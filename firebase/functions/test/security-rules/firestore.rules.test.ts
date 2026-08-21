@@ -605,5 +605,33 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
       // rule exists to even consider `request.auth.token.customerId` here).
       await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_B}/pois/poi_tenant_b`)));
     });
+
+    it('denies a read/write of a Google Places-imported POI (checkpoint 1B.4 — no new Firestore path)', async () => {
+      // Checkpoint 1B.4 adds `provider`/`providerPlaceId` fields and a
+      // `sourceType: 'GOOGLE_PLACES'` value, but writes them through this
+      // EXACT SAME `maps/{mapId}/pois/{poiId}` path via the Admin SDK
+      // (`POST /api/map/pois/import`) — no new collection, no rules change.
+      // This proves the existing deny-by-default fallback already covers an
+      // imported POI's document shape too, not just a manual one.
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/pois/poi_imported`), {
+          poiId: 'poi_imported',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          categoryId: 'cat_seed',
+          name: 'Sakura Sushi Bar',
+          location: { latitude: 35.6812, longitude: 139.7671 },
+          sourceType: 'GOOGLE_PLACES',
+          provider: 'GOOGLE',
+          providerPlaceId: 'places/fake-restaurant-1',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_imported`)));
+      await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_imported`), { status: 'DISABLED' }));
+    });
   });
 });

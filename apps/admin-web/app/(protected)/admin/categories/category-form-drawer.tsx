@@ -2,7 +2,18 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import type { CategoryIcon } from 'shared-types';
+import { listActivePlatformCategories } from 'shared-types';
 import { ALL_CATEGORY_ICONS, categoryIconOptionLabel } from './category-icons';
+
+/**
+ * "Custom category" — the `<select>` option value for "no platform link"
+ * (an empty string is never a valid `platformCategoryId`, so it's a safe,
+ * unambiguous sentinel). Checkpoint 1B.4's controlled-dropdown requirement:
+ * the ONLY other options this `<select>` ever offers are
+ * `listActivePlatformCategories()` (shared-types) entries — there is no free-
+ * text input anywhere that could submit an arbitrary `platformCategoryId`.
+ */
+const CUSTOM_CATEGORY_OPTION_VALUE = '';
 
 /**
  * The shared Create/Edit Category drawer — checkpoint (Category CMS
@@ -23,6 +34,8 @@ export interface CategoryFormValues {
   readonly icon: CategoryIcon;
   readonly order: string;
   readonly enabled: boolean;
+  /** `''` (`CUSTOM_CATEGORY_OPTION_VALUE`) = no platform link (a purely custom category); otherwise one of `listActivePlatformCategories()`'s `platformCategoryId` values — checkpoint 1B.4. */
+  readonly platformCategoryId: string;
 }
 
 interface CategoryFormDrawerProps {
@@ -40,6 +53,10 @@ export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, f
   const [icon, setIcon] = useState<CategoryIcon>(initialValues.icon);
   const [order, setOrder] = useState(initialValues.order);
   const [enabled, setEnabled] = useState(initialValues.enabled);
+  const [platformCategoryId, setPlatformCategoryId] = useState(initialValues.platformCategoryId);
+
+  const activePlatformCategories = listActivePlatformCategories();
+  const linkedCapability = activePlatformCategories.find((entry) => entry.platformCategoryId === platformCategoryId);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -56,7 +73,7 @@ export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, f
     if (isSaving) {
       return;
     }
-    onSubmit({ name, icon, order, enabled });
+    onSubmit({ name, icon, order, enabled, platformCategoryId });
   }
 
   return (
@@ -125,6 +142,31 @@ export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, f
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="field">
+              <label className="field-label" htmlFor="categoryPlatformLink">
+                Category type
+              </label>
+              <select
+                id="categoryPlatformLink"
+                className="select"
+                value={platformCategoryId}
+                onChange={(event) => setPlatformCategoryId(event.target.value)}
+                disabled={isSaving}
+              >
+                <option value={CUSTOM_CATEGORY_OPTION_VALUE}>Custom category</option>
+                {activePlatformCategories.map((entry) => (
+                  <option key={entry.platformCategoryId} value={entry.platformCategoryId}>
+                    Released category: {entry.label}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">
+                {linkedCapability
+                  ? `✓ Client custom content · ✓ ${linkedCapability.allowedSources.includes('GOOGLE_PLACES') ? 'Google Places' : 'No external source'}`
+                  : 'Client custom only'}
+              </span>
             </div>
 
             <div className="field">

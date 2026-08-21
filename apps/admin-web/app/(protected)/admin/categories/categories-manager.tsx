@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { getPlatformCategoryRegistryEntry } from 'shared-types';
 import { categoryCreateInputSchema, categoryUpdateInputSchema, type CategoryParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { CategoryFormDrawer, type CategoryFormValues } from './category-form-drawer';
@@ -43,11 +44,17 @@ async function parseSafeErrorMessage(response: Response, fallback: string): Prom
 }
 
 function emptyFormValues(): CategoryFormValues {
-  return { name: '', icon: 'OTHER', order: '', enabled: true };
+  return { name: '', icon: 'OTHER', order: '', enabled: true, platformCategoryId: '' };
 }
 
 function categoryToFormValues(category: CategoryParsed): CategoryFormValues {
-  return { name: category.name, icon: category.icon, order: String(category.order), enabled: category.enabled };
+  return {
+    name: category.name,
+    icon: category.icon,
+    order: String(category.order),
+    enabled: category.enabled,
+    platformCategoryId: category.platformCategoryId ?? '',
+  };
 }
 
 export function CategoriesManager({ initialCategories, canEdit }: CategoriesManagerProps) {
@@ -119,6 +126,7 @@ export function CategoriesManager({ initialCategories, canEdit }: CategoriesMana
       icon: values.icon,
       enabled: values.enabled,
       ...(values.order.trim() ? { order: Number(values.order.trim()) } : {}),
+      ...(values.platformCategoryId ? { platformCategoryId: values.platformCategoryId } : {}),
     };
     const parsed = categoryCreateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -155,6 +163,11 @@ export function CategoriesManager({ initialCategories, canEdit }: CategoriesMana
       icon: values.icon,
       enabled: values.enabled,
       order: Number(values.order.trim() || '0'),
+      // Always sent (a released ID or `null`) — checkpoint 1B.4 supports
+      // explicitly unlinking back to a purely custom category, not just
+      // linking; omitting this field on a link-removal edit would leave the
+      // previous link untouched instead of clearing it.
+      platformCategoryId: values.platformCategoryId ? values.platformCategoryId : null,
     };
     const parsed = categoryUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -293,6 +306,7 @@ export function CategoriesManager({ initialCategories, canEdit }: CategoriesMana
                 <th>Order</th>
                 <th>Category</th>
                 <th>Icon</th>
+                <th>Capabilities</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -338,6 +352,15 @@ export function CategoriesManager({ initialCategories, canEdit }: CategoriesMana
                         <span aria-hidden="true">{iconMeta.emoji}</span>
                         {iconMeta.label}
                       </span>
+                    </td>
+                    <td>
+                      {category.platformCategoryId && getPlatformCategoryRegistryEntry(category.platformCategoryId) ? (
+                        <span className="badge badge-neutral">
+                          Google Places · {getPlatformCategoryRegistryEntry(category.platformCategoryId)?.label}
+                        </span>
+                      ) : (
+                        <span className="field-hint">Client custom only</span>
+                      )}
                     </td>
                     <td>
                       <span className={`badge ${category.enabled ? 'badge-success' : 'badge-neutral'}`}>

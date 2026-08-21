@@ -50,6 +50,16 @@ interface PoiFormDrawerProps {
   readonly fieldErrors: readonly string[];
   readonly onCancel: () => void;
   readonly onSubmit: (values: PoiFormValues) => void;
+  /**
+   * Checkpoint 1B.4 — true only when editing a `sourceType: 'GOOGLE_PLACES'`
+   * POI. Its content is owned by the external source, so every field except
+   * Status is presented read-only here; the caller (`pois-manager.tsx`)
+   * separately enforces the same restriction server-side by only ever
+   * sending `{ status }` for such a POI, and `PATCH /api/map/pois/{poiId}`
+   * enforces it again authoritatively regardless of what this drawer sends —
+   * this prop only controls what the FORM ITSELF lets a user attempt.
+   */
+  readonly readOnlyExceptStatus?: boolean;
 }
 
 function toNumberOrUndefined(value: string): number | undefined {
@@ -71,7 +81,9 @@ export function PoiFormDrawer({
   fieldErrors,
   onCancel,
   onSubmit,
+  readOnlyExceptStatus = false,
 }: PoiFormDrawerProps) {
+  const fieldsDisabled = isSaving || readOnlyExceptStatus;
   const [name, setName] = useState(initialValues.name);
   const [categoryId, setCategoryId] = useState(initialValues.categoryId);
   const [address, setAddress] = useState(initialValues.address);
@@ -144,6 +156,13 @@ export function PoiFormDrawer({
               </ul>
             ) : null}
 
+            {readOnlyExceptStatus ? (
+              <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
+                Imported from Google Places — name, category, address, description, and location are managed by the source and
+                cannot be edited here. Only Status can be changed.
+              </p>
+            ) : null}
+
             <div className="field">
               <label className="field-label" htmlFor="poiName">
                 Name
@@ -153,10 +172,10 @@ export function PoiFormDrawer({
                 className="input"
                 type="text"
                 required
-                autoFocus
+                autoFocus={!readOnlyExceptStatus}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                disabled={isSaving}
+                disabled={fieldsDisabled}
               />
             </div>
 
@@ -170,7 +189,7 @@ export function PoiFormDrawer({
                 required
                 value={categoryId}
                 onChange={(event) => setCategoryId(event.target.value)}
-                disabled={isSaving}
+                disabled={fieldsDisabled}
               >
                 {categories.map((category) => {
                   const iconMeta = CATEGORY_ICON_META[category.icon];
@@ -193,7 +212,7 @@ export function PoiFormDrawer({
                 type="text"
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
-                disabled={isSaving}
+                disabled={fieldsDisabled}
               />
             </div>
 
@@ -207,23 +226,25 @@ export function PoiFormDrawer({
                 rows={3}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                disabled={isSaving}
+                disabled={fieldsDisabled}
               />
             </div>
 
-            <div className="field">
-              <span className="field-label" id="poiLocationLabel">
-                Location
-              </span>
-              <LocationPicker
-                provider={mapProvider}
-                value={{ lat: pickerLat, lng: pickerLng }}
-                initialCenter={initialCenter}
-                bounds={bounds}
-                onLocationChange={handleMapLocationChange}
-              />
-              <span className="field-hint">Click the map, or type coordinates below, to set this POI&apos;s location.</span>
-            </div>
+            {readOnlyExceptStatus ? null : (
+              <div className="field">
+                <span className="field-label" id="poiLocationLabel">
+                  Location
+                </span>
+                <LocationPicker
+                  provider={mapProvider}
+                  value={{ lat: pickerLat, lng: pickerLng }}
+                  initialCenter={initialCenter}
+                  bounds={bounds}
+                  onLocationChange={handleMapLocationChange}
+                />
+                <span className="field-hint">Click the map, or type coordinates below, to set this POI&apos;s location.</span>
+              </div>
+            )}
 
             <div className="field-row">
               <div className="field">
@@ -238,7 +259,7 @@ export function PoiFormDrawer({
                   required
                   value={latitude}
                   onChange={(event) => setLatitude(event.target.value)}
-                  disabled={isSaving}
+                  disabled={fieldsDisabled}
                 />
               </div>
               <div className="field">
@@ -253,7 +274,7 @@ export function PoiFormDrawer({
                   required
                   value={longitude}
                   onChange={(event) => setLongitude(event.target.value)}
-                  disabled={isSaving}
+                  disabled={fieldsDisabled}
                 />
               </div>
             </div>

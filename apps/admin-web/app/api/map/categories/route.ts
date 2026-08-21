@@ -93,6 +93,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // request `PLATFORM` here even in principle, since
     // `categoryCreateInputSchema` has no such field to begin with.
     sourceType: 'CLIENT_CUSTOM',
+    // Checkpoint 1B.4: an OPTIONAL link to a released platform category
+    // (today, only Restaurant) — `categoryPlatformCategoryIdSchema` already
+    // restricts `parsed.data.platformCategoryId` to a closed enum of known
+    // registry IDs, so no further server-side validation is needed before
+    // storing it. The category remains `CLIENT_CUSTOM`-sourced either way —
+    // linking unlocks a content-source capability, it does not change who
+    // authored the category itself.
+    ...(parsed.data.platformCategoryId ? { platformCategoryId: parsed.data.platformCategoryId } : {}),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

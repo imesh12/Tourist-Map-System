@@ -118,8 +118,19 @@ describe('categoryCreateInputSchema — checkpoint 1B.2', () => {
       expect(categoryCreateInputSchema.safeParse({ ...validInput, sourceType: 'PLATFORM' }).success).toBe(false);
     });
 
-    it('rejects an injected platformCategoryId', () => {
+    it('rejects an unreleased/forged platformCategoryId (checkpoint 1B.4 — not one of the closed registry values)', () => {
       expect(categoryCreateInputSchema.safeParse({ ...validInput, platformCategoryId: 'platcat_123' }).success).toBe(false);
+    });
+  });
+
+  describe('checkpoint 1B.4 — linking to a released platform category', () => {
+    it('accepts the released Restaurant platformCategoryId', () => {
+      const result = categoryCreateInputSchema.safeParse({ ...validInput, platformCategoryId: 'platcat_restaurant' });
+      expect(result.success).toBe(true);
+    });
+
+    it('omitting platformCategoryId still creates a purely custom category', () => {
+      expect(categoryCreateInputSchema.safeParse(validInput).success).toBe(true);
     });
   });
 });
@@ -176,8 +187,18 @@ describe('categoryUpdateInputSchema — checkpoint 1B.2', () => {
       expect(categoryUpdateInputSchema.safeParse({ enabled: true, sourceType: 'PLATFORM' }).success).toBe(false);
     });
 
-    it('rejects an injected platformCategoryId', () => {
+    it('rejects an unreleased/forged platformCategoryId (checkpoint 1B.4 — not one of the closed registry values)', () => {
       expect(categoryUpdateInputSchema.safeParse({ enabled: true, platformCategoryId: 'platcat_123' }).success).toBe(false);
+    });
+  });
+
+  describe('checkpoint 1B.4 — linking/unlinking a released platform category', () => {
+    it('accepts linking to the released Restaurant platformCategoryId', () => {
+      expect(categoryUpdateInputSchema.safeParse({ platformCategoryId: 'platcat_restaurant' }).success).toBe(true);
+    });
+
+    it('accepts explicitly unlinking via platformCategoryId: null', () => {
+      expect(categoryUpdateInputSchema.safeParse({ platformCategoryId: null }).success).toBe(true);
     });
   });
 });

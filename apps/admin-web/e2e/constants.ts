@@ -99,4 +99,13 @@ export const E2E_APP_ENV: Record<string, string> = {
   // NEXT_PUBLIC_: the browser has no legitimate need to read this, it's a
   // server-side decision about which Origin header value to trust.
   APP_ORIGIN: E2E_APP_ORIGIN,
+  // checkpoint 1B.4 — deliberately omit GOOGLE_PLACES_API_KEY entirely (not
+  // set to '' the way NEXT_PUBLIC_GOOGLE_MAPS_API_KEY above is) and instead
+  // opt into the deterministic in-process fake provider
+  // (lib/pois/fake-external-provider.ts) via this flag — see
+  // lib/pois/provider-registry.ts's resolution order. This is what proves
+  // e2e/google-places-discovery.spec.ts never makes a real, billable Google
+  // Places request: the real GooglePlacesProvider class is never even
+  // instantiated while this flag is the only thing enabling discovery.
+  E2E_FAKE_EXTERNAL_POI_PROVIDER: 'true',
 };

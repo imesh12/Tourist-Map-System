@@ -1,6 +1,6 @@
 # Category CMS Architecture — Current State + Future-Ready Model
 
-**Status:** Current implementation is checkpoint 1B.2 (categories) plus checkpoint 1B.3 (POIs/Spots — client-owned manual map content, §9 below). This document also records the **approved future architecture** that today's implementation is deliberately shaped to support without blocking it — sections explicitly marked "future" below are not implemented yet.
+**Status:** Current implementation is checkpoint 1B.2 (categories), checkpoint 1B.3 (POIs/Spots — client-owned manual map content, §9 below), and checkpoint 1B.4 (Google Places source integration, Restaurant category first, §11 below). This document also records the **approved future architecture** that today's implementation is deliberately shaped to support without blocking it — sections explicitly marked "future" below are not implemented yet.
 **Location:** `docs/architecture/CATEGORY_ARCHITECTURE.md`
 **Related:** `docs/stages/STAGE_1B_TECHNICAL_PLAN.md` (1B.2's original scope), `docs/architecture/SYSTEM_BLUEPRINT.md` §3/§11 (Stage 3 Super Admin, branding/theme controlled-configuration precedent).
 
@@ -27,9 +27,9 @@ END USER MAP
 
 | Concept | Owner | Exists today? |
 |---|---|---|
-| **Platform category definition** (`PlatformCategoryDefinition`, `packages/shared-types/src/platform-category.ts`) | Super Admin | **No** — types-only, no Firestore collection, no route, no UI. |
-| **Tenant category config** (today's `Category`, `packages/shared-types/src/category.ts`) | Client Admin | **Yes**, `CLIENT_CUSTOM`-sourced only. |
-| **Client custom content** (POIs/events attached to a category) | Client Admin | **No** — Phase 1C (Places) and a future Events checkpoint. |
+| **Platform category definition** (`PlatformCategoryDefinition`, `packages/shared-types/src/platform-category.ts`) | Super Admin | **No** — types-only, no Firestore collection, no route, no UI. Checkpoint 1B.4 adds a SEPARATE, temporary, developer-owned `PLATFORM_CATEGORY_REGISTRY` (same file) as an interim stand-in — see §11. |
+| **Tenant category config** (today's `Category`, `packages/shared-types/src/category.ts`) | Client Admin | **Yes**, `CLIENT_CUSTOM`-sourced only; may now (1B.4) optionally link `platformCategoryId` to a registry entry — see §11. |
+| **Client custom content** (POIs/events attached to a category) | Client Admin | **Yes** for POIs (checkpoint 1B.3, manual; checkpoint 1B.4, Google Places-imported) — a future Events checkpoint remains separate. |
 | **Menu item** (public navigation entry) | Client Admin, via Menu Builder | **No** — see §5 below. |
 
 ## 3. Platform Category Definition (future, types-only)
@@ -149,3 +149,41 @@ Central Park POI  (this checkpoint's Poi: name, location, categoryId — no sche
 ```
 
 `packages/shared-types/src/poi.ts`'s `Poi` interface deliberately carries no `startAt`/`endAt`/any event-scheduling field, and never will — that belongs to a future, distinct Event model (§5's "Event category — future source behavior" already anticipated this: `title`, `location`, `coordinates`, `startAt`, `endAt`, `description`, `images`). No Events CRUD exists anywhere in this codebase yet; when it is built, it is a new collection/model that *references* a `poiId` (or carries its own `location`) rather than a variant field set bolted onto `Poi`.
+
+## 11. Google Places source integration — checkpoint 1B.4 (implemented, Restaurant only)
+
+§5's "Restaurant category — future source behavior" illustration is now concretely real for ONE released category. The full flow, end to end:
+
+```
+PLATFORM_CATEGORY_REGISTRY            (code-based, checkpoint 1B.4 — see §3 above)
+  platcat_restaurant: RESTAURANT, allowedSources: [CLIENT_CUSTOM, GOOGLE_PLACES]
+        ↓ Client Admin links via a controlled dropdown (Categories UI)
+CLIENT CATEGORY  (Category.platformCategoryId = 'platcat_restaurant')
+        ↓ "Discover Places" — POST /api/map/pois/discover
+ExternalPoiCandidate[]                (normalized, NOT persisted, NOT the raw Google response)
+        ↓ Client Admin clicks Import on one candidate — POST /api/map/pois/import
+Poi  (sourceType: 'GOOGLE_PLACES', provider: 'GOOGLE', providerPlaceId: <id>)
+```
+
+**Discovery ≠ import ≠ manual content — three deliberately separate concepts:**
+- *Discovery* (`POST /api/map/pois/discover`) is READ-ONLY and TEMPORARY — it calls the external provider, returns normalized `ExternalPoiCandidate[]` (`apps/admin-web/lib/pois/external-provider.ts`) straight back to the browser, and writes nothing to Firestore. A discovery result the Client Admin never imports simply vanishes when the drawer closes.
+- *Import* (`POST /api/map/pois/import`) is the ONLY thing that persists a `GOOGLE_PLACES` POI. It takes minimal input (`categoryId`, `provider`, `providerPlaceId`) and re-resolves the authoritative name/location/address itself via `provider.getPlaceDetails()` — it never trusts whatever the browser last displayed for that candidate.
+- *Manual content* (checkpoint 1B.3's `sourceType: 'CLIENT_CUSTOM'` POIs, `POST /api/map/pois`) is completely untouched by any of this — the same endpoint, the same schema, the same UI flow as before 1B.4 shipped. A tenant with zero Google Places-eligible categories can still create/edit/delete manual POIs exactly as they always could; the "Discover Places" button is simply an ADDITIONAL entry point on the same `/admin/pois` page, never a replacement for manual entry, and the two `sourceType`s coexist in the same `maps/{mapId}/pois` collection and the same table (checkpoint 1B.3's own `Poi` model already reserved `sourceType: 'GOOGLE_PLACES'` — no shape ever had to change, only get a second value that was truly used).
+
+**`PlatformCategoryRegistry` (`packages/shared-types/src/platform-category.ts`)** — a small, developer-owned, code-based catalog (`PLATFORM_CATEGORY_REGISTRY`), explicitly NOT the future `PlatformCategoryDefinition`/Firestore-backed Super Admin model §3 already documents. It exists so this checkpoint can ship a real "released platform category" concept without first building a full Super Admin console (out of scope here). Only `RESTAURANT` (`platformCategoryId: 'platcat_restaurant'`) is released (`status: 'ACTIVE'`) today. See that file's own doc comment for the full reasoning, including the migration-safety design choice: `platformCategoryId` values are fixed, hand-chosen strings, not randomly generated — when a real Super-Admin-managed `platformCategories` collection eventually replaces this registry, it only needs to be seeded with documents whose IDs match these same strings; no tenant `Category.platformCategoryId` or `Poi` document ever needs to be rewritten.
+
+**Category linking (`/admin/categories`)** — a Client Admin optionally links their own, still-`CLIENT_CUSTOM`-sourced category to a released registry entry via a closed `<select>` ("Custom category" vs "Released category: Restaurant") — never a free-text `platformCategoryId` input, enforced both in the UI (`category-form-drawer.tsx`) and server-side (`categoryPlatformCategoryIdSchema`, a `z.enum` over `RELEASED_PLATFORM_CATEGORY_IDS`). Linking does NOT change `Category.sourceType` — the category is still authored by the Client Admin; linking only unlocks an additional content-SOURCE capability for POIs filed under it. The Categories table shows a "Capabilities" column (`✓ Client custom content · ✓ Google Places` for a linked category, `Client custom only` otherwise) so this is always visible, never implicit.
+
+**`ExternalPoiProvider` (`apps/admin-web/lib/pois/external-provider.ts`)** — the server-side adapter abstraction both new routes program against, never a concrete provider class directly. `GooglePlacesProvider` (`google-places-provider.ts`) is the real Places API (New) adapter; `FakeGooglePlacesProvider` (`fake-external-provider.ts`) is a deterministic, in-process hermetic test double. `lib/pois/provider-registry.ts`'s `getExternalPoiProvider()` is the ONLY place that decides which one a request actually gets — a real `GOOGLE_PLACES_API_KEY` always wins; failing that, the E2E-only `E2E_FAKE_EXTERNAL_POI_PROVIDER=true` flag (never set outside `e2e/constants.ts`) selects the fake; otherwise discovery/import are simply unavailable (a safe `503`), which is the correct default for any environment that hasn't configured Google Places yet.
+
+**Credentials** — `GOOGLE_PLACES_API_KEY` is server-only (never `NEXT_PUBLIC_`), read exactly once by `provider-registry.ts`, never logged, and structurally distinct from the existing browser-rendering `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (which only ever draws map tiles/markers and has a completely different risk profile as a result).
+
+**Duplicate-import protection** is enforced server-side inside a Firestore transaction, keyed on `provider + providerPlaceId` within the tenant's own `maps/{mapId}/pois` collection (a pure-equality compound query — no composite index needed) — a 409 `map/duplicate-import`, never a silently-disabled UI button as the only defense.
+
+**Editing an imported POI** — only `status` (enable/disable) is client-editable via `PATCH /api/map/pois/{poiId}` once a POI's stored `sourceType` is `GOOGLE_PLACES`; any other field in the same request is rejected (`400 map/external-poi-immutable-fields`), enforced by the route itself (not merely the edit drawer, which additionally renders those fields read-only as a matching UX signal). `name`/`categoryId`/`location`/`address`/`description` stay owned by the external source, re-resolved only by re-importing.
+
+**No new Firestore path.** Both new routes read/write exclusively through the existing `maps/{mapId}/categories/*` and `maps/{mapId}/pois/*` paths — `firestore.rules` was not changed for this checkpoint, and `firebase/functions/test/security-rules/firestore.rules.test.ts`'s existing POI describe block was extended (not replaced) with one more assertion proving a document carrying `provider`/`providerPlaceId` fields is still denied by the same deny-by-default fallback that already covers every other POI field.
+
+**Explicitly NOT this checkpoint:** discovery/import results never render on any public/End User surface (no live public map exists yet at all — Phase 1B is still entirely the admin CMS); Google Places is never treated as an Events source (§5's "Event category" future behavior remains its own, separate, unbuilt concern — Google Places only ever backs `RESTAURANT` `Poi` content here); no scheduled/background sync job re-fetches or refreshes imported places — an import is a one-time snapshot, re-imported only by deleting and importing again; no Google review/photo/detail UI; no other Places-like provider (Mapbox, HERE) is added alongside Google in this checkpoint.
+
+**Future Super Admin migration path:** when a real Super-Admin-managed `platformCategories` Firestore collection ships, it should be seeded with a `RESTAURANT` document whose ID equals `platcat_restaurant` (matching `PLATFORM_CATEGORY_REGISTRY`'s existing value) so every tenant `Category.platformCategoryId` and every already-imported `Poi.provider`/`providerPlaceId` needs zero rewriting. At that point, `getPlatformCategoryRegistryEntry()`/`listActivePlatformCategories()` (`packages/shared-types/src/platform-category.ts`) should be re-pointed at the real collection instead of the in-code map — their call sites (`lib/tenant/category-capabilities.ts`, the discover/import routes, the Categories UI) do not need to change, only their implementation.

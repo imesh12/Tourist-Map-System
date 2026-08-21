@@ -139,3 +139,17 @@ export type PoiSourceType = (typeof POI_SOURCE_TYPES)[number];
  */
 export const POI_STATUSES = ['ENABLED', 'DISABLED'] as const;
 export type PoiStatus = (typeof POI_STATUSES)[number];
+
+/**
+ * Which external service authored a `sourceType: 'GOOGLE_PLACES'` POI's
+ * content — checkpoint 1B.4. Only meaningful alongside that `sourceType`;
+ * a `CLIENT_CUSTOM` POI's `provider`/`providerPlaceId` are always absent
+ * (see `Poi`'s doc comment in ./poi.js). Modeled as its own small enum
+ * (rather than reusing `PoiSourceType` for both concerns) because a single
+ * external source library — Google — will eventually need to back more than
+ * one `PoiSourceType` value (e.g. a future Event source), so "which service"
+ * and "what kind of content" are kept as two separate, independently
+ * extensible questions from the start.
+ */
+export const POI_PROVIDERS = ['GOOGLE'] as const;
+export type PoiProvider = (typeof POI_PROVIDERS)[number];
