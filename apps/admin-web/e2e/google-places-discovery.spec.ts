@@ -3,10 +3,22 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { provisionTestTenant, type TestTenantFixture } from './helpers/tenant-fixture';
 
 /**
- * `/admin/pois`'s "Discover Places" (Google Places source integration) E2E
- * tests — checkpoint 1B.4, see docs/architecture/CATEGORY_ARCHITECTURE.md
- * §11. Real Auth + Firestore Emulator + a real `next dev` server, same
- * pattern as the rest of this suite.
+ * `/admin/maps/{mapId}/pois`'s "Discover Places" (Google Places source
+ * integration) E2E tests — checkpoint 1B.4, see
+ * docs/architecture/CATEGORY_ARCHITECTURE.md §11. Real Auth + Firestore
+ * Emulator + a real `next dev` server, same pattern as the rest of this
+ * suite.
+ *
+ * Checkpoint 1B.6 rewrite: every route/fetch in this file is now explicitly
+ * mapId-scoped (`/admin/maps/{mapId}/pois`, `/api/maps/{mapId}/pois/...`)
+ * instead of the old flat single-map routes — see
+ * `apps/admin-web/e2e/categories.spec.ts`'s own header comment for the
+ * full reasoning. Per checkpoint 1B.6 §9, discovery geography is now
+ * per-map (resolved from the requested map's own `area.center`), while
+ * duplicate-import protection is scoped to the requested map's own
+ * `pois` subcollection — both are already exercised implicitly here since
+ * every test operates against a single tenant's single map; cross-map
+ * geography isolation itself is proven separately in `e2e/maps.spec.ts`.
  *
  * Every discovery/import call in this file is served by
  * `FakeGooglePlacesProvider` (lib/pois/fake-external-provider.ts) —
@@ -37,8 +49,8 @@ interface CreateCategoryOptions {
   readonly linkToRestaurant?: boolean;
 }
 
-async function createCategory(page: Page, name: string, icon: string, options?: CreateCategoryOptions): Promise<void> {
-  await page.goto('/admin/categories');
+async function createCategory(page: Page, mapId: string, name: string, icon: string, options?: CreateCategoryOptions): Promise<void> {
+  await page.goto(`/admin/maps/${mapId}/categories`);
   await page.getByRole('button', { name: '+ New category', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Create Category' })).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill(name);
@@ -50,14 +62,29 @@ async function createCategory(page: Page, name: string, icon: string, options?: 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
-async function openDiscoverDrawer(page: Page): Promise<void> {
-  await page.goto('/admin/pois');
+async function openDiscoverDrawer(page: Page, mapId: string): Promise<void> {
+  await page.goto(`/admin/maps/${mapId}/pois`);
   await page.getByRole('button', { name: 'Discover Places', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Discover Places' })).toBeVisible();
 }
 
 async function searchNearby(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Search nearby', exact: true }).click();
+  // Repair Round 1 (checkpoint 1B.6): wait for the async search to actually
+  // finish before returning to the caller. `handleSearch()`
+  // (discover-places-drawer.tsx) sets `isSearching` for the duration of the
+  // `fetch()`, and the button's own label reflects that ("Search nearby" ->
+  // "Searching…" -> "Search nearby" again once `results`/`searchError` state
+  // is set) — waiting for the label to read "Search nearby" again is a
+  // reliable signal that the request has completed and results have been
+  // rendered. Without this wait, a caller's very next assertion races the
+  // fetch; on a `next dev` FIRST hit to `/api/maps/{mapId}/pois/discover` in
+  // a given dev-server process (which compiles the route on demand) that
+  // race can lose against the default 5s assertion timeout even though the
+  // feature itself works correctly — confirmed via a caught failure's own
+  // page snapshot, captured slightly later, correctly showing the results
+  // that "weren't there" a moment before.
+  await expect(page.getByRole('button', { name: 'Search nearby', exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
 /**
@@ -96,10 +123,10 @@ test.describe('1B.4 Google Places discovery', () => {
     });
     await login(page, tenant);
 
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
     await expect(row(page, 'Restaurants')).toContainText('Google Places');
 
-    await createCategory(page, 'Sightseeing', 'SIGHTSEEING');
+    await createCategory(page, tenant.mapId, 'Sightseeing', 'SIGHTSEEING');
     await expect(row(page, 'Sightseeing')).toContainText('Client custom only');
   });
 
@@ -111,9 +138,9 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Vera Visible',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await page.goto('/admin/pois');
+    await page.goto(`/admin/maps/${tenant.mapId}/pois`);
     await expect(page.getByRole('button', { name: 'Discover Places', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Discover Places', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Discover Places' })).toBeVisible();
@@ -127,12 +154,12 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Nora NoEligible',
     });
     await login(page, tenant);
-    await createCategory(page, 'Sightseeing', 'SIGHTSEEING'); // not linked
+    await createCategory(page, tenant.mapId, 'Sightseeing', 'SIGHTSEEING'); // not linked
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await expect(page.getByText('No categories are linked to Google Places yet')).toBeVisible();
     await page.getByRole('link', { name: 'Go to Categories', exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/categories$/);
+    await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/categories$`));
   });
 
   test('only Google Places-eligible categories appear in the discovery category select (D)', async ({ page }) => {
@@ -143,10 +170,10 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Eli Eligible',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
-    await createCategory(page, 'Sightseeing', 'SIGHTSEEING');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Sightseeing', 'SIGHTSEEING');
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     const options = await page.getByLabel('Search category', { exact: true }).locator('option').allTextContents();
     expect(options.some((label) => label.includes('Restaurants'))).toBe(true);
     expect(options.some((label) => label.includes('Sightseeing'))).toBe(false);
@@ -160,9 +187,9 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Rex Results',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
 
     await expect(page.getByText('Sakura Sushi Bar')).toBeVisible();
@@ -179,9 +206,9 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Nadia NoAuto',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     await expect(page.getByText('Sakura Sushi Bar')).toBeVisible();
 
@@ -197,9 +224,9 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Ivy Import',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     await page.getByRole('button', { name: 'Import Sakura Sushi Bar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Import Sakura Sushi Bar', exact: true })).toHaveCount(0);
@@ -225,10 +252,10 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Cara Coexist',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
     // A manual POI, created exactly the way checkpoint 1B.3's own suite does.
-    await page.goto('/admin/pois');
+    await page.goto(`/admin/maps/${tenant.mapId}/pois`);
     await page.getByRole('button', { name: '+ New POI', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'New POI' })).toBeVisible();
     await page.getByLabel('Name', { exact: true }).fill('Local Cafe');
@@ -240,7 +267,7 @@ test.describe('1B.4 Google Places discovery', () => {
     await expect(row(page, 'Local Cafe').getByText('Manual')).toBeVisible();
 
     // An imported POI alongside it.
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     await page.getByRole('button', { name: 'Import Tokyo Ramen House', exact: true }).click();
     await closeDiscoverDrawer(page);
@@ -264,9 +291,9 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Rio ReadOnly',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     await page.getByRole('button', { name: 'Import Sakura Sushi Bar', exact: true }).click();
     await closeDiscoverDrawer(page);
@@ -292,34 +319,34 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Duke Duplicate',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     await page.getByRole('button', { name: 'Import Sakura Sushi Bar', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Import Sakura Sushi Bar', exact: true })).toHaveCount(0);
     await closeDiscoverDrawer(page);
 
-    const categoryId = (await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+    const categoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
       const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
       return body.categories[0]?.categoryId;
-    })) as string;
+    }, tenant.mapId)) as string;
 
     // Direct duplicate attempt at the API layer, with a genuinely valid
     // categoryId — proves the server itself rejects the SAME
     // provider+providerPlaceId a second time, not merely that the UI hides
     // the button once already imported.
     const result = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/import', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId: cid, provider: 'GOOGLE', providerPlaceId: 'places/fake-restaurant-1' }),
         });
         return { status: response.status, body: (await response.json()) as { code?: string } };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     expect(result.status).toBe(409);
     expect(result.body.code).toBe('map/duplicate-import');
@@ -335,24 +362,24 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Uma Unsupported',
     });
     await login(page, tenant);
-    await createCategory(page, 'Sightseeing', 'SIGHTSEEING'); // not linked to Restaurant
+    await createCategory(page, tenant.mapId, 'Sightseeing', 'SIGHTSEEING'); // not linked to Restaurant
 
-    const categoryId = (await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+    const categoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
       const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
       return body.categories[0]?.categoryId;
-    })) as string;
+    }, tenant.mapId)) as string;
 
     const result = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/discover', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId: cid, radiusMeters: 1000 }),
         });
         return { status: response.status };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     expect(result.status).toBe(400);
   });
@@ -372,41 +399,103 @@ test.describe('1B.4 Google Places discovery', () => {
     });
 
     await login(page, tenantB);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
-    const tenantBCategoryId = (await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+    await createCategory(page, tenantB.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    const tenantBCategoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
       const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
       return body.categories[0]?.categoryId;
-    })) as string;
+    }, tenantB.mapId)) as string;
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await login(page, tenantA);
 
+    // Posted against tenant A's own map — tenant B's categoryId simply
+    // doesn't exist there, so this is a plain "category not found"
+    // rejection (a forged mapId is covered separately by the pattern
+    // established in e2e/categories.spec.ts and e2e/pois.spec.ts).
     const discoverResult = await page.evaluate(
-      async ({ categoryId }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/discover', {
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId, radiusMeters: 1000 }),
         });
         return { status: response.status };
       },
-      { categoryId: tenantBCategoryId },
+      { mapId: tenantA.mapId, categoryId: tenantBCategoryId },
     );
     expect(discoverResult.status).toBe(400);
 
     const importResult = await page.evaluate(
-      async ({ categoryId }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/import', {
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId, provider: 'GOOGLE', providerPlaceId: 'places/fake-restaurant-1' }),
         });
         return { status: response.status };
       },
-      { categoryId: tenantBCategoryId },
+      { mapId: tenantA.mapId, categoryId: tenantBCategoryId },
     );
     expect(importResult.status).toBe(400);
+  });
+
+  test('a forged mapId does not grant tenant A access to tenant B’s categories for discovery or import', async ({ page }) => {
+    const tenantA = await provisionTestTenant({
+      email: 'checkpoint-1b6-forgedmap-a@example.com',
+      password: 'correct-horse-battery-staple',
+      companyName: 'ForgedMap A',
+      displayName: 'Alice A',
+    });
+    const tenantB = await provisionTestTenant({
+      email: 'checkpoint-1b6-forgedmap-b@example.com',
+      password: 'correct-horse-battery-staple',
+      companyName: 'ForgedMap B',
+      displayName: 'Bob B',
+    });
+
+    await login(page, tenantB);
+    await createCategory(page, tenantB.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    const tenantBCategoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
+      const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
+      return body.categories[0]?.categoryId;
+    }, tenantB.mapId)) as string;
+
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await login(page, tenantA);
+
+    // Tenant A forges tenant B's own mapId into the URL — getOwnedMapContext
+    // denies before the categoryId is ever looked at (§14).
+    const discoverResult = await page.evaluate(
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categoryId, radiusMeters: 1000 }),
+        });
+        const body = (await response.json()) as { code?: string };
+        return { status: response.status, code: body.code };
+      },
+      { mapId: tenantB.mapId, categoryId: tenantBCategoryId },
+    );
+    expect(discoverResult.status).toBe(404);
+    expect(discoverResult.code).toBe('map/not-found');
+
+    const importResult = await page.evaluate(
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categoryId, provider: 'GOOGLE', providerPlaceId: 'places/fake-restaurant-1' }),
+        });
+        const body = (await response.json()) as { code?: string };
+        return { status: response.status, code: body.code };
+      },
+      { mapId: tenantB.mapId, categoryId: tenantBCategoryId },
+    );
+    expect(importResult.status).toBe(404);
+    expect(importResult.code).toBe('map/not-found');
   });
 
   test('forged ownership/sourceType fields on discover/import are rejected (O)', async ({ page }) => {
@@ -417,31 +506,31 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Frank Forged',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
-    const categoryId = (await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    const categoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
       const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
       return body.categories[0]?.categoryId;
-    })) as string;
+    }, tenant.mapId)) as string;
 
     const discoverResult = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/discover', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId: cid, radiusMeters: 1000, latitude: 1, longitude: 1 }),
         });
         return { status: response.status };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     // `poiDiscoverInputSchema` is `.strict()` — an extra client-supplied
     // coordinate field rejects the whole request.
     expect(discoverResult.status).toBe(400);
 
     const importResult = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/import', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -455,15 +544,15 @@ test.describe('1B.4 Google Places discovery', () => {
         });
         return { status: response.status };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     expect(importResult.status).toBe(400);
 
-    const pois = await page.evaluate(async () => {
-      const response = await fetch('/api/map/pois');
+    const pois = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/pois`);
       const body = (await response.json()) as { pois: unknown[] };
       return body.pois.length;
-    });
+    }, tenant.mapId);
     expect(pois).toBe(0);
   });
 
@@ -475,29 +564,29 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Sid SignedOut',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/login/);
 
-    const discoverResult = await page.evaluate(async () => {
-      const response = await fetch('/api/map/pois/discover', {
+    const discoverResult = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ categoryId: 'cat_whatever00000000000000', radiusMeters: 1000 }),
       });
       return response.status;
-    });
+    }, tenant.mapId);
     expect(discoverResult).toBe(401);
 
-    const importResult = await page.evaluate(async () => {
-      const response = await fetch('/api/map/pois/import', {
+    const importResult = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/pois/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ categoryId: 'cat_whatever00000000000000', provider: 'GOOGLE', providerPlaceId: 'places/fake-restaurant-1' }),
       });
       return response.status;
-    });
+    }, tenant.mapId);
     expect(importResult).toBe(401);
   });
 
@@ -511,12 +600,12 @@ test.describe('1B.4 Google Places discovery', () => {
       displayName: 'Pia ProviderError',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD', { linkToRestaurant: true });
-    const categoryId = (await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD', { linkToRestaurant: true });
+    const categoryId = (await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`);
       const body = (await response.json()) as { categories: Array<{ categoryId: string }> };
       return body.categories[0]?.categoryId;
-    })) as string;
+    }, tenant.mapId)) as string;
 
     // radiusMeters: 999 is FakeGooglePlacesProvider's reserved, documented
     // error-trigger sentinel (lib/pois/fake-external-provider.ts) — never
@@ -525,15 +614,15 @@ test.describe('1B.4 Google Places discovery', () => {
     // directly, the same "hit the API directly" pattern the rest of this
     // suite already uses for other edge cases.
     const result = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/discover', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId: cid, radiusMeters: 999 }),
         });
         return { status: response.status, body: (await response.json()) as { code?: string; message?: string } };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     expect(result.status).toBe(502);
     expect(result.body.code).toBe('map/external-provider-error');
@@ -544,11 +633,11 @@ test.describe('1B.4 Google Places discovery', () => {
     // which no real Google Places response would ever contain. This is
     // itself the proof that every discovery call in this whole suite is
     // served locally, never over the network to a real Google endpoint.
-    await openDiscoverDrawer(page);
+    await openDiscoverDrawer(page, tenant.mapId);
     await searchNearby(page);
     const candidateIds = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois/discover', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ categoryId: cid, radiusMeters: 1000 }),
@@ -556,7 +645,7 @@ test.describe('1B.4 Google Places discovery', () => {
         const body = (await response.json()) as { candidates: Array<{ providerPlaceId: string }> };
         return body.candidates.map((candidate) => candidate.providerPlaceId);
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
     expect(candidateIds).toEqual(['places/fake-restaurant-1', 'places/fake-restaurant-2']);
   });

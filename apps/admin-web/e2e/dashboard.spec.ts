@@ -9,6 +9,20 @@ import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './
  * on `/admin` and `/admin/account`, cross-tenant isolation, and the
  * fail-closed behaviors (incomplete provisioning, missing/inconsistent
  * documents).
+ *
+ * Checkpoint 1B.6 update: `/admin` no longer resolves or renders any
+ * specific map (that assumption is exactly what this checkpoint removes —
+ * see `lib/tenant/tenant-identity.ts`'s doc comment) — it now shows a maps
+ * COUNT via `listOwnedMaps()` and links to `/admin/maps`. Test (C)'s
+ * assertion is updated accordingly. Test (K) — originally "a map document
+ * with a mismatched customerId fails closed on /admin" — no longer applies
+ * to `/admin` at all, by design: identity resolution
+ * (`getCurrentTenantIdentity()`) never touches `maps/*` any more, so a
+ * single map's own inconsistency correctly has ZERO effect on whether the
+ * dashboard renders. The equivalent fail-closed guarantee now lives at the
+ * MAP level (`getOwnedMapContext()`) — (K) is rewritten to prove that
+ * instead, and the identical map-level scenario is also covered by
+ * `e2e/maps.spec.ts`'s cross-tenant/forged-mapId matrix (§15 N/O/P).
  */
 
 async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'password'>, path = '/login'): Promise<void> {
@@ -38,7 +52,7 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     await clearEmulatorUsers();
   });
 
-  test('a provisioned CLIENT_ADMIN sees real company, identity, and map data on /admin (A/B/C)', async ({ page }) => {
+  test('a provisioned CLIENT_ADMIN sees real company, identity, and maps data on /admin (A/B/C)', async ({ page }) => {
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1a8-dashboard@example.com',
       password: 'correct-horse-battery-staple',
@@ -49,16 +63,15 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     await login(page, tenant);
     await expect(page).toHaveURL(/\/admin$/);
 
-    // { exact: true } matters here specifically: the map's own name is
-    // derived as "<companyName> Tourist Map" (§11 default), so a plain
-    // substring match on the bare company name would ALSO match the map
-    // name's <dd> and hit a Playwright strict-mode ambiguity — exact:true
-    // pins each assertion to the one <dd> whose full text equals it.
     await expect(pageMain(page).getByText('Acme Tourist Co', { exact: true })).toBeVisible(); // A
     await expect(pageMain(page).getByText('Ada Admin', { exact: false })).toBeVisible(); // B
     await expect(pageMain(page).getByText(tenant.email, { exact: false })).toBeVisible(); // B
     await expect(pageMain(page).getByText('CLIENT_ADMIN')).toBeVisible(); // B
-    await expect(pageMain(page).getByText('Acme Tourist Co Tourist Map', { exact: true })).toBeVisible(); // C
+    // checkpoint 1B.6: the provisioned tenant has exactly one map (its
+    // initial, provisioning-created one) — /admin shows a maps COUNT, not a
+    // specific map's name. (C)
+    await expect(pageMain(page).getByRole('link', { name: 'Go to Maps' })).toBeVisible();
+    await expect(pageMain(page).getByText('You have one map.')).toBeVisible();
   });
 
   test('/admin/account renders real account and customer data (D)', async ({ page }) => {
@@ -101,9 +114,6 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
       displayName: 'Gary Admin',
     });
 
-    // exact: true — /admin also renders the map name ("Gamma Resorts
-    // Tourist Map"), which would otherwise ambiguously match this same
-    // substring (see the (A/B/C) test's comment for the full reasoning).
     await login(page, tenant);
     await expect(pageMain(page).getByText('Gamma Resorts', { exact: true })).toBeVisible();
 
@@ -130,14 +140,11 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
       displayName: 'Bob B',
     });
 
-    // exact: true — /admin also renders the map name ("Tenant A Company
-    // Tourist Map"), which would otherwise ambiguously match this same
-    // substring (see the (A/B/C) test's comment for the full reasoning).
     await login(page, tenantA);
     await expect(pageMain(page).getByText('Tenant A Company', { exact: true })).toBeVisible();
 
     // No query parameter is ever read for tenant selection by
-    // getCurrentClientContext() — this proves that's actually true, not
+    // getCurrentTenantIdentity() — this proves that's actually true, not
     // just documented, against every plausible attempt.
     await page.goto(`/admin?customerId=${tenantB.customerId}`);
     await expect(pageMain(page).getByText('Tenant A Company', { exact: true })).toBeVisible();
@@ -227,15 +234,15 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
     await expect(page.getByText('User Mismatch Co')).toHaveCount(0);
   });
 
-  test('maps/{mapId}.customerId inconsistent with the authenticated tenant fails closed (K)', async ({ page }) => {
-    // Mutating the map's customerId away from the tenant's real one means
-    // getCurrentClientContext()'s tenant-scoped query
-    // (`where('customerId', '==', customerId)`) simply stops matching this
-    // doc at all — Firestore itself guarantees that, so this is actually
-    // exercised via the `map_doc_missing` path rather than the defensive
-    // `map_mismatch` in-code check (see lib/tenant/client-context.ts's
-    // comment on that check). Both are still "fail closed, no map data
-    // rendered", which is the observable behavior this test verifies.
+  test('maps/{mapId}.customerId inconsistent with the authenticated tenant fails closed at the MAP level, without affecting /admin (K)', async ({
+    page,
+  }) => {
+    // checkpoint 1B.6: identity resolution (`getCurrentTenantIdentity()`,
+    // what `/admin` depends on) never reads `maps/*` at all any more, so
+    // this scenario's fail-closed guarantee moved to `getOwnedMapContext()`
+    // — this test proves BOTH halves: /admin still renders normally (the
+    // map's own inconsistency is not a tenant-identity problem), and
+    // opening the now-inconsistent map's own URL fails closed.
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1a8-map-mismatch@example.com',
       password: 'correct-horse-battery-staple',
@@ -248,7 +255,24 @@ test.describe('1A.8 client admin dashboard + real tenant data', () => {
 
     await login(page, tenant);
     await expect(page).toHaveURL(/\/admin$/);
-    await expect(page.getByRole('heading', { name: 'Account unavailable' })).toBeVisible();
-    await expect(page.getByText('Map Mismatch Co')).toHaveCount(0);
+    await expect(pageMain(page).getByText('Map Mismatch Co', { exact: true })).toBeVisible();
+
+    await page.goto(`/admin/maps/${tenant.mapId}`);
+    await expect(page.getByRole('heading', { name: 'Map not found' })).toBeVisible();
+    // Scoped to <main> only — Repair Round 1 (checkpoint 1B.6): the shared
+    // admin-shell header (components/admin-shell/header.tsx) renders on
+    // EVERY /admin/** page, including this fail-closed one, from the
+    // AUTHENTICATED tenant's own `getCurrentTenantIdentity()` — a
+    // completely separate, correct data source from the mismatched map's
+    // own (never-loaded) content. It legitimately shows "Map Mismatch Co"
+    // there, exactly as it does on the bare /admin dashboard the assertion
+    // right above this one already confirms is correct. That is the
+    // signed-in user's OWN company name, not foreign map data — not a leak.
+    // An unscoped `page.getByText(...)` assertion incorrectly also matched
+    // the header; restricting to `main` (mirroring `pageMain(page)` above)
+    // correctly proves what this test actually cares about: no MAP content
+    // (name, settings, categories, POIs) from the inconsistent map leaks
+    // into the page body.
+    await expect(pageMain(page).getByText('Map Mismatch Co')).toHaveCount(0);
   });
 });

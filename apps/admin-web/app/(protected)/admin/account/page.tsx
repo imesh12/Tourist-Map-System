@@ -1,17 +1,19 @@
 import Link from 'next/link';
-import { describeClientContextDenial, getCurrentClientContext } from '@/lib/tenant/client-context';
+import { describeTenantIdentityDenial, getCurrentTenantIdentity } from '@/lib/tenant/tenant-identity';
 
 /**
  * Checkpoint 1A.8 — real account/tenant data (§6). Read-only: no edit form
  * (§16 — "Read-only account/tenant info screen in Phase 1A"). Sources the
- * same `getCurrentClientContext()` as `/admin` — one tenant-resolution path,
- * shared, not reimplemented per page.
+ * same `getCurrentTenantIdentity()` as `/admin` — one tenant-resolution
+ * path, shared, not reimplemented per page. Updated in checkpoint 1B.6 to
+ * the map-agnostic identity resolver (this page never showed map data
+ * anyway, so nothing else here changed).
  */
 export default async function AccountPage() {
-  const result = await getCurrentClientContext();
+  const result = await getCurrentTenantIdentity();
 
   if (!result.ok) {
-    const { heading, message } = describeClientContextDenial(result);
+    const { heading, message } = describeTenantIdentityDenial(result);
     return (
       <div className="card">
         <h1 className="page-title">Account</h1>
@@ -26,7 +28,7 @@ export default async function AccountPage() {
     );
   }
 
-  const { user, customer } = result.context;
+  const { user, customer } = result.identity;
 
   return (
     <>

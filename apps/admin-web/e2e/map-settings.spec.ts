@@ -3,16 +3,22 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './helpers/tenant-fixture';
 
 /**
- * Checkpoint 1B.1 `/admin/map` integration tests — real Auth + Firestore
- * Emulator + a real `next dev` server, same pattern as the rest of this
- * suite (see playwright.config.ts). Covers the required scenarios A–K from
- * docs/stages/STAGE_1B_TECHNICAL_PLAN.md's 1B.1 checkpoint: viewing real
- * current settings, editing name/center/zoom/area-type/bounds/branding,
- * persistence across reload, invalid-bounds rejection, and cross-tenant
- * write isolation. Scenario L ("existing /admin/account/auth/registration
- * flows remain green") is proven by this file coexisting in the same
- * `pnpm test:e2e` run as auth.spec.ts/dashboard.spec.ts/protected-routes.spec.ts/
+ * Checkpoint 1B.1 `/admin/maps/{mapId}/settings` integration tests — real
+ * Auth + Firestore Emulator + a real `next dev` server, same pattern as the
+ * rest of this suite (see playwright.config.ts). Covers the required
+ * scenarios A–K from docs/stages/STAGE_1B_TECHNICAL_PLAN.md's 1B.1
+ * checkpoint: viewing real current settings, editing
+ * name/center/zoom/area-type/bounds/branding, persistence across reload,
+ * invalid-bounds rejection, and cross-tenant write isolation. Scenario L
+ * ("existing /admin/account/auth/registration flows remain green") is
+ * proven by this file coexisting in the same `pnpm test:e2e` run as
+ * auth.spec.ts/dashboard.spec.ts/protected-routes.spec.ts/
  * registration.spec.ts, not duplicated here.
+ *
+ * Checkpoint 1B.6 rewrite: `/admin/map` → `/admin/maps/{mapId}/settings`,
+ * `PATCH /api/map/settings` → `PATCH /api/maps/{mapId}/settings` — see
+ * `apps/admin-web/e2e/categories.spec.ts`'s own header comment for the full
+ * reasoning.
  */
 
 async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'password'>): Promise<void> {
@@ -39,8 +45,8 @@ test.describe('1B.1 map settings', () => {
     });
 
     await login(page, tenant); // A
-    await page.goto('/admin/map'); // B
-    await expect(page).toHaveURL(/\/admin\/map$/);
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`); // B
+    await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/settings$`));
 
     // C: real current values — Phase 1A provisioning defaults.
     await expect(page.getByLabel('Map name')).toHaveValue(tenant.mapName);
@@ -112,7 +118,7 @@ test.describe('1B.1 map settings', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByRole('button', { name: 'Bounded', exact: true }).click();
     await page.getByLabel('Center latitude').fill('34.6937');
@@ -151,7 +157,7 @@ test.describe('1B.1 map settings', () => {
     });
 
     await login(page, tenantA);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenantA.mapId}/settings`);
     await page.getByLabel('Map name').fill('Tenant A Renamed Map');
     await page.getByRole('button', { name: 'Save' }).click();
     // Not `getByRole('alert'/'status')` — this app's Next.js dev route
@@ -160,31 +166,55 @@ test.describe('1B.1 map settings', () => {
     // form's own success text instead.
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
-    // A request body that also tries to smuggle an explicit mapId/customerId
-    // pointed at tenant B — mapSettingsUpdateSchema's `.strict()` mode
-    // rejects this outright as an unrecognized field, and even if it didn't,
-    // the route never reads a client-supplied mapId/customerId at all (see
-    // app/api/map/settings/route.ts) — the target map always comes from the
-    // caller's own verified session.
-    const forgedResult = await page.evaluate(async (targetMapId: string) => {
-      const response = await fetch('/api/map/settings', {
+    // A request against tenant A's own map URL that also tries to smuggle an
+    // explicit mapId/customerId pointed at tenant B in the body —
+    // mapSettingsUpdateSchema's `.strict()` mode rejects this outright as an
+    // unrecognized field, and even if it didn't, the route never reads a
+    // client-supplied mapId/customerId at all (see
+    // app/api/maps/[mapId]/settings/route.ts) — the target map always comes
+    // from the URL's mapId, verified against the caller's own session via
+    // getOwnedMapContext.
+    const forgedResult = await page.evaluate(
+      async ({ ownMapId, targetMapId }: { ownMapId: string; targetMapId: string }) => {
+        const response = await fetch(`/api/maps/${ownMapId}/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Forged Cross-Tenant Name',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            mapId: targetMapId,
+          }),
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      { ownMapId: tenantA.mapId, targetMapId: tenantB.mapId },
+    );
+    expect(forgedResult.status).toBe(400);
+
+    // A second attempt: forging tenant B's own mapId directly into the URL —
+    // getOwnedMapContext denies before any settings body is even parsed.
+    const forgedUrlResult = await page.evaluate(async (targetMapId: string) => {
+      const response = await fetch(`/api/maps/${targetMapId}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: 'Forged Cross-Tenant Name',
+          name: 'Forged Via URL',
           mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
           area: { type: 'UNBOUNDED' },
-          mapId: targetMapId,
         }),
       });
-      return { status: response.status, body: await response.json() };
+      const body = (await response.json()) as { code?: string };
+      return { status: response.status, code: body.code };
     }, tenantB.mapId);
-    expect(forgedResult.status).toBe(400);
+    expect(forgedUrlResult.status).toBe(404);
+    expect(forgedUrlResult.code).toBe('map/not-found');
 
     const firestore = await getE2eFirestore();
     const tenantBSnap = await firestore.doc(`maps/${tenantB.mapId}`).get();
     // Tenant B's map is completely untouched by tenant A's session — never
-    // renamed to "Tenant A Renamed Map" or "Forged Cross-Tenant Name".
+    // renamed to "Tenant A Renamed Map", "Forged Cross-Tenant Name", or
+    // "Forged Via URL".
     expect(tenantBSnap.data()?.name).toBe(tenantB.mapName);
 
     const tenantASnap = await firestore.doc(`maps/${tenantA.mapId}`).get();
@@ -194,7 +224,7 @@ test.describe('1B.1 map settings', () => {
   test('a signed-out visitor cannot call the map settings mutation at all', async ({ page }) => {
     await page.goto('/login');
     const result = await page.evaluate(async () => {
-      const response = await fetch('/api/map/settings', {
+      const response = await fetch('/api/maps/map_does_not_matter_0000000/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'x', mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' }, area: { type: 'UNBOUNDED' } }),

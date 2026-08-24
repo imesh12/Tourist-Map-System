@@ -113,6 +113,14 @@ export async function provisionClient(input: RegistrationInput, deps: ProvisionC
         reuseCustomerId = existingCustomerId;
         customerDocAlreadyExists = existingCustomerDoc.exists;
 
+        // checkpoint 1B.6: this `.limit(1)` lookup is idempotency-by-email
+        // retry-resume ONLY — "did an earlier, interrupted attempt for this
+        // SAME email already create a map for this customer, which this
+        // retry should reuse rather than duplicate" — never a general
+        // "a customer may have at most one map" constraint. A tenant is free
+        // to own additional maps afterward via `POST /api/maps`
+        // (apps/admin-web/app/api/maps/route.ts); this function only ever
+        // concerns itself with the FIRST map created during registration.
         const existingMaps = await firestore.collection('maps').where('customerId', '==', existingCustomerId).limit(1).get();
         if (!existingMaps.empty) {
           reuseMapId = existingMaps.docs[0]!.id as MapId;

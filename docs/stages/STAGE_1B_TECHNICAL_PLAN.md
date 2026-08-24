@@ -6,6 +6,8 @@
 
 Phase 1B covers the **editable draft Map CMS**: map settings, map area, categories, and basic branding. It does **not** cover Places, Languages (beyond the existing `defaultLanguage`/`enabledLanguages` scalar fields), Tourist Web, Preview/Publish, Embed, QR, Android, or Super Admin — those are later phases/stages.
 
+**This plan document covers only checkpoints 1B.1–1B.3 in detail (§1 below) and predates checkpoints 1B.4 (Google Places), 1B.5 (Menu Builder), and 1B.6 (Multi-Map Tenant Foundation).** Those later checkpoints' design/rationale live in `docs/architecture/CATEGORY_ARCHITECTURE.md` (§11, §12, and §13 respectively) instead of here, and §3 below's `/api/map/settings`/`getCurrentClientContext()` references are now historical: as of checkpoint 1B.6, map settings mutate through `PATCH /api/maps/{mapId}/settings`, resolved via `getOwnedMapContext(mapId)` — see `CATEGORY_ARCHITECTURE.md` §13 for the full "customer → N maps" model this changed. Do not treat §2–§5 below as describing the current mutation boundary; they describe the 1B.1 design as originally shipped, before a tenant could own more than one map.
+
 ---
 
 ## 1. Checkpoints

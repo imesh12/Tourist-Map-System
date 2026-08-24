@@ -16,11 +16,14 @@ export const CUSTOMER_ID_PREFIX = 'cust_' as const;
 export const MAP_ID_PREFIX = 'map_' as const;
 export const CATEGORY_ID_PREFIX = 'cat_' as const;
 export const POI_ID_PREFIX = 'poi_' as const;
+/** checkpoint 1B.5 — see `MenuItem` (./menu-item.js). */
+export const MENU_ITEM_ID_PREFIX = 'menu_' as const;
 
 export type CustomerId = Branded<string, 'CustomerId'>;
 export type MapId = Branded<string, 'MapId'>;
 export type CategoryId = Branded<string, 'CategoryId'>;
 export type PoiId = Branded<string, 'PoiId'>;
+export type MenuItemId = Branded<string, 'MenuItemId'>;
 
 /**
  * Firebase Authentication UID. Deliberately branded but otherwise treated as

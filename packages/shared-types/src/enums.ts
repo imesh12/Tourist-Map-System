@@ -153,3 +153,30 @@ export type PoiStatus = (typeof POI_STATUSES)[number];
  */
 export const POI_PROVIDERS = ['GOOGLE'] as const;
 export type PoiProvider = (typeof POI_PROVIDERS)[number];
+
+/**
+ * `MenuItem.type` — checkpoint 1B.5, see docs/architecture/CATEGORY_ARCHITECTURE.md
+ * §12. A menu item is either a `CATEGORY`-backed item (references an
+ * existing tenant `Category`) or a `FEATURE`-backed item (references a
+ * released entry in `PUBLIC_FEATURE_REGISTRY`, ./public-feature.js) —
+ * never both, never neither. Modeled as a real discriminated union at both
+ * the shared-types level (`MenuItem`, ./menu-item.js) and the validation
+ * level (`menuItemSchema`, packages/validation/src/menu-item.ts), not just
+ * "two optional fields on one flat interface" — the checkpoint's own
+ * instruction is explicit: "Do not support malformed mixed states."
+ */
+export const MENU_ITEM_TYPES = ['CATEGORY', 'FEATURE'] as const;
+export type MenuItemType = (typeof MENU_ITEM_TYPES)[number];
+
+/**
+ * A menu item's public-navigation visibility state — checkpoint 1B.5.
+ * Deliberately its own enum (not a reuse of `PoiStatus`, even though the
+ * values happen to be identical today) — the same "separate small enum per
+ * domain concept" precedent `PoiProvider`'s own doc comment already
+ * establishes, so a future divergence (e.g. a menu-item-specific status
+ * value) never has to fight POI's own status vocabulary. `DISABLED` means
+ * "stored, but excluded from `buildPublicMenuProjection()`'s output" — never
+ * a delete (§15 of the checkpoint: "Disable != delete").
+ */
+export const MENU_ITEM_STATUSES = ['ENABLED', 'DISABLED'] as const;
+export type MenuItemStatus = (typeof MENU_ITEM_STATUSES)[number];

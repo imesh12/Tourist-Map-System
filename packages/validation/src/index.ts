@@ -26,6 +26,8 @@ export * from './user.js';
 export * from './map.js';
 export * from './branding.js';
 export * from './map-settings.js';
+export * from './map-create.js';
 export * from './category.js';
 export * from './poi.js';
 export * from './external-poi.js';
+export * from './menu-item.js';

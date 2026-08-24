@@ -166,6 +166,19 @@ select:focus-visible,
   color: var(--color-text-muted);
 }
 
+/* checkpoint 1B.5 — a read-only field value (e.g. Menu Builder's immutable
+   linked category/feature in edit mode), styled to sit at the same visual
+   weight as an actual <input>/<select> without implying it's editable. */
+.field-static-value {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .input,
 .select,
 .textarea {
@@ -616,6 +629,20 @@ select:focus-visible,
   font-weight: 700;
   color: var(--color-text);
   text-decoration: none;
+}
+
+/* checkpoint 1B.6 — groups the brand link and the map switcher together so
+   `.admin-header`'s `justify-content: space-between` still only ever sees
+   two top-level children (this left group, and `.admin-header-user`),
+   regardless of whether `MapSwitcher` renders anything. */
+.admin-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.admin-map-switcher {
+  max-width: 220px;
 }
 
 .admin-header-user {

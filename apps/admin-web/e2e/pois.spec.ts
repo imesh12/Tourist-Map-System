@@ -4,10 +4,12 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './helpers/tenant-fixture';
 
 /**
- * `/admin/pois` integration tests — checkpoint 1B.3, same pattern as the
- * rest of this suite (real Auth + Firestore Emulator + a real `next dev`
- * server — see playwright.config.ts). Covers the checkpoint's own A–T test
- * list; see each `test()`'s trailing `(letter)` for the mapping.
+ * `/admin/maps/{mapId}/pois` integration tests — checkpoint 1B.3, moved
+ * onto explicit `mapId`-in-the-URL routing in checkpoint 1B.6, same pattern
+ * as the rest of this suite (real Auth + Firestore Emulator + a real
+ * `next dev` server — see playwright.config.ts). Covers the checkpoint's
+ * own A–T test list; see each `test()`'s trailing `(letter)` for the
+ * mapping.
  *
  * The Google Maps JS API is unreachable in this hermetic suite (empty
  * `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, e2e/constants.ts) — every test here
@@ -30,8 +32,8 @@ function row(page: Page, name: string) {
 }
 
 /** Mirrors e2e/categories.spec.ts's identical helper. */
-async function createCategory(page: Page, name: string, icon: string): Promise<void> {
-  await page.goto('/admin/categories');
+async function createCategory(page: Page, mapId: string, name: string, icon: string): Promise<void> {
+  await page.goto(`/admin/maps/${mapId}/categories`);
   await page.getByRole('button', { name: '+ New category', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Create Category' })).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill(name);
@@ -51,8 +53,8 @@ interface CreatePoiOptions {
   readonly status?: 'ENABLED' | 'DISABLED';
 }
 
-async function openCreatePoiDrawer(page: Page): Promise<void> {
-  await page.goto('/admin/pois');
+async function openCreatePoiDrawer(page: Page, mapId: string): Promise<void> {
+  await page.goto(`/admin/maps/${mapId}/pois`);
   await page.getByRole('button', { name: '+ New POI', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'New POI' })).toBeVisible();
 }
@@ -75,8 +77,8 @@ async function fillPoiForm(page: Page, options: CreatePoiOptions): Promise<void>
   }
 }
 
-async function createPoi(page: Page, options: CreatePoiOptions): Promise<void> {
-  await openCreatePoiDrawer(page);
+async function createPoi(page: Page, mapId: string, options: CreatePoiOptions): Promise<void> {
+  await openCreatePoiDrawer(page, mapId);
   await fillPoiForm(page, options);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -87,7 +89,7 @@ test.describe('1B.3 POIs / Spots', () => {
     await clearEmulatorUsers();
   });
 
-  test('the /admin/pois route renders inside the admin shell (A)', async ({ page }) => {
+  test('the /admin/maps/{mapId}/pois route renders inside the admin shell (A)', async ({ page }) => {
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1b3-shell@example.com',
       password: 'correct-horse-battery-staple',
@@ -95,9 +97,9 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Shelly Admin',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
-    await page.goto('/admin/pois');
+    await page.goto(`/admin/maps/${tenant.mapId}/pois`);
     await expect(page.getByRole('heading', { name: 'POIs & Spots', exact: true })).toBeVisible();
     // Inside the shared admin shell, not a bare page — the header's
     // Sign out affordance (components/admin-shell/header.tsx) is present on
@@ -113,12 +115,12 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Nadia Nav',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
-    await page.goto('/admin');
+    await page.goto(`/admin/maps/${tenant.mapId}`);
     const sidebar = page.getByRole('navigation', { name: 'Admin' });
     await sidebar.getByRole('link', { name: 'POIs / Spots', exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/pois$/);
+    await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/pois$`));
     await expect(sidebar.getByRole('link', { name: 'POIs / Spots', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -130,9 +132,9 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Emma Empty',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
-    await page.goto('/admin/pois');
+    await page.goto(`/admin/maps/${tenant.mapId}/pois`);
     await expect(page.getByText('No POIs yet')).toBeVisible();
   });
 
@@ -144,9 +146,9 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Cara Create',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
-    await createPoi(page, { name: 'Sakura Restaurant', latitude: 35.6812, longitude: 139.7671 });
+    await createPoi(page, tenant.mapId, { name: 'Sakura Restaurant', latitude: 35.6812, longitude: 139.7671 });
 
     const poiRow = row(page, 'Sakura Restaurant');
     await expect(poiRow).toBeVisible(); // (E)
@@ -166,8 +168,8 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Eddie Edit',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Old Name', latitude: 1, longitude: 1 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Old Name', latitude: 1, longitude: 1 });
 
     await row(page, 'Old Name').getByRole('button', { name: 'Edit', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Edit POI' })).toBeVisible();
@@ -187,8 +189,8 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Toby Toggle',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Toggle Spot', latitude: 1, longitude: 1 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Toggle Spot', latitude: 1, longitude: 1 });
 
     await row(page, 'Toggle Spot').getByRole('button', { name: 'Disable', exact: true }).click();
     await expect(row(page, 'Toggle Spot').getByText('Disabled')).toBeVisible();
@@ -205,9 +207,9 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Sam Search',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Sakura Restaurant', latitude: 1, longitude: 1 });
-    await createPoi(page, { name: 'Local Cafe', latitude: 2, longitude: 2 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Sakura Restaurant', latitude: 1, longitude: 1 });
+    await createPoi(page, tenant.mapId, { name: 'Local Cafe', latitude: 2, longitude: 2 });
 
     await page.getByLabel('Search POIs', { exact: true }).fill('Sakura');
     await expect(row(page, 'Sakura Restaurant')).toBeVisible();
@@ -222,10 +224,10 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Fiona Filter',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD'); // index 0
-    await createCategory(page, 'Sightseeing', 'SIGHTSEEING'); // index 1
-    await createPoi(page, { name: 'Sakura Restaurant', categoryIndex: 0, latitude: 1, longitude: 1 });
-    await createPoi(page, { name: 'Central Park', categoryIndex: 1, latitude: 2, longitude: 2 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD'); // index 0
+    await createCategory(page, tenant.mapId, 'Sightseeing', 'SIGHTSEEING'); // index 1
+    await createPoi(page, tenant.mapId, { name: 'Sakura Restaurant', categoryIndex: 0, latitude: 1, longitude: 1 });
+    await createPoi(page, tenant.mapId, { name: 'Central Park', categoryIndex: 1, latitude: 2, longitude: 2 });
 
     await page.getByLabel('Filter by category', { exact: true }).selectOption({ label: 'Sightseeing' });
     await expect(row(page, 'Central Park')).toBeVisible();
@@ -240,9 +242,9 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Stan Status',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Enabled Spot', latitude: 1, longitude: 1, status: 'ENABLED' });
-    await createPoi(page, { name: 'Disabled Spot', latitude: 2, longitude: 2, status: 'DISABLED' });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Enabled Spot', latitude: 1, longitude: 1, status: 'ENABLED' });
+    await createPoi(page, tenant.mapId, { name: 'Disabled Spot', latitude: 2, longitude: 2, status: 'DISABLED' });
 
     await page.getByLabel('Status', { exact: true }).selectOption('DISABLED');
     await expect(row(page, 'Disabled Spot')).toBeVisible();
@@ -263,8 +265,8 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Dana Delete',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Doomed Spot', latitude: 1, longitude: 1 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Doomed Spot', latitude: 1, longitude: 1 });
 
     await row(page, 'Doomed Spot').getByRole('button', { name: 'Delete Doomed Spot', exact: true }).click();
     const dialog = page.getByRole('alertdialog', { name: 'Delete POI?' });
@@ -311,14 +313,17 @@ test.describe('1B.3 POIs / Spots', () => {
 
     await login(page, tenantA);
 
-    const result = await page.evaluate(async (categoryId: string) => {
-      const response = await fetch('/api/map/pois', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Cross-Tenant POI', categoryId, latitude: 1, longitude: 1 }),
-      });
-      return { status: response.status };
-    }, tenantBCategoryId);
+    const result = await page.evaluate(
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Cross-Tenant POI', categoryId, latitude: 1, longitude: 1 }),
+        });
+        return { status: response.status };
+      },
+      { mapId: tenantA.mapId, categoryId: tenantBCategoryId },
+    );
 
     expect(result.status).toBe(400);
 
@@ -335,13 +340,13 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Frank Forged',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
     const categoryId = (await (await getE2eFirestore()).collection(`maps/${tenant.mapId}/categories`).limit(1).get()).docs[0]!.id;
 
     const result = await page.evaluate(
-      async ({ categoryId: cid }: { categoryId: string }) => {
-        const response = await fetch('/api/map/pois', {
+      async ({ mapId, categoryId: cid }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/pois`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -356,7 +361,7 @@ test.describe('1B.3 POIs / Spots', () => {
         });
         return { status: response.status };
       },
-      { categoryId },
+      { mapId: tenant.mapId, categoryId },
     );
 
     // poiCreateInputSchema is `.strict()` — any unrecognized/forbidden field
@@ -376,26 +381,26 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Sid SignedOut',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/login/);
 
-    const result = await page.evaluate(async () => {
-      const response = await fetch('/api/map/pois', {
+    const result = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/pois`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Should Not Exist', categoryId: 'cat_whatever00000000000000', latitude: 1, longitude: 1 }),
       });
       return { status: response.status };
-    });
+    }, tenant.mapId);
 
     expect(result.status).toBe(401);
   });
 
-  test('direct navigation to /admin/pois remains protected when unauthenticated (R)', async ({ page }) => {
-    await page.goto('/admin/pois');
-    await expect(page).toHaveURL(/\/login\?next=%2Fadmin%2Fpois$/);
+  test('direct navigation to /admin/maps/{mapId}/pois remains protected when unauthenticated (R)', async ({ page }) => {
+    await page.goto('/admin/maps/map_doesnotexist000000000/pois');
+    await expect(page).toHaveURL(/\/login\?next=/);
   });
 
   test('a client with zero categories is directed to Categories instead of a broken create form (S)', async ({ page }) => {
@@ -407,10 +412,10 @@ test.describe('1B.3 POIs / Spots', () => {
     });
     await login(page, tenant);
 
-    await page.goto('/admin/pois');
+    await page.goto(`/admin/maps/${tenant.mapId}/pois`);
     await expect(page.getByText('You need at least one category before adding a POI.')).toBeVisible();
     await page.getByRole('link', { name: 'Create category', exact: true }).click();
-    await expect(page).toHaveURL(/\/admin\/categories$/);
+    await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/categories$`));
   });
 
   test('map coordinates persist exactly across reload and reopening the edit drawer (T)', async ({ page }) => {
@@ -421,8 +426,8 @@ test.describe('1B.3 POIs / Spots', () => {
       displayName: 'Cody Coords',
     });
     await login(page, tenant);
-    await createCategory(page, 'Restaurants', 'FOOD');
-    await createPoi(page, { name: 'Precise Spot', latitude: 35.681236, longitude: 139.767125 });
+    await createCategory(page, tenant.mapId, 'Restaurants', 'FOOD');
+    await createPoi(page, tenant.mapId, { name: 'Precise Spot', latitude: 35.681236, longitude: 139.767125 });
 
     await page.reload();
     await row(page, 'Precise Spot').getByRole('button', { name: 'Edit', exact: true }).click();

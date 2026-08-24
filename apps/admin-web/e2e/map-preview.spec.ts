@@ -3,9 +3,9 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { provisionTestTenant } from './helpers/tenant-fixture';
 
 /**
- * Checkpoint 1B.1-D `/admin/map` map-preview integration tests — real Auth +
- * Firestore Emulator + a real `next dev` server, same pattern as the rest
- * of this suite. This suite deliberately runs with
+ * Checkpoint 1B.1-D `/admin/maps/{mapId}/settings` map-preview integration
+ * tests — real Auth + Firestore Emulator + a real `next dev` server, same
+ * pattern as the rest of this suite. This suite deliberately runs with
  * `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` unset (see e2e/constants.ts's
  * `E2E_APP_ENV` — no real Google Maps credential is ever configured for
  * hermetic/CI tests), so every test here exercises
@@ -27,6 +27,10 @@ import { provisionTestTenant } from './helpers/tenant-fixture';
  * `map-preview-bounds` test ids, updated from the previous
  * `map-preview-center-zoom` (now split into two) / conditionally-rendered
  * `map-preview-bounds`.
+ *
+ * Checkpoint 1B.6 rewrite: `/admin/map` → `/admin/maps/{mapId}/settings` —
+ * see `apps/admin-web/e2e/categories.spec.ts`'s own header comment for the
+ * full reasoning.
  */
 
 async function login(page: Page, tenant: { email: string; password: string }): Promise<void> {
@@ -51,7 +55,7 @@ test.describe('1B.1-D map preview', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     const summary = page.getByTestId('map-preview-summary');
     await expect(summary).toBeVisible();
@@ -71,7 +75,7 @@ test.describe('1B.1-D map preview', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByLabel('Center latitude').fill('43.0621');
     await page.getByLabel('Center longitude').fill('141.3544');
@@ -94,7 +98,7 @@ test.describe('1B.1-D map preview', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByRole('button', { name: 'Bounded', exact: true }).click();
     await page.getByLabel('North').fill('33.7');
@@ -121,7 +125,7 @@ test.describe('1B.1-D map preview', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByLabel('Provider').selectOption('MAPBOX');
     await expect(page.getByTestId('map-preview-summary')).toContainText('MAPBOX is not yet implemented');
@@ -138,7 +142,7 @@ test.describe('1B.1-D map preview', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/map');
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByLabel('Center latitude').fill('38.2682');
     await page.getByLabel('Center longitude').fill('140.8694');

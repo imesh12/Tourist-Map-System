@@ -24,3 +24,5 @@ export * from './map.js';
 export * from './category.js';
 export * from './platform-category.js';
 export * from './poi.js';
+export * from './public-feature.js';
+export * from './menu-item.js';

@@ -1,34 +1,31 @@
 import Link from 'next/link';
-import { describeClientContextDenial, getCurrentClientContext } from '@/lib/tenant/client-context';
+import { describeTenantIdentityDenial, getCurrentTenantIdentity } from '@/lib/tenant/tenant-identity';
+import { listOwnedMaps } from '@/lib/tenant/list-owned-maps';
 
 /**
- * Checkpoint 1A.8 — real tenant/account data (§5). Proves provisioning
- * actually worked, per docs/stages/STAGE_1A_TECHNICAL_PLAN.md §17: this is
- * NOT the final CMS dashboard (no map editor/POI/category/media/analytics/
- * billing/SUPER_ADMIN console — those are later phases), just enough to
- * show a correctly-provisioned Client Admin their own company, their own
- * identity, and their initial map.
+ * Checkpoint 1A.8 — real tenant/account data (§5), updated in checkpoint
+ * 1B.6 for the "customer → N maps" model. Through checkpoint 1B.5 this page
+ * showed a single "Map" field and links straight into that one map's
+ * Settings/Categories, because `getCurrentClientContext()` always resolved
+ * exactly one implicit map. That assumption is gone: this page is now
+ * customer-scoped only (`getCurrentTenantIdentity()`, no map at all) and
+ * shows how many maps the tenant owns plus a link to the Maps dashboard
+ * (`/admin/maps`), which is where map-specific actions now live — this page
+ * itself never guesses which map the Client Admin meant.
  *
- * `getCurrentClientContext()` (lib/tenant/client-context.ts) is the ONLY
- * source of this data — it derives the tenant strictly from the verified
- * session's own claims, never from anything this page could pass in, so
- * there is no code path here that could render another tenant's data.
+ * `getCurrentTenantIdentity()` is the ONLY source of the identity data
+ * below — it derives the tenant strictly from the verified session's own
+ * claims, never from anything this page could pass in.
  *
  * A denied context (missing/incomplete provisioning, or any consistency
  * failure) renders a dedicated message in place of the dashboard — never a
- * redirect (checkpoint 1A.8 §3: "prefer a dedicated server-rendered state
- * over an infinite redirect loop") and never the real error detail (§3: "do
- * not expose internal Firebase errors"). Checkpoint 1A.10 moved the actual
- * `SignOutButton` into the shared admin shell header
- * (components/admin-shell/header.tsx), which renders unconditionally
- * regardless of this result — a user is still never trapped here, just via
- * the header now rather than page-local content.
+ * redirect, and never the real error detail.
  */
 export default async function AdminPage() {
-  const result = await getCurrentClientContext();
+  const result = await getCurrentTenantIdentity();
 
   if (!result.ok) {
-    const { heading, message } = describeClientContextDenial(result);
+    const { heading, message } = describeTenantIdentityDenial(result);
     return (
       <div className="card">
         <h1 className="page-title">Client Admin</h1>
@@ -40,14 +37,15 @@ export default async function AdminPage() {
     );
   }
 
-  const { user, customer, map } = result.context;
+  const { user, customer } = result.identity;
+  const maps = await listOwnedMaps(customer.customerId);
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Client Admin</h1>
-          <p className="page-description">Your organization, identity, and initial map — proof that provisioning worked.</p>
+          <p className="page-description">Your organization, identity, and maps — proof that provisioning worked.</p>
         </div>
       </div>
 
@@ -73,8 +71,8 @@ export default async function AdminPage() {
             <div>{user.role}</div>
           </div>
           <div>
-            <div className="field-hint">Map</div>
-            <div>{map.name}</div>
+            <div className="field-hint">Maps</div>
+            <div>{maps.length}</div>
           </div>
         </dl>
       </div>
@@ -82,18 +80,19 @@ export default async function AdminPage() {
       <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
         <div>
           <div className="card-title" style={{ marginBottom: 0 }}>
-            Places and publishing
+            Maps
           </div>
           <p className="card-description" style={{ marginBottom: 0 }}>
-            Arrive in a later phase.
+            {maps.length === 0
+              ? 'No maps yet.'
+              : maps.length === 1
+                ? 'You have one map.'
+                : `You have ${maps.length} maps.`}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <Link href="/admin/map" className="btn btn-secondary">
-            Edit map settings
-          </Link>
-          <Link href="/admin/categories" className="btn btn-secondary">
-            Manage categories
+          <Link href="/admin/maps" className="btn btn-primary">
+            Go to Maps
           </Link>
         </div>
       </div>

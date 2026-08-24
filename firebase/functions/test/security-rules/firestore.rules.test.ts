@@ -60,6 +60,14 @@ const LOCAL_PROJECT_ID = 'touristmap-local';
 const TENANT_A = 'cust_tenant_a';
 const TENANT_B = 'cust_tenant_b';
 const MAP_A = 'map_tenant_a_1';
+// A SECOND map owned by TENANT_A — checkpoint 1B.6's "customer → N maps"
+// model. The rules under test (`match /maps/{mapId}`) were already written
+// with no per-tenant-map-count assumption baked in (ownership is purely
+// "does this map's own `customerId` match the caller's claim", evaluated
+// per-document) — this fixture and the 1B.6 describe block below near the
+// end of this file are what actually PROVES that, rather than merely
+// asserting it from reading the rule text.
+const MAP_A2 = 'map_tenant_a_2';
 const MAP_B = 'map_tenant_b_1';
 const UID_A_ADMIN = 'uid_a_admin';
 const UID_A_EDITOR = 'uid_a_editor';
@@ -176,6 +184,22 @@ async function seedFixtures(): Promise<void> {
       mapId: MAP_B,
       customerId: TENANT_B,
       name: 'Tenant B Hotels Tourist Map',
+      status: 'DRAFT',
+      defaultLanguage: 'EN',
+      enabledLanguages: ['EN'],
+      mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+      area: { type: 'UNBOUNDED' },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Checkpoint 1B.6 — a SECOND map sharing TENANT_A's own `customerId`,
+    // same document shape as MAP_A. Nothing else about TENANT_A's fixtures
+    // changes; this is purely additive.
+    await setDoc(doc(db, `maps/${MAP_A2}`), {
+      mapId: MAP_A2,
+      customerId: TENANT_A,
+      name: 'Tenant A Railways Second Map',
       status: 'DRAFT',
       defaultLanguage: 'EN',
       enabledLanguages: ['EN'],
@@ -439,9 +463,43 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
 
     it('a legitimate tenant-scoped query returns only that tenant\'s documents', async () => {
       await seedFixtures();
+      // Checkpoint 1B.6: TENANT_A now owns TWO maps (MAP_A, MAP_A2) — both
+      // must come back, and MAP_B (tenant B's) must not, proving the query
+      // is scoped by the real per-document `customerId` field, not merely
+      // "the first map this tenant happens to own".
       const ownQuery = query(collection(aAdminDb(), 'maps'), where('customerId', '==', TENANT_A));
       const snapshot = await assertSucceeds(getDocs(ownQuery));
-      expect(snapshot.docs.map((d) => d.id)).toEqual([MAP_A]);
+      expect(snapshot.docs.map((d) => d.id).sort()).toEqual([MAP_A, MAP_A2].sort());
+    });
+  });
+
+  describe('multi-map tenant foundation — checkpoint 1B.6', () => {
+    // The rules file itself needed NO changes for "customer → N maps"
+    // (`match /maps/{mapId}` already evaluates ownership per-document, with
+    // no assumption that a tenant owns at most one) — this block is the
+    // proof, not merely a restatement of that claim.
+    it('the owning tenant can read BOTH of their own maps', async () => {
+      await seedFixtures();
+      await assertSucceeds(getDoc(doc(aAdminDb(), `maps/${MAP_A}`)));
+      await assertSucceeds(getDoc(doc(aAdminDb(), `maps/${MAP_A2}`)));
+    });
+
+    it('a different tenant cannot read either of the owning tenant\'s maps', async () => {
+      await seedFixtures();
+      await assertFails(getDoc(doc(bAdminDb(), `maps/${MAP_A}`)));
+      await assertFails(getDoc(doc(bAdminDb(), `maps/${MAP_A2}`)));
+    });
+
+    it('client writes remain denied for a second/additional map too, not just the first', async () => {
+      await seedFixtures();
+      await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A2}`), { name: 'Renamed' }));
+      await assertFails(deleteDoc(doc(aAdminDb(), `maps/${MAP_A2}`)));
+      await assertFails(setDoc(doc(unauthedDb(), `maps/${MAP_A2}`), { probe: true }));
+    });
+
+    it('an unauthenticated caller is denied reading the second map exactly like the first', async () => {
+      await seedFixtures();
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A2}`)));
     });
   });
 
@@ -632,6 +690,78 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
       });
       await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_imported`)));
       await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A}/pois/poi_imported`), { status: 'DISABLED' }));
+    });
+  });
+
+  describe('maps/{mapId}/menuItems subcollection — checkpoint 1B.5', () => {
+    // Same "server-only, deny-by-default fallback" shape as the
+    // categories/POIs blocks above: Menu Builder data goes exclusively
+    // through the trusted `/api/map/menu-items` Route Handlers (Admin SDK,
+    // which bypasses rules by design), never the browser's own Firestore
+    // client. No explicit `match` block exists for this nested collection
+    // either, so the deny-by-default `match /{document=**}` fallback
+    // already covers it — these tests prove that remains true for menu
+    // items specifically, rather than assuming the categories/POIs proofs
+    // generalize.
+    it('denies an own-tenant CATEGORY menu item read, even for the map owner', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/menuItems/menu_seed`), {
+          menuItemId: 'menu_seed',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          type: 'CATEGORY',
+          label: 'Gourmet',
+          categoryId: 'cat_seed',
+          order: 0,
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/menuItems/menu_seed`)));
+    });
+
+    it('denies an own-tenant FEATURE menu item read, write, and delete', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/menuItems/menu_seed_feature`), {
+          menuItemId: 'menu_seed_feature',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          type: 'FEATURE',
+          label: 'Search',
+          featureKey: 'SEARCH',
+          order: 1,
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/menuItems/menu_seed_feature`)));
+      await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A}/menuItems/menu_seed_feature`), { status: 'DISABLED' }));
+      await assertFails(deleteDoc(doc(aAdminDb(), `maps/${MAP_A}/menuItems/menu_seed_feature`)));
+    });
+
+    it('denies an own-tenant menu item write', async () => {
+      await seedFixtures();
+      await assertFails(
+        setDoc(doc(aAdminDb(), `maps/${MAP_A}/menuItems/menu_forged`), {
+          menuItemId: 'menu_forged',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          type: 'FEATURE',
+          label: 'Forged',
+          featureKey: 'SEARCH',
+          order: 0,
+          status: 'ENABLED',
+        }),
+      );
+    });
+
+    it('denies an unauthenticated menu item read', async () => {
+      await seedFixtures();
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/menuItems/menu_seed`)));
     });
   });
 });

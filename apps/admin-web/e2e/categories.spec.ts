@@ -4,10 +4,11 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './helpers/tenant-fixture';
 
 /**
- * `/admin/categories` integration tests — checkpoint 1B.2, redesigned into
- * the drawer-based professional CMS UI in the Category CMS redesign
- * checkpoint. Real Auth + Firestore Emulator + a real `next dev` server,
- * same pattern as the rest of this suite (see playwright.config.ts).
+ * `/admin/maps/{mapId}/categories` integration tests — checkpoint 1B.2,
+ * redesigned into the drawer-based professional CMS UI in the Category CMS
+ * redesign checkpoint, moved onto explicit `mapId`-in-the-URL routing in
+ * checkpoint 1B.6. Real Auth + Firestore Emulator + a real `next dev`
+ * server, same pattern as the rest of this suite (see playwright.config.ts).
  *
  * exact: true is used throughout for role-name queries — this page has
  * several short, overlapping labels by design (row action "Enable" vs. the
@@ -58,8 +59,8 @@ test.describe('categories (redesigned CMS)', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/categories');
-    await expect(page).toHaveURL(/\/admin\/categories$/);
+    await page.goto(`/admin/maps/${tenant.mapId}/categories`);
+    await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/categories$`));
 
     // Empty state.
     await expect(page.getByText('No categories yet', { exact: true })).toBeVisible();
@@ -139,7 +140,7 @@ test.describe('categories (redesigned CMS)', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/categories');
+    await page.goto(`/admin/maps/${tenant.mapId}/categories`);
 
     await openCreateDrawer(page);
     await page.getByLabel('Name', { exact: true }).fill('Should Not Be Saved');
@@ -159,7 +160,7 @@ test.describe('categories (redesigned CMS)', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/categories');
+    await page.goto(`/admin/maps/${tenant.mapId}/categories`);
 
     await createCategory(page, 'Restaurants', 'FOOD');
     await createCategory(page, 'Shopping', 'SHOPPING');
@@ -197,7 +198,7 @@ test.describe('categories (redesigned CMS)', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/categories');
+    await page.goto(`/admin/maps/${tenant.mapId}/categories`);
 
     await createCategory(page, 'Restaurants', 'FOOD'); // order 0
     await createCategory(page, 'Shopping', 'SHOPPING'); // order 1
@@ -246,13 +247,15 @@ test.describe('categories (redesigned CMS)', () => {
     });
 
     await login(page, tenant);
-    await page.goto('/admin/categories');
+    await page.goto(`/admin/maps/${tenant.mapId}/categories`);
 
     await expect(row(page, 'Food')).toBeVisible();
     await expect(row(page, 'Food')).toContainText('Enabled');
   });
 
-  test('tenant A cannot edit a tenant B category', async ({ page }) => {
+  test('tenant A cannot edit a tenant B category — neither via categoryId under A\'s own map nor by forging B\'s mapId', async ({
+    page,
+  }) => {
     const tenantA = await provisionTestTenant({
       email: 'checkpoint-catcms-tenant-a@example.com',
       password: 'correct-horse-battery-staple',
@@ -283,65 +286,76 @@ test.describe('categories (redesigned CMS)', () => {
 
     await login(page, tenantA);
 
-    const result = await page.evaluate(async (categoryId: string) => {
-      const response = await fetch(`/api/map/categories/${categoryId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Hacked' }),
-      });
-      return { status: response.status, body: await response.json() };
-    }, tenantBCategoryId);
+    // Attempt 1: tenant A's OWN map, tenant B's categoryId — the category
+    // simply doesn't exist at that path.
+    const viaOwnMap = await page.evaluate(
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/categories/${categoryId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Hacked' }),
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      { mapId: tenantA.mapId, categoryId: tenantBCategoryId },
+    );
+    expect(viaOwnMap.status).toBe(404);
 
-    // Tenant A's session resolves categories only under tenant A's own map
-    // (maps/{tenantA.mapId}/categories/{categoryId}) — tenant B's category
-    // simply does not exist at that path, so this is a 404, not a 403; the
-    // important guarantee is that it is never a 200.
-    expect(result.status).toBe(404);
+    // Attempt 2 (checkpoint 1B.6 — the more direct attack now that mapId is
+    // explicit in the URL): tenant A forges tenant B's OWN mapId. This must
+    // fail at `getOwnedMapContext()` — a 404 "map not found" — before the
+    // request ever reaches the category lookup at all.
+    const viaForgedMapId = await page.evaluate(
+      async ({ mapId, categoryId }: { mapId: string; categoryId: string }) => {
+        const response = await fetch(`/api/maps/${mapId}/categories/${categoryId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Hacked' }),
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      { mapId: tenantB.mapId, categoryId: tenantBCategoryId },
+    );
+    expect(viaForgedMapId.status).toBe(404);
+    expect(viaForgedMapId.body.code).toBe('map/not-found');
 
     const untouchedSnap = await firestore.doc(`maps/${tenantB.mapId}/categories/${tenantBCategoryId}`).get();
     expect(untouchedSnap.data()?.name).toBe('Tenant B Category');
   });
 
-  test('a forged customerId/mapId/sourceType payload is rejected on both create and update', async ({ page }) => {
+  test('a forged customerId/sourceType payload is rejected on both create and update', async ({ page }) => {
     const tenantA = await provisionTestTenant({
       email: 'checkpoint-catcms-forged-a@example.com',
       password: 'correct-horse-battery-staple',
       companyName: 'Forged Test Co A',
       displayName: 'Alice A',
     });
-    const tenantB = await provisionTestTenant({
-      email: 'checkpoint-catcms-forged-b@example.com',
-      password: 'correct-horse-battery-staple',
-      companyName: 'Forged Test Co B',
-      displayName: 'Bob B',
-    });
 
     await login(page, tenantA);
 
-    const createResult = await page.evaluate(async (targetMapId: string) => {
-      const response = await fetch('/api/map/categories', {
+    const createResult = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Forged',
           icon: 'OTHER',
-          mapId: targetMapId,
           customerId: 'cust_forged00000000000',
           sourceType: 'PLATFORM',
         }),
       });
       return { status: response.status };
-    }, tenantB.mapId);
+    }, tenantA.mapId);
     expect(createResult.status).toBe(400);
 
-    const patchResult = await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories/cat_does_not_matter_00000', {
+    const patchResult = await page.evaluate(async (mapId: string) => {
+      const response = await fetch(`/api/maps/${mapId}/categories/cat_does_not_matter_00000`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: true, mapId: 'map_forged00000000000000', platformCategoryId: 'platcat_forged' }),
       });
       return { status: response.status };
-    });
+    }, tenantA.mapId);
     expect(patchResult.status).toBe(400);
 
     // No category was ever created under tenant A's own map from either forged request.
@@ -353,13 +367,13 @@ test.describe('categories (redesigned CMS)', () => {
   test('a signed-out visitor cannot list or create categories', async ({ page }) => {
     await page.goto('/login');
     const listResult = await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories');
+      const response = await fetch('/api/maps/map_does_not_matter_0000000/categories');
       return response.status;
     });
     expect(listResult).toBe(401);
 
     const createResult = await page.evaluate(async () => {
-      const response = await fetch('/api/map/categories', {
+      const response = await fetch('/api/maps/map_does_not_matter_0000000/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'x', icon: 'OTHER' }),

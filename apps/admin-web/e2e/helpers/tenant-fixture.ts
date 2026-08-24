@@ -160,3 +160,58 @@ export async function provisionTestTenant(options: ProvisionTestTenantOptions): 
 export async function getE2eFirestore() {
   return getE2eAdminFirestore();
 }
+
+export interface ProvisionAdditionalMapOptions {
+  /** The already-provisioned tenant's `customerId` — same value `provisionTestTenant()` returned. */
+  readonly customerId: string;
+  readonly mapName: string;
+  /**
+   * Defaults to `{ type: 'UNBOUNDED' }`, matching `POST /api/maps`'s own
+   * server-defaults. Deliberately always `type: 'UNBOUNDED'` even when a
+   * `center` is supplied — `mapAreaSchema` (packages/validation/src/map.ts)
+   * requires `center` AND `defaultZoom` AND `bounds` together for
+   * `type: 'BOUNDED'`, but explicitly allows `UNBOUNDED` to still carry a
+   * `center` as "an initial viewport" — the exact shape needed to test
+   * checkpoint 1B.6 §9's per-map discovery geography without also having to
+   * fabricate a full bounds rectangle.
+   */
+  readonly area?: { readonly type: 'UNBOUNDED'; readonly center?: { readonly lat: number; readonly lng: number } };
+}
+
+export interface AdditionalMapFixture {
+  readonly mapId: string;
+  readonly mapName: string;
+}
+
+/**
+ * Seeds a SECOND (or third, ...) `maps/{mapId}` document for an already-
+ * provisioned tenant — checkpoint 1B.6's multi-map isolation tests
+ * (`e2e/maps.spec.ts`) need two owned maps under the same `customerId` to
+ * prove same-tenant map isolation (settings/categories/POIs/menu items/
+ * discovery geography), which `provisionTestTenant()` alone can't produce
+ * (it always creates exactly one map, matching real registration
+ * provisioning). Writes the exact same document shape `POST /api/maps`
+ * itself writes (checkpoint 1B.6 §6) — a fixture built from the real target
+ * shape, not a parallel invented one — via the Admin SDK directly, the same
+ * "seed backend state, never bypass the browser's own login" discipline
+ * `provisionTestTenant()`'s own doc comment establishes.
+ */
+export async function provisionAdditionalMap(options: ProvisionAdditionalMapOptions): Promise<AdditionalMapFixture> {
+  const firestore = await getE2eAdminFirestore();
+  const mapId = generateId(MAP_ID_PREFIX);
+
+  await firestore.doc(`maps/${mapId}`).set({
+    mapId,
+    customerId: options.customerId,
+    name: options.mapName,
+    status: 'DRAFT',
+    defaultLanguage: 'EN',
+    enabledLanguages: ['EN'],
+    mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+    area: options.area ?? { type: 'UNBOUNDED' },
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return { mapId, mapName: options.mapName };
+}
