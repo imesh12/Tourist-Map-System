@@ -115,6 +115,62 @@ describe('mapSettingsUpdateSchema — checkpoint 1B.1', () => {
     expect(result.success).toBe(false);
   });
 
+  describe('theme — checkpoint 1B.7', () => {
+    const validTheme = {
+      preset: 'TOURIST_CLEAN',
+      visibility: {
+        businessPois: false,
+        transit: true,
+        schools: false,
+        hospitals: false,
+        parks: true,
+        roadLabels: true,
+        transitLabels: true,
+      },
+      colors: { background: '#F7F8F5', road: '#FFFFFF', water: '#DDEBF4', label: '#4B5563' },
+      markerStyle: { style: 'PIN', size: 'MEDIUM' },
+    };
+
+    it('accepts a valid config with a theme', () => {
+      expect(mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, theme: validTheme }).success).toBe(true);
+    });
+
+    it('accepts a config with no theme at all (nothing configured yet)', () => {
+      expect(mapSettingsUpdateSchema.safeParse(validUnboundedInput).success).toBe(true);
+    });
+
+    it('rejects an unrecognized theme preset', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, theme: { ...validTheme, preset: 'RAINBOW' } });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an invalid theme color', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        theme: { ...validTheme, colors: { background: 'not-a-color' } },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a theme carrying an unknown field (strict mode)', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, theme: { ...validTheme, extra: 'nope' } });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a theme carrying raw Google Maps style JSON instead of the provider-neutral shape', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        theme: { styles: [{ featureType: 'poi.business', elementType: 'labels', stylers: [{ visibility: 'off' }] }] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a theme carrying an injected ownership field', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, theme: { ...validTheme, mapId: 'map_attackerControlled01' } });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('security: ownership fields are never client-suppliable', () => {
     it('rejects an injected `mapId` field', () => {
       const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, mapId: 'map_attackerControlled01' });

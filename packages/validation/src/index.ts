@@ -25,6 +25,7 @@ export * from './customer.js';
 export * from './user.js';
 export * from './map.js';
 export * from './branding.js';
+export * from './map-theme.js';
 export * from './map-settings.js';
 export * from './map-create.js';
 export * from './category.js';

@@ -78,6 +78,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   if (parsed.data.branding !== undefined) {
     update.branding = parsed.data.branding;
   }
+  // Checkpoint 1B.7 — identical "only written if present" partial-update
+  // pattern `branding` already uses. `mapSettingsUpdateSchema` (validated
+  // above) is the only trust boundary this needs: its `.strict()` theme
+  // sub-schema already rejects ownership fields, unknown keys, and raw
+  // provider style JSON, so nothing further is re-checked here — same as
+  // every other field on this route.
+  if (parsed.data.theme !== undefined) {
+    update.theme = parsed.data.theme;
+  }
 
   await mapRef.update(update);
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { LANGUAGES, MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
 import { customerIdSchema, mapIdSchema } from './ids.js';
+import { mapThemeSchema } from './map-theme.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -91,6 +92,12 @@ export const mapSchema = z
     // existing/fixture-seeded map would fail `getCurrentClientContext()`'s
     // read-side validation and fail closed.
     branding: mapBrandingSchema.optional(),
+    // Optional — absent until a Client Admin first saves a theme
+    // (checkpoint 1B.7). Every map document created before this checkpoint
+    // predates this field, so it must stay optional here or every such
+    // existing/fixture-seeded map would fail read-side validation and fail
+    // closed — see MapTheme's own doc comment (shared-types/src/map.ts).
+    theme: mapThemeSchema.optional(),
     createdAt: firestoreTimestampLikeSchema,
     updatedAt: firestoreTimestampLikeSchema,
   })

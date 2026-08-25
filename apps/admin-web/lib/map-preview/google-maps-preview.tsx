@@ -5,6 +5,7 @@ import { importLibrary } from '@googlemaps/js-api-loader';
 import { useEffect, useRef, useState } from 'react';
 import type { MapStyle } from 'shared-types';
 import { ensureGoogleMapsApiConfigured } from './google-maps-loader';
+import { mapThemeToGoogleMapsStyles } from './google-theme-adapter';
 import { MapPreviewSummary } from './map-preview-summary';
 import type { MapPreviewProps } from './types';
 
@@ -60,7 +61,7 @@ function mapStyleToMapTypeId(style: MapStyle): google.maps.MapTypeId {
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
-export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange, onZoomChange }: MapPreviewProps) {
+export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange, onZoomChange, theme }: MapPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
   const rectangleRef = useRef<google.maps.Rectangle | undefined>(undefined);
@@ -89,6 +90,12 @@ export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange,
           center: center ?? DEFAULT_CENTER,
           zoom: zoom ?? DEFAULT_ZOOM,
           mapTypeId: mapStyleToMapTypeId(style),
+          // Checkpoint 1B.7 — initial styling, from whatever `theme` this
+          // component was first rendered with. Kept in sync with later
+          // `theme` prop changes by the dedicated effect below, the same
+          // "seed once on mount, then update imperatively" split every other
+          // prop on this component already follows.
+          styles: theme ? [...mapThemeToGoogleMapsStyles(theme)] : undefined,
         });
         map.addListener('dragend', () => {
           const newCenter = map.getCenter();
@@ -114,11 +121,11 @@ export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange,
     return () => {
       cancelled = true;
     };
-    // Intentionally mount-only: `center`/`zoom`/`style` here seed the
-    // INITIAL map only. Subsequent prop changes are applied imperatively
-    // by the effects below, not by recreating the map (which would discard
-    // the user's own in-progress pan/zoom on every keystroke elsewhere in
-    // the form).
+    // Intentionally mount-only: `center`/`zoom`/`style`/`theme` here seed
+    // the INITIAL map only. Subsequent prop changes are applied
+    // imperatively by the effects below, not by recreating the map (which
+    // would discard the user's own in-progress pan/zoom on every keystroke
+    // elsewhere in the form).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey]);
 
@@ -146,6 +153,26 @@ export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange,
   useEffect(() => {
     mapRef.current?.setMapTypeId(mapStyleToMapTypeId(style));
   }, [style]);
+
+  // Sync theme — checkpoint 1B.7 §8 ("theme changes MUST update the
+  // existing map preview immediately... Save still required to persist").
+  // `theme` is a compound object (preset + visibility + colors +
+  // markerStyle), not a primitive like `zoom`/`style`, so depending on
+  // object identity directly would re-run this on every render (a fresh
+  // `MapTheme` object literal is built each render in
+  // map-settings-form.tsx's memoized value the same way `center` is).
+  // `JSON.stringify` gives a cheap, stable value-equality key — `MapTheme`
+  // is a small plain-data object with no functions/dates/undefined-only
+  // keys once validated, so this is a safe, deterministic dependency, and
+  // matches this effect block's own "depend on primitive/stable values, not
+  // fresh-every-render object identity" convention.
+  const themeKey = theme ? JSON.stringify(theme) : undefined;
+  useEffect(() => {
+    if (mapRef.current && theme) {
+      mapRef.current.setOptions({ styles: [...mapThemeToGoogleMapsStyles(theme)] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeKey]);
 
   // Visualize BOUNDED bounds as a rectangle overlay — requirement 8. Torn
   // down and redrawn (not mutated) on every bounds change, and removed

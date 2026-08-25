@@ -303,6 +303,34 @@ select:focus-visible,
   border-radius: calc(var(--radius-sm) - 1px);
 }
 
+/* Checkbox field — checkpoint 1B.7's Theme visibility toggles. No existing
+   checkbox styling convention existed before this checkpoint; this mirrors
+   `.slider`'s `accent-color` approach (native control, themed via
+   accent-color, not a custom-drawn box) for the same reasons: minimal CSS,
+   correct native focus/keyboard/hit-target behavior for free. */
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.checkbox-field:last-child {
+  margin-bottom: 0;
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.checkbox-field label {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
 /* ---------------------------------------------------------------------
    Cards
 --------------------------------------------------------------------- */

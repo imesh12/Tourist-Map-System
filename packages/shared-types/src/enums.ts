@@ -65,6 +65,50 @@ export const MAP_AREA_TYPES = ['BOUNDED', 'UNBOUNDED'] as const;
 export type MapAreaType = (typeof MAP_AREA_TYPES)[number];
 
 /**
+ * `MapTheme.preset` — checkpoint 1B.7, see docs/architecture/MAP_THEME_ARCHITECTURE.md.
+ * Deliberately a DIFFERENT concept from `MapStyle` above (which selects the
+ * provider's base map TYPE — road/satellite/hybrid/terrain — and is
+ * unrelated to POI-clutter visibility or color). A theme preset instead
+ * selects a bundle of `MapTheme.visibility`/`colors`/`markerStyle` defaults:
+ *
+ * - `STANDARD` — closest to the provider's own defaults (all default POI
+ *   categories visible).
+ * - `TOURIST_CLEAN` — this checkpoint's main goal: suppresses default
+ *   business/school/hospital clutter while keeping roads, transit,
+ *   geography, and OUR OWN categories/POIs visually dominant.
+ * - `LIGHT` — a light, neutral palette variant.
+ * - `MINIMAL` — the strongest suppression of provider POIs/labels.
+ *
+ * No `CUSTOM` value: per the checkpoint's own explicit guidance, selecting
+ * a preset only ever POPULATES a starting `visibility`/`colors`/
+ * `markerStyle` — it does not lock those fields. A Client Admin may still
+ * hand-edit any individual visibility/color/marker field afterward while
+ * the preset name stays exactly as selected; nothing auto-relabels the
+ * theme as "CUSTOM". This keeps the model a plain, always-valid value
+ * object with no extra "is this preset now dirty" state machine to get
+ * wrong — see that doc's own "Preset Behavior" section for the full
+ * reasoning.
+ */
+export const MAP_THEME_PRESETS = ['STANDARD', 'TOURIST_CLEAN', 'LIGHT', 'MINIMAL'] as const;
+export type MapThemePreset = (typeof MAP_THEME_PRESETS)[number];
+
+/**
+ * `MapTheme.markerStyle.style` — checkpoint 1B.7. A foundation for OUR OWN
+ * POI marker visual style (§10 of the checkpoint) — a plain teardrop pin, or
+ * a simple filled dot/circle. Deliberately just these two for now; the
+ * admin preview does not yet render actual tenant POI markers at all (see
+ * that doc's own "Own POI Markers" section), so this value currently has no
+ * renderer consuming it yet — it exists so the theme model has a settled
+ * shape once one does, without a breaking schema change later.
+ */
+export const MAP_MARKER_STYLES = ['PIN', 'DOT'] as const;
+export type MapMarkerStyle = (typeof MAP_MARKER_STYLES)[number];
+
+/** `MapTheme.markerStyle.size` — checkpoint 1B.7. See `MAP_MARKER_STYLES`'s own doc comment — same "foundation, no renderer yet" status. */
+export const MAP_MARKER_SIZES = ['SMALL', 'MEDIUM', 'LARGE'] as const;
+export type MapMarkerSize = (typeof MAP_MARKER_SIZES)[number];
+
+/**
  * Controlled category icon identifiers — checkpoint 1B.2, see
  * docs/stages/STAGE_1B_TECHNICAL_PLAN.md. A fixed, small, semantic set (not
  * arbitrary SVG markup, HTML, or a remote icon URL) — the actual glyph/asset

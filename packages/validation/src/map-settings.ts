@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MAP_PROVIDER_NAMES, MAP_STYLES } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
 import { mapAreaSchema } from './map.js';
+import { mapThemeSchema } from './map-theme.js';
 
 /**
  * Map-settings update input — the untrusted-input schema for checkpoint
@@ -26,6 +27,12 @@ export const mapSettingsUpdateSchema = z
     }),
     area: mapAreaSchema,
     branding: mapBrandingSchema.optional(),
+    // Checkpoint 1B.7 — same "optional embedded object, .strict() sub-schema
+    // rejects forged/raw-provider/ownership fields" pattern `branding`
+    // above already establishes. See mapThemeSchema's own doc comment
+    // (./map-theme.ts) for why this alone is sufficient to satisfy "reject
+    // raw provider style JSON" without a separate check here.
+    theme: mapThemeSchema.optional(),
   })
   .strict();
 

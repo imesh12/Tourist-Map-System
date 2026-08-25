@@ -1,4 +1,4 @@
-import type { MapAreaBounds, MapProviderName, MapStyle } from 'shared-types';
+import type { MapAreaBounds, MapProviderName, MapStyle, MapTheme } from 'shared-types';
 
 /**
  * The map-preview provider abstraction — checkpoint 1B.1-D.
@@ -38,6 +38,16 @@ export interface MapPreviewProps {
   readonly onCenterChange?: (center: MapPreviewCenter) => void;
   /** Fired on user zoom interaction — same "local state only" contract as `onCenterChange`. */
   readonly onZoomChange?: (zoom: number) => void;
+  /**
+   * Checkpoint 1B.7 — provider-neutral map theme (§8: "theme changes MUST
+   * update the existing map preview immediately, with no Save required").
+   * Undefined renders whatever the provider adapter's own baseline styling
+   * is (i.e. no `theme` option passed at all) — this is the same
+   * "undefined means untouched default" convention `center`/`zoom`/`bounds`
+   * already use above, and is what keeps this prop backward-compatible with
+   * every existing caller that predates checkpoint 1B.7.
+   */
+  readonly theme?: MapTheme;
 }
 
 /**

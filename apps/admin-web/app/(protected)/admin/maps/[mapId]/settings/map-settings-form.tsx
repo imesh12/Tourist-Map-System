@@ -2,7 +2,23 @@
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
-import { MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STYLES, type MapAreaType, type MapProviderName, type MapStyle } from 'shared-types';
+import {
+  DEFAULT_MAP_THEME,
+  MAP_AREA_TYPES,
+  MAP_MARKER_SIZES,
+  MAP_MARKER_STYLES,
+  MAP_PROVIDER_NAMES,
+  MAP_STYLES,
+  MAP_THEME_PRESET_DEFAULTS,
+  MAP_THEME_PRESETS,
+  type MapAreaType,
+  type MapMarkerSize,
+  type MapMarkerStyle,
+  type MapProviderName,
+  type MapStyle,
+  type MapTheme,
+  type MapThemePreset,
+} from 'shared-types';
 import { mapSettingsUpdateSchema, type MapParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { MapPreview } from '@/lib/map-preview/map-preview';
@@ -38,6 +54,21 @@ import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
  * change, rather than pretending a separate publish-preview engine exists
  * (§3: "do not claim actual publishing functionality exists if it does not
  * yet exist").
+ *
+ * Theme (checkpoint 1B.7): one `useState` per editable `MapTheme` field,
+ * same granular-state convention every other card on this form already
+ * uses — no separate "theme is dirty" tracking, no `CUSTOM` preset value
+ * (see `MapThemePreset`'s own doc comment, shared-types/src/enums.ts, for
+ * why). Picking a different preset POPULATES `visibility`/`colors`/
+ * `markerStyle` from `MAP_THEME_PRESET_DEFAULTS`; it never locks them, and
+ * hand-editing a field afterward never changes the selected preset name
+ * back. `colors.land` is intentionally not exposed as a form field (kept to
+ * 4 color inputs per the checkpoint's own mockup — background/road/water/
+ * label) even though `MapThemeColors`/`mapThemeColorsSchema` both support
+ * it; no preset in `MAP_THEME_PRESET_DEFAULTS` sets it either, so this form
+ * simply never emits it. `previewTheme` below is the single source of truth
+ * fed to both the live `<MapPreview>` (§8: updates with no Save) and
+ * `buildPayload()`'s `theme` field (Save persists the same value).
  */
 
 const MIN_ZOOM = 0;
@@ -70,6 +101,13 @@ function parseOptionalNumber(value: string): number | undefined {
 export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormProps) {
   const router = useRouter();
 
+  // Checkpoint 1B.7 — read-side default fallback (see `MapTheme`'s own doc
+  // comment, shared-types/src/map.ts): a map document saved before this
+  // checkpoint has no `theme` field at all, so the form starts from
+  // `DEFAULT_MAP_THEME` (the STANDARD preset) rather than requiring a
+  // migration.
+  const initialTheme = initialMap.theme ?? DEFAULT_MAP_THEME;
+
   const [name, setName] = useState(initialMap.name);
   const [provider, setProvider] = useState<MapProviderName>(initialMap.mapProvider.provider);
   const [style, setStyle] = useState<MapStyle>(initialMap.mapProvider.style);
@@ -84,6 +122,21 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
   const [logoUrl, setLogoUrl] = useState(initialMap.branding?.logoUrl ?? '');
   const [primaryColor, setPrimaryColor] = useState(initialMap.branding?.primaryColor ?? '');
   const [secondaryColor, setSecondaryColor] = useState(initialMap.branding?.secondaryColor ?? '');
+
+  const [themePreset, setThemePreset] = useState<MapThemePreset>(initialTheme.preset);
+  const [visBusinessPois, setVisBusinessPois] = useState(initialTheme.visibility.businessPois);
+  const [visTransit, setVisTransit] = useState(initialTheme.visibility.transit);
+  const [visSchools, setVisSchools] = useState(initialTheme.visibility.schools);
+  const [visHospitals, setVisHospitals] = useState(initialTheme.visibility.hospitals);
+  const [visParks, setVisParks] = useState(initialTheme.visibility.parks);
+  const [visRoadLabels, setVisRoadLabels] = useState(initialTheme.visibility.roadLabels);
+  const [visTransitLabels, setVisTransitLabels] = useState(initialTheme.visibility.transitLabels);
+  const [themeBackground, setThemeBackground] = useState(initialTheme.colors?.background ?? '');
+  const [themeRoad, setThemeRoad] = useState(initialTheme.colors?.road ?? '');
+  const [themeWater, setThemeWater] = useState(initialTheme.colors?.water ?? '');
+  const [themeLabel, setThemeLabel] = useState(initialTheme.colors?.label ?? '');
+  const [markerStyle, setMarkerStyle] = useState<MapMarkerStyle>(initialTheme.markerStyle.style);
+  const [markerSize, setMarkerSize] = useState<MapMarkerSize>(initialTheme.markerStyle.size);
 
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
   const [formError, setFormError] = useState<string | undefined>(undefined);
@@ -114,6 +167,76 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       : undefined;
   }, [areaType, north, south, east, west]);
 
+  // Checkpoint 1B.7 — the single source of truth for both the live preview
+  // (no Save required — §8) and `buildPayload()`'s `theme` field (Save
+  // persists the exact same value). `colors` is only included when at
+  // least one hex field is actually set, mirroring `buildPayload()`'s own
+  // `branding` object below — an absent field means "use the provider's own
+  // default for that element," never a forced value (see `MapThemeColors`'s
+  // doc comment, shared-types/src/map.ts).
+  const previewTheme = useMemo<MapTheme>(() => {
+    const colors: { background?: string; road?: string; water?: string; label?: string } = {};
+    if (themeBackground.trim()) colors.background = themeBackground.trim();
+    if (themeRoad.trim()) colors.road = themeRoad.trim();
+    if (themeWater.trim()) colors.water = themeWater.trim();
+    if (themeLabel.trim()) colors.label = themeLabel.trim();
+
+    return {
+      preset: themePreset,
+      visibility: {
+        businessPois: visBusinessPois,
+        transit: visTransit,
+        schools: visSchools,
+        hospitals: visHospitals,
+        parks: visParks,
+        roadLabels: visRoadLabels,
+        transitLabels: visTransitLabels,
+      },
+      ...(Object.keys(colors).length > 0 ? { colors } : {}),
+      markerStyle: { style: markerStyle, size: markerSize },
+    };
+  }, [
+    themePreset,
+    visBusinessPois,
+    visTransit,
+    visSchools,
+    visHospitals,
+    visParks,
+    visRoadLabels,
+    visTransitLabels,
+    themeBackground,
+    themeRoad,
+    themeWater,
+    themeLabel,
+    markerStyle,
+    markerSize,
+  ]);
+
+  /**
+   * Selecting a preset POPULATES `visibility`/`colors`/`markerStyle` from
+   * `MAP_THEME_PRESET_DEFAULTS` — it does not lock them (§9 of the
+   * checkpoint: no `CUSTOM` auto-relabeling; see `MapThemePreset`'s doc
+   * comment for the full reasoning). Hand-editing any field afterward
+   * simply leaves `themePreset` exactly as selected.
+   */
+  function handleThemePresetChange(newPreset: MapThemePreset): void {
+    const defaults = MAP_THEME_PRESET_DEFAULTS[newPreset];
+    setThemePreset(newPreset);
+    setVisBusinessPois(defaults.visibility.businessPois);
+    setVisTransit(defaults.visibility.transit);
+    setVisSchools(defaults.visibility.schools);
+    setVisHospitals(defaults.visibility.hospitals);
+    setVisParks(defaults.visibility.parks);
+    setVisRoadLabels(defaults.visibility.roadLabels);
+    setVisTransitLabels(defaults.visibility.transitLabels);
+    setThemeBackground(defaults.colors?.background ?? '');
+    setThemeRoad(defaults.colors?.road ?? '');
+    setThemeWater(defaults.colors?.water ?? '');
+    setThemeLabel(defaults.colors?.label ?? '');
+    setMarkerStyle(defaults.markerStyle.style);
+    setMarkerSize(defaults.markerStyle.size);
+  }
+
   function handleMapCenterChange(center: { lat: number; lng: number }): void {
     setCenterLat(String(center.lat));
     setCenterLng(String(center.lng));
@@ -138,6 +261,20 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setLogoUrl(initialMap.branding?.logoUrl ?? '');
     setPrimaryColor(initialMap.branding?.primaryColor ?? '');
     setSecondaryColor(initialMap.branding?.secondaryColor ?? '');
+    setThemePreset(initialTheme.preset);
+    setVisBusinessPois(initialTheme.visibility.businessPois);
+    setVisTransit(initialTheme.visibility.transit);
+    setVisSchools(initialTheme.visibility.schools);
+    setVisHospitals(initialTheme.visibility.hospitals);
+    setVisParks(initialTheme.visibility.parks);
+    setVisRoadLabels(initialTheme.visibility.roadLabels);
+    setVisTransitLabels(initialTheme.visibility.transitLabels);
+    setThemeBackground(initialTheme.colors?.background ?? '');
+    setThemeRoad(initialTheme.colors?.road ?? '');
+    setThemeWater(initialTheme.colors?.water ?? '');
+    setThemeLabel(initialTheme.colors?.label ?? '');
+    setMarkerStyle(initialTheme.markerStyle.style);
+    setMarkerSize(initialTheme.markerStyle.size);
     setFormError(undefined);
     setFieldErrors([]);
     setSaveState('idle');
@@ -171,6 +308,11 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
         ...(bounds ? { bounds } : {}),
       },
       ...(Object.keys(branding).length > 0 ? { branding } : {}),
+      // Checkpoint 1B.7 — always included, unlike `branding` above: every
+      // `MapTheme` value always has a fully-populated `preset`/`visibility`/
+      // `markerStyle` (only `colors` is ever partial), so there is no
+      // "nothing to send yet" state the way an unset branding field has.
+      theme: previewTheme,
     };
   }
 
@@ -555,6 +697,235 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
               </div>
             </div>
           </div>
+
+          <div className="card">
+            <div className="card-title">Theme</div>
+            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
+              Controls how the base map itself is displayed — not your categories or places, which are always shown.
+              Changes appear in the preview immediately; Save is still required to keep them.
+            </p>
+
+            <div className="field">
+              <label className="field-label" htmlFor="themePreset">
+                Preset
+              </label>
+              <select
+                id="themePreset"
+                name="themePreset"
+                className="select"
+                value={themePreset}
+                onChange={(event) => handleThemePresetChange(event.target.value as MapThemePreset)}
+                disabled={controlsDisabled}
+              >
+                {MAP_THEME_PRESETS.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">Picking a preset fills in the fields below — you can still adjust any of them afterward.</span>
+            </div>
+
+            <div className="field">
+              <span className="field-label" id="themeVisibilityLabel">
+                Visibility
+              </span>
+              <div role="group" aria-labelledby="themeVisibilityLabel">
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisBusinessPois"
+                    type="checkbox"
+                    checked={visBusinessPois}
+                    onChange={(event) => setVisBusinessPois(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisBusinessPois">Business POIs</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisTransit"
+                    type="checkbox"
+                    checked={visTransit}
+                    onChange={(event) => setVisTransit(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisTransit">Transit</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisSchools"
+                    type="checkbox"
+                    checked={visSchools}
+                    onChange={(event) => setVisSchools(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisSchools">Schools</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisHospitals"
+                    type="checkbox"
+                    checked={visHospitals}
+                    onChange={(event) => setVisHospitals(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisHospitals">Hospitals</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisParks"
+                    type="checkbox"
+                    checked={visParks}
+                    onChange={(event) => setVisParks(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisParks">Parks</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisRoadLabels"
+                    type="checkbox"
+                    checked={visRoadLabels}
+                    onChange={(event) => setVisRoadLabels(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisRoadLabels">Road labels</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisTransitLabels"
+                    type="checkbox"
+                    checked={visTransitLabels}
+                    onChange={(event) => setVisTransitLabels(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisTransitLabels">Transit labels</label>
+                </div>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <div className="field">
+                <label className="field-label" htmlFor="themeBackground">
+                  Background
+                </label>
+                <div className="color-field">
+                  <span className="color-swatch">
+                    {HEX_COLOR_PATTERN.test(themeBackground) ? (
+                      <span className="color-swatch-fill" style={{ background: themeBackground }} />
+                    ) : null}
+                  </span>
+                  <input
+                    id="themeBackground"
+                    type="text"
+                    className="input"
+                    placeholder="#RRGGBB"
+                    value={themeBackground}
+                    onChange={(event) => setThemeBackground(event.target.value)}
+                    disabled={controlsDisabled}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="themeRoad">
+                  Roads
+                </label>
+                <div className="color-field">
+                  <span className="color-swatch">
+                    {HEX_COLOR_PATTERN.test(themeRoad) ? <span className="color-swatch-fill" style={{ background: themeRoad }} /> : null}
+                  </span>
+                  <input
+                    id="themeRoad"
+                    type="text"
+                    className="input"
+                    placeholder="#RRGGBB"
+                    value={themeRoad}
+                    onChange={(event) => setThemeRoad(event.target.value)}
+                    disabled={controlsDisabled}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="themeWater">
+                  Water
+                </label>
+                <div className="color-field">
+                  <span className="color-swatch">
+                    {HEX_COLOR_PATTERN.test(themeWater) ? <span className="color-swatch-fill" style={{ background: themeWater }} /> : null}
+                  </span>
+                  <input
+                    id="themeWater"
+                    type="text"
+                    className="input"
+                    placeholder="#RRGGBB"
+                    value={themeWater}
+                    onChange={(event) => setThemeWater(event.target.value)}
+                    disabled={controlsDisabled}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="themeLabel">
+                  Labels
+                </label>
+                <div className="color-field">
+                  <span className="color-swatch">
+                    {HEX_COLOR_PATTERN.test(themeLabel) ? <span className="color-swatch-fill" style={{ background: themeLabel }} /> : null}
+                  </span>
+                  <input
+                    id="themeLabel"
+                    type="text"
+                    className="input"
+                    placeholder="#RRGGBB"
+                    value={themeLabel}
+                    onChange={(event) => setThemeLabel(event.target.value)}
+                    disabled={controlsDisabled}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <div className="field">
+                <label className="field-label" htmlFor="markerStyle">
+                  Marker style
+                </label>
+                <select
+                  id="markerStyle"
+                  name="markerStyle"
+                  className="select"
+                  value={markerStyle}
+                  onChange={(event) => setMarkerStyle(event.target.value as MapMarkerStyle)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_MARKER_STYLES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="markerSize">
+                  Marker size
+                </label>
+                <select
+                  id="markerSize"
+                  name="markerSize"
+                  className="select"
+                  value={markerSize}
+                  onChange={(event) => setMarkerSize(event.target.value as MapMarkerSize)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_MARKER_SIZES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -566,10 +937,11 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
               center={previewCenter}
               zoom={previewZoom}
               bounds={previewBounds}
+              theme={previewTheme}
               onCenterChange={handleMapCenterChange}
               onZoomChange={handleMapZoomChange}
             />
-            <MapPreviewInfo center={previewCenter} zoom={previewZoom} bounds={previewBounds} />
+            <MapPreviewInfo center={previewCenter} zoom={previewZoom} bounds={previewBounds} theme={previewTheme} />
           </div>
         </div>
       </div>

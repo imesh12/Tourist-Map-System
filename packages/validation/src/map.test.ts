@@ -61,6 +61,61 @@ describe('mapSchema', () => {
     const result = mapSchema.safeParse({ ...validMap, branding: { primaryColor: 'red' } });
     expect(result.success).toBe(false);
   });
+
+  describe('theme — checkpoint 1B.7', () => {
+    it('accepts a Map document with no theme field at all (backward compatibility — every map created before 1B.7)', () => {
+      expect(mapSchema.safeParse(validMap).success).toBe(true);
+    });
+
+    it('accepts a Map document with a valid theme', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        theme: {
+          preset: 'TOURIST_CLEAN',
+          visibility: {
+            businessPois: false,
+            transit: true,
+            schools: false,
+            hospitals: false,
+            parks: true,
+            roadLabels: true,
+            transitLabels: true,
+          },
+          colors: { background: '#F7F8F5', road: '#FFFFFF', water: '#DDEBF4', label: '#4B5563' },
+          markerStyle: { style: 'PIN', size: 'MEDIUM' },
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a Map document with an invalid theme (unrecognized preset)', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        theme: {
+          preset: 'RAINBOW',
+          visibility: {
+            businessPois: false,
+            transit: true,
+            schools: false,
+            hospitals: false,
+            parks: true,
+            roadLabels: true,
+            transitLabels: true,
+          },
+          markerStyle: { style: 'PIN', size: 'MEDIUM' },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a Map document whose theme carries raw provider style JSON', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        theme: { styles: [{ featureType: 'poi.business', elementType: 'labels', stylers: [{ visibility: 'off' }] }] },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('mapAreaSchema — checkpoint 1B.1', () => {
