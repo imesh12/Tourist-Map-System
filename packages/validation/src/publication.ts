@@ -91,3 +91,26 @@ export const mapPublicationSnapshotSchema = z
   .strict();
 
 export type MapPublicationSnapshotParsed = z.infer<typeof mapPublicationSnapshotSchema>;
+
+/**
+ * Checkpoint 1B.9 — the schema for what `GET /api/public/maps/{mapId}`
+ * actually returns over the wire: the same snapshot shape with
+ * `customerId`/`publishedByUid` removed, mirroring shared-types'
+ * `PublicMapSnapshot = Omit<MapPublicationSnapshot, 'customerId' | 'publishedByUid'>`
+ * exactly (see that type's own doc comment, packages/shared-types/src/publication.ts)
+ * — derived from `mapPublicationSnapshotSchema` via `.omit()`, never a
+ * hand-duplicated second copy of every field. This is what `tourist-web`'s
+ * public-map client (apps/tourist-web/lib/public-map/public-map-client.ts)
+ * parses an untrusted HTTP response body with before treating any of it as
+ * real map data — the same "trust the writer, still validate the shape on
+ * every read" posture `mapPublicationSnapshotSchema`'s own doc comment
+ * already establishes, now applied at the public/unauthenticated boundary
+ * too, where the caller is a separate app over a real network hop rather
+ * than a same-process Firestore read.
+ */
+export const publicMapSnapshotSchema = mapPublicationSnapshotSchema.omit({
+  customerId: true,
+  publishedByUid: true,
+});
+
+export type PublicMapSnapshotParsed = z.infer<typeof publicMapSnapshotSchema>;

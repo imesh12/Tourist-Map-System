@@ -10,7 +10,7 @@
   "packageManager": "pnpm@11.22.0",
   "type": "module",
   "scripts": {
-    "build:packages": "pnpm --filter shared-types run build && pnpm --filter validation run build",
+    "build:packages": "pnpm --filter shared-types run build && pnpm --filter validation run build && pnpm --filter map-theme-adapter run build",
     "lint": "pnpm -r run lint",
     "pretypecheck": "pnpm run build:packages",
     "typecheck": "pnpm -r run typecheck",
@@ -25,7 +25,7 @@
     "firebase:functions:build": "pnpm --filter firebase-functions run build",
     "test:rules": "cd firebase && firebase --project touristmap-local emulators:exec --only firestore \"pnpm --filter firebase-functions run test:rules\"",
     "test:provisioning": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore \"pnpm --filter firebase-functions run test:provisioning\"",
-    "pretest:e2e": "pnpm run firebase:functions:build",
+    "pretest:e2e": "pnpm --filter firebase-functions run build",
     "test:e2e": "cd firebase && firebase --project touristmap-local emulators:exec --only auth,firestore,functions \"pnpm --filter admin-web run test:e2e\""
   },
   "devDependencies": {

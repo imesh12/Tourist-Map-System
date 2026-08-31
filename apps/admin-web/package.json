@@ -16,6 +16,7 @@
     "@googlemaps/js-api-loader": "^2.1.1",
     "firebase": "^12.0.0",
     "firebase-admin": "13.0.2",
+    "map-theme-adapter": "workspace:*",
     "next": "16.3.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",

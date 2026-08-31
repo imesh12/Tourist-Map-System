@@ -19,9 +19,9 @@ import { getE2eFirestore, provisionAdditionalMap, provisionTestTenant, type Test
  * (`map-preview-current-theme`) — the same provider-agnostic, always-visible
  * information area `map-preview.spec.ts` already uses for center/zoom/
  * bounds — plus the Theme form's own control state and real Firestore reads.
- * `google-theme-adapter.test.ts` (packages/validation... no — apps/admin-web/
- * lib/map-preview/) is what actually proves the real Google `styles` array
- * conversion itself.
+ * `google-theme-adapter.test.ts` (checkpoint 1B.9: moved to
+ * packages/map-theme-adapter/src/, formerly apps/admin-web/lib/map-preview/)
+ * is what actually proves the real Google `styles` array conversion itself.
  */
 
 async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'password'>): Promise<void> {

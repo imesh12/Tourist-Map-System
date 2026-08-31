@@ -109,3 +109,40 @@ export const E2E_APP_ENV: Record<string, string> = {
   // instantiated while this flag is the only thing enabling discovery.
   E2E_FAKE_EXTERNAL_POI_PROVIDER: 'true',
 };
+
+/**
+ * Checkpoint 1B.9 — `tourist-web`'s own dedicated E2E port, distinct from
+ * both its normal dev port (3001, see apps/tourist-web/package.json's `dev`
+ * script) and admin-web's own E2E port (`E2E_PORT`, 3100) above, for the
+ * same reason `E2E_PORT` itself is dedicated: this suite must never collide
+ * with a developer's manually-running `next dev` server for either app.
+ */
+export const E2E_TOURIST_PORT = 3101;
+export const E2E_TOURIST_BASE_URL = `http://127.0.0.1:${E2E_TOURIST_PORT}`;
+
+/**
+ * `tourist-web`'s own deterministic, emulator-adjacent application
+ * configuration, injected into its `next dev` process the same way
+ * `E2E_APP_ENV` is injected into admin-web's — see that constant's own doc
+ * comment for why every value must be explicitly set (even to `''`) rather
+ * than omitted, so a developer's own `apps/tourist-web/.env.local` can never
+ * leak into this suite.
+ *
+ * `ADMIN_PUBLIC_API_BASE_URL` points at admin-web's OWN E2E server
+ * (`E2E_BASE_URL`, port 3100) — the real `GET /api/public/maps/{mapId}`
+ * route this whole checkpoint is built around, not a mock/stub. This is
+ * what makes the cross-app E2E spec (`public-tourist-map.spec.ts`) a genuine
+ * integration test: `tourist-web`'s server component really does make an
+ * HTTP call to `admin-web`'s real running server for every scenario,
+ * including the draft/publish isolation test.
+ *
+ * `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is deliberately set to `''`, matching
+ * `E2E_APP_ENV`'s own established pattern (see that constant's doc comment)
+ * — this suite proves the "map preview is unavailable in this environment"
+ * fallback (§4/§13) deterministically, with no real, billable Google Maps
+ * network call ever made, and no real key needed to run this suite locally.
+ */
+export const E2E_TOURIST_APP_ENV: Record<string, string> = {
+  ADMIN_PUBLIC_API_BASE_URL: E2E_BASE_URL,
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: '',
+};

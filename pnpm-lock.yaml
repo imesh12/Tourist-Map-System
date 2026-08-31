@@ -38,6 +38,9 @@ importers:
       firebase-admin:
         specifier: 13.0.2
         version: 13.0.2(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)(supports-color@7.2.0)
+      map-theme-adapter:
+        specifier: workspace:*
+        version: link:../../packages/map-theme-adapter
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(@types/node@24.13.3)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -84,6 +87,12 @@ importers:
 
   apps/tourist-web:
     dependencies:
+      '@googlemaps/js-api-loader':
+        specifier: ^2.1.1
+        version: 2.1.1
+      map-theme-adapter:
+        specifier: workspace:*
+        version: link:../../packages/map-theme-adapter
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(@types/node@24.13.3)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -93,7 +102,16 @@ importers:
       react-dom:
         specifier: 19.2.0
         version: 19.2.0(react@19.2.0)
+      shared-types:
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+      validation:
+        specifier: workspace:*
+        version: link:../../packages/validation
     devDependencies:
+      '@types/google.maps':
+        specifier: ^3.65.5
+        version: 3.65.5
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
@@ -146,6 +164,25 @@ importers:
       firebase:
         specifier: ^12.0.0
         version: 12.17.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.67.0
+        version: 8.67.0(eslint@9.18.0(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@24.13.3)(supports-color@7.2.0)
+
+  packages/map-theme-adapter:
+    dependencies:
+      shared-types:
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.18.0
+        version: 9.18.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3

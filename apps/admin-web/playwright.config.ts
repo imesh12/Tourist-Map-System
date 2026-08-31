@@ -1,24 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
-import { E2E_APP_ENV, E2E_BASE_URL, E2E_PORT } from './e2e/constants';
+import {
+  E2E_APP_ENV,
+  E2E_BASE_URL,
+  E2E_PORT,
+  E2E_TOURIST_APP_ENV,
+  E2E_TOURIST_BASE_URL,
+  E2E_TOURIST_PORT,
+} from './e2e/constants';
 
 /**
  * Checkpoint 1A.4 auth-emulator integration tests.
  *
  * Must run with the Firebase Emulator Suite already active. Invoked via the
  * root `pnpm test:e2e` script, which wraps `playwright test` in
- * `firebase emulators:exec --only auth,firestore,functions` (see root
- * package.json). Scoped to `auth,firestore,functions` — checkpoint 1A.8
- * added real Firestore tenant data loading (`/admin`, `/admin/account`);
- * checkpoint 1A.9 added the `functions` emulator on top of that, since
- * `e2e/registration.spec.ts` drives the real `/register` UI, which calls the
- * real `registerClient` Callable Function over the Functions transport
- * (rather than seeding a tenant directly via the Admin SDK, as
- * `e2e/helpers/tenant-fixture.ts` does for every other spec in this suite).
- * The root `pretest:e2e` script builds `firebase/functions` first, since the
- * Functions emulator loads compiled output, not TypeScript source directly.
- * Do not run `pnpm --filter admin-web test:e2e` directly without the
- * emulators running first — the app's Firebase client/admin init will fail
- * to reach them.
+ * `firebase emulators:exec --only auth,firestore` (see root package.json).
+ * Scoped to `auth,firestore` — checkpoint 1A.8 added real Firestore tenant
+ * data loading (`/admin`, `/admin/account`), so both emulators are needed;
+ * still no Cloud Functions emulator, since this suite calls no Callable
+ * Function (test tenants are seeded directly via the Admin SDK against both
+ * emulators — see `e2e/helpers/tenant-fixture.ts` — not by invoking
+ * `registerClient` over the Functions transport). Do not run
+ * `pnpm --filter admin-web test:e2e` directly without the emulators running
+ * first — the app's Firebase client/admin init will fail to reach them.
  *
  * `webServer` starts `next dev` on a dedicated port (distinct from the
  * default 3000 a developer might already have running) so this suite never
@@ -67,13 +70,34 @@ export default defineConfig({
     baseURL: E2E_BASE_URL,
     trace: 'retain-on-failure',
   },
-  webServer: {
-    command: `next dev --port ${E2E_PORT}`,
-    url: E2E_BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-    env: E2E_APP_ENV,
-  },
+  // Checkpoint 1B.9 — `webServer` accepts an array of independently-started
+  // servers (Playwright's own documented shape); admin-web's own entry below
+  // is unchanged in every field. The added `tourist-web` entry starts a
+  // SECOND `next dev` process, via `cwd` (this config file lives in
+  // `apps/admin-web`, so `../tourist-web` is the sibling app directory in
+  // this same pnpm workspace), on its own dedicated E2E port
+  // (`E2E_TOURIST_PORT`, 3101) — never colliding with admin-web's E2E port
+  // (3100) or either app's normal dev port (3000/3001). Both servers must be
+  // up before any spec file's `page.goto()` — Playwright's own `webServer`
+  // array semantics wait for every entry's `url` to respond before running
+  // tests, so no spec needs to coordinate startup order itself.
+  webServer: [
+    {
+      command: `next dev --port ${E2E_PORT}`,
+      url: E2E_BASE_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: E2E_APP_ENV,
+    },
+    {
+      command: `next dev --port ${E2E_TOURIST_PORT}`,
+      cwd: '../tourist-web',
+      url: E2E_TOURIST_BASE_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: E2E_TOURIST_APP_ENV,
+    },
+  ],
   projects: [
     {
       name: 'chromium',

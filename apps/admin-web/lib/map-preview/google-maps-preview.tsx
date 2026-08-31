@@ -4,8 +4,8 @@
 import { importLibrary } from '@googlemaps/js-api-loader';
 import { useEffect, useRef, useState } from 'react';
 import type { MapStyle } from 'shared-types';
+import { mapThemeToGoogleMapsStyles } from 'map-theme-adapter';
 import { ensureGoogleMapsApiConfigured } from './google-maps-loader';
-import { mapThemeToGoogleMapsStyles } from './google-theme-adapter';
 import { MapPreviewSummary } from './map-preview-summary';
 import type { MapPreviewProps } from './types';
 

@@ -13,6 +13,15 @@ import { setOptions } from '@googlemaps/js-api-loader';
  * comment for why this matters. Reusing this loader, not re-implementing it,
  * is exactly what checkpoint 1B.3 §14 means by "do NOT introduce a second
  * Google Maps loading architecture."
+ *
+ * Dependency note (checkpoint 1B.9 repair history): this file's
+ * `setOptions`/`importLibrary` free-function approach is correct for this
+ * project's real dependency baseline, `@googlemaps/js-api-loader@^2.1.1`
+ * (whose top-level exports are exactly these two functions). 1B.9
+ * momentarily pinned `^1.16.8` instead — a package.json regression, not a
+ * problem with this file — which resolves to a version whose only public API
+ * is the (unrelated, class-based) `Loader`. That pin has been corrected back
+ * to `^2.1.1`; this file was never the thing that needed to change.
  */
 let apiKeyConfigured = false;
 

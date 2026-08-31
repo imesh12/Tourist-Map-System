@@ -4,6 +4,19 @@ import type { MapTheme } from 'shared-types';
  * MapTheme -> Google Maps styling adapter — checkpoint 1B.7, see
  * docs/architecture/MAP_THEME_ARCHITECTURE.md.
  *
+ * Checkpoint 1B.9: moved here, into its own tiny shared workspace package
+ * (`packages/map-theme-adapter`), from `apps/admin-web/lib/map-preview/
+ * google-theme-adapter.ts`. The public tourist map (`apps/tourist-web`) now
+ * needs the exact same `MapTheme -> Google Maps styles` translation the
+ * admin live preview already used — this function had zero dependency on
+ * anything admin-web-specific (only `shared-types`' `MapTheme`), so moving
+ * it (not forking a second copy) is a pure relocation with no behavior
+ * change: same implementation, same tests (moved verbatim alongside it),
+ * now importable as `from 'map-theme-adapter'` by both apps instead of
+ * living inside one of them. `apps/admin-web/lib/map-preview/
+ * google-maps-preview.tsx` was updated to import from this package; no
+ * other file referenced the old relative path.
+ *
  * The ONE place a provider-neutral `MapTheme` is translated into a real
  * Google Maps JS API `styles` array. Nothing else in this codebase is
  * allowed to generate a Google style array directly (§6 of the checkpoint:

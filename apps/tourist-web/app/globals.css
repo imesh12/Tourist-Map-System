@@ -6,6 +6,159 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/**
+ * Checkpoint 1B.9 §6/§14/§15 — the near-full-viewport public map shell.
+ * A small `header` branding row, one large `main` body region the map
+ * canvas fills, and a thin attribution footer. Deliberately minimal/subtle
+ * chrome (no admin-style cards, shadows, or padding-heavy panels) — this is
+ * a foundation for tourists, not an admin dashboard.
+ */
+.tourist-map-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.tourist-map-branding {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  z-index: 1;
+}
+
+.tourist-map-branding-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tourist-map-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.tourist-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tourist-map-attribution {
+  padding: 0.25rem 1rem;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+/**
+ * §18 — a small, test-mode-only diagnostics readout, deliberately unobtrusive
+ * (bottom-left corner, small text) since it only ever renders when
+ * `NODE_ENV !== 'production'`.
+ */
+.tourist-map-diagnostics {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+  max-width: 90%;
+  overflow-wrap: anywhere;
+}
+
+.tourist-map-diagnostics dt {
+  font-weight: 600;
+  display: inline;
+}
+
+.tourist-map-diagnostics dd {
+  display: inline;
+  margin: 0 0.75rem 0 0.25rem;
+}
+
+/**
+ * The "map can't render right now" inline fallback (missing key, unsupported
+ * provider, or a client-side load error) — sits inside `.tourist-map-body`,
+ * centered, matching the message-state page's look without being a full
+ * separate page.
+ */
+.tourist-map-unavailable {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+/**
+ * The full-viewport "nothing here but a sentence" state — shared by
+ * loading.tsx, not-found.tsx, and page.tsx's own 'error' branch (via
+ * `MapMessageState`).
+ */
+.tourist-map-message-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  padding: 1.5rem;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.tourist-map-message-heading {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.tourist-map-message-text {
+  margin: 0;
+  font-size: 1rem;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+/* Mobile responsiveness (§14) — a narrow viewport keeps the same layout,
+   just tighter branding/attribution padding so the map body stays maximized. */
+@media (max-width: 480px) {
+  .tourist-map-branding {
+    padding: 0.4rem 0.75rem;
+  }
+
+  .tourist-map-branding-name {
+    font-size: 0.9rem;
+  }
+
+  .tourist-map-attribution {
+    padding: 0.2rem 0.75rem;
+  }
+
+  .tourist-map-message-shell {
+    padding: 1rem;
+  }
 }

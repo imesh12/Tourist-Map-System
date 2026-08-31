@@ -2,7 +2,7 @@
   "name": "tourist-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Public Tourist Web Map application — Tourist Map System. Foundation scaffold only in Phase 1A; the real Tourist Map UI is built starting Phase 1E.",
+  "description": "Public Tourist Web Map application — Tourist Map System. Checkpoint 1B.9 adds the first real public map route; the full tourist experience (POIs, menu, search, ...) is built starting 1B.10+.",
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
@@ -12,11 +12,16 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.1.1",
+    "map-theme-adapter": "workspace:*",
     "next": "16.3.1",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "shared-types": "workspace:*",
+    "validation": "workspace:*"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.65.5",
     "@types/node": "^24.0.0",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",

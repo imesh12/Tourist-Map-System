@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapPublicationSnapshotSchema } from './publication';
+import { mapPublicationSnapshotSchema, publicMapSnapshotSchema } from './publication';
 
 /**
  * `mapPublicationSnapshotSchema` unit tests — checkpoint 1B.8 §23. Mirrors
@@ -160,5 +160,57 @@ describe('mapPublicationSnapshotSchema', () => {
     const withoutPublishedByUid: Record<string, unknown> = { ...validSnapshot };
     delete withoutPublishedByUid.publishedByUid;
     expect(mapPublicationSnapshotSchema.safeParse(withoutPublishedByUid).success).toBe(false);
+  });
+});
+
+/**
+ * `publicMapSnapshotSchema` unit tests — checkpoint 1B.9. This is what
+ * `tourist-web`'s public-map client actually parses `GET /api/public/maps/
+ * {mapId}`'s real response body with — the tests below deliberately mirror
+ * that route's own real output shape (customerId/publishedByUid ABSENT),
+ * not the full stored-document shape `validSnapshot` above represents.
+ */
+describe('publicMapSnapshotSchema', () => {
+  const publicSnapshot: Record<string, unknown> = { ...validSnapshot };
+  delete publicSnapshot.customerId;
+  delete publicSnapshot.publishedByUid;
+
+  it('accepts the real shape GET /api/public/maps/{mapId} returns (no customerId/publishedByUid)', () => {
+    expect(publicMapSnapshotSchema.safeParse(publicSnapshot).success).toBe(true);
+  });
+
+  it('rejects a payload that still carries customerId (.strict() — the public endpoint must never leak it, and this schema must never silently accept it if it somehow did)', () => {
+    const result = publicMapSnapshotSchema.safeParse(validSnapshot);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload that still carries publishedByUid', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, publishedByUid: 'uid_admin_a' });
+    expect(result.success).toBe(false);
+  });
+
+  it('still rejects a missing theme, matching mapPublicationSnapshotSchema’s own invariant', () => {
+    const mapWithoutTheme = {
+      name: (publicSnapshot.map as { name: string }).name,
+      mapProvider: (publicSnapshot.map as { mapProvider: unknown }).mapProvider,
+      area: (publicSnapshot.map as { area: unknown }).area,
+    };
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, map: mapWithoutTheme });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized extra top-level field (.strict() is preserved by .omit())', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, internalDebugInfo: 'leak' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a mapId that does not match the mapId format', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, mapId: 'not-a-map-id' });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an empty pois/categories/menu snapshot (an unpublished-content map that was still explicitly published)', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, menu: [], categories: [], pois: [] });
+    expect(result.success).toBe(true);
   });
 });
