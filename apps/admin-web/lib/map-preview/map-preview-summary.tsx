@@ -24,7 +24,10 @@ export function MapPreviewSummary({ notice }: MapPreviewSummaryProps) {
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
-        minHeight: 320,
+        // Checkpoint 1B.8 §3 — matches google-maps-preview.tsx's own bumped
+        // height, so the fallback notice occupies the same larger footprint
+        // the live map does.
+        minHeight: 520,
         border: '1px dashed var(--color-border-strong)',
         borderRadius: 'var(--radius-md)',
         padding: 'var(--space-5)',

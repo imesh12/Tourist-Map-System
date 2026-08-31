@@ -1,4 +1,3 @@
-import { cache } from 'react';
 import { mapIdSchema, mapSchema, type MapParsed } from 'validation';
 import { getFirebaseAdminFirestore } from '../firebase/admin';
 import { getCurrentTenantIdentity, type TenantIdentity, type TenantIdentityDenialReason } from './tenant-identity';
@@ -22,6 +21,29 @@ import { getCurrentTenantIdentity, type TenantIdentity, type TenantIdentityDenia
  * the same `'map_not_found'` reason (see the doc comment on
  * `MapOwnershipDenialReason` below for why this is deliberate, not an
  * oversight).
+ *
+ * Checkpoint 1B.8 repair round — this function was previously wrapped in
+ * React's `cache()` (`export const getOwnedMapContext = cache(resolveOwnedMapContext)`),
+ * intended purely as a same-request read dedupe (e.g. a `[mapId]` layout and
+ * the page beneath it both resolving the same map within one Server
+ * Component render). `React.cache()`'s memoization is only guaranteed to be
+ * scoped to a single React render pass — that guarantee does not extend to
+ * a Route Handler (`route.ts`) invocation, which is a plain request handler
+ * outside the render tree, not a render. Two genuinely separate HTTP
+ * requests hitting different Route Handlers for the SAME `mapId` in quick
+ * succession (exactly what a real "Save, then immediately Publish" or
+ * "create a category, sign out, then hit an import/discover endpoint"
+ * sequence produces) are exactly the shape of call this project's own E2E
+ * suite newly started exercising back-to-back once checkpoint 1B.8 added
+ * the Publish flow — and are exactly the shape of call for which a
+ * memoization keyed only on the `mapId` argument (not on the request, not
+ * on the caller's identity) can return an earlier request's STALE result:
+ * a since-updated map's old name, or worse, an earlier signed-in caller's
+ * authorization decision reused for a since-signed-out caller. For a
+ * security-critical, per-request authorization check, "always re-read" is
+ * the only safe default — the same-request read-dedup `cache()` provided
+ * was a minor efficiency nicety, never something correctness depended on,
+ * so this function is now a plain, always-fresh `async function` again.
  */
 
 export type MapOwnershipDenialReason =
@@ -64,7 +86,7 @@ function mapDenied(reason: 'map_not_found', mapId: string): OwnedMapContextResul
   return { ok: false, reason };
 }
 
-async function resolveOwnedMapContext(mapId: string): Promise<OwnedMapContextResult> {
+export async function getOwnedMapContext(mapId: string): Promise<OwnedMapContextResult> {
   const identityResult = await getCurrentTenantIdentity();
   if (!identityResult.ok) {
     return identityResult.provisioningStatus
@@ -106,15 +128,6 @@ async function resolveOwnedMapContext(mapId: string): Promise<OwnedMapContextRes
 
   return { ok: true, context: { identity, map } };
 }
-
-/**
- * `cache()`-wrapped, keyed by `mapId` — React's `cache()` dedupes by
- * function identity + arguments, so two calls with the SAME `mapId` within
- * one request's render pass (a `[mapId]` layout and the page beneath it, for
- * instance) share one underlying Firestore read; a different `mapId`
- * correctly gets its own resolution.
- */
-export const getOwnedMapContext = cache(resolveOwnedMapContext);
 
 /**
  * True when a denied `OwnedMapContextResult`'s `reason` originated from the

@@ -3,7 +3,7 @@ import { clearEmulatorUsers } from './helpers/emulator-auth';
 import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './helpers/tenant-fixture';
 
 /**
- * Checkpoint 1B.1 `/admin/maps/{mapId}/settings` integration tests  Ereal
+ * Checkpoint 1B.1 `/admin/maps/{mapId}/settings` integration tests — real
  * Auth + Firestore Emulator + a real `next dev` server, same pattern as the
  * rest of this suite (see playwright.config.ts). Covers the required
  * scenarios A–K from docs/stages/STAGE_1B_TECHNICAL_PLAN.md's 1B.1
@@ -15,8 +15,8 @@ import { getE2eFirestore, provisionTestTenant, type TestTenantFixture } from './
  * auth.spec.ts/dashboard.spec.ts/protected-routes.spec.ts/
  * registration.spec.ts, not duplicated here.
  *
- * Checkpoint 1B.6 rewrite: `/admin/map` ↁE`/admin/maps/{mapId}/settings`,
- * `PATCH /api/map/settings` ↁE`PATCH /api/maps/{mapId}/settings`  Esee
+ * Checkpoint 1B.6 rewrite: `/admin/map` → `/admin/maps/{mapId}/settings`,
+ * `PATCH /api/map/settings` → `PATCH /api/maps/{mapId}/settings` — see
  * `apps/admin-web/e2e/categories.spec.ts`'s own header comment for the full
  * reasoning.
  */
@@ -48,9 +48,15 @@ test.describe('1B.1 map settings', () => {
     await page.goto(`/admin/maps/${tenant.mapId}/settings`); // B
     await expect(page).toHaveURL(new RegExp(`/admin/maps/${tenant.mapId}/settings$`));
 
-    // C: real current values  EPhase 1A provisioning defaults.
+    // C: real current values — Phase 1A provisioning defaults.
     await expect(page.getByLabel('Map name')).toHaveValue(tenant.mapName);
     await expect(page.getByLabel('Provider')).toHaveValue('GOOGLE_MAPS');
+    // Checkpoint 1B.8 repair — Theme's own "Marker style" select field now
+    // makes a bare `getByLabel('Style')` ambiguous under Playwright's
+    // default case-insensitive substring match ("Marker style" contains
+    // "style"). `{ exact: true }` keeps this resolving to the Provider
+    // Style field specifically — the field itself is unchanged/still
+    // correctly labeled "Style", so this is a locator fix, not a UI rename.
     await expect(page.getByLabel('Style', { exact: true })).toHaveValue('ROAD');
     await expect(page.getByRole('button', { name: 'Unbounded', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'Bounded', exact: true })).toHaveAttribute('aria-pressed', 'false');
@@ -78,17 +84,21 @@ test.describe('1B.1 map settings', () => {
 
     // H: basic branding.
     await page.getByLabel('Logo URL').fill('https://example.com/kyoto-logo.png');
-    await page.getByLabel('Primary color').fill('#112233');
-    await page.getByLabel('Secondary color').fill('#445566');
+    // Checkpoint 1B.8 — each color field now also renders a same-labeled
+    // `<input type="color">` picker (ColorField, components/color-field.tsx)
+    // whose own accessible name is `"<label> picker"`; `{ exact: true }`
+    // keeps this resolving to the hex text field specifically.
+    await page.getByLabel('Primary color', { exact: true }).fill('#112233');
+    await page.getByLabel('Secondary color', { exact: true }).fill('#445566');
 
     await page.getByRole('button', { name: 'Save' }).click();
-    // Not `getByRole('alert'/'status')`  Ethis app's Next.js dev route
+    // Not `getByRole('alert'/'status')` — this app's Next.js dev route
     // announcer also renders with an accessibility-live-region role on every
     // page (see e2e/auth.spec.ts's identical note), so this is scoped to the
     // form's own success text instead.
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
-    // I: reload  EFirestore is the source of truth, not React state.
+    // I: reload — Firestore is the source of truth, not React state.
     await page.reload();
     await expect(page.getByLabel('Map name')).toHaveValue('Kyoto Tours Renamed Map');
     await expect(page.getByRole('button', { name: 'Bounded', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -100,8 +110,8 @@ test.describe('1B.1 map settings', () => {
     await expect(page.getByLabel('East')).toHaveValue('135.85');
     await expect(page.getByLabel('West')).toHaveValue('135.65');
     await expect(page.getByLabel('Logo URL')).toHaveValue('https://example.com/kyoto-logo.png');
-    await expect(page.getByLabel('Primary color')).toHaveValue('#112233');
-    await expect(page.getByLabel('Secondary color')).toHaveValue('#445566');
+    await expect(page.getByLabel('Primary color', { exact: true })).toHaveValue('#112233');
+    await expect(page.getByLabel('Secondary color', { exact: true })).toHaveValue('#445566');
 
     // Draft-only: this checkpoint never creates a publishedMaps doc.
     const firestore = await getE2eFirestore();
@@ -124,7 +134,7 @@ test.describe('1B.1 map settings', () => {
     await page.getByLabel('Center latitude').fill('34.6937');
     await page.getByLabel('Center longitude').fill('135.5023');
     await page.getByLabel('Default zoom').fill('12');
-    // north <= south  Einvalid.
+    // north <= south — invalid.
     await page.getByLabel('North').fill('34.5');
     await page.getByLabel('South').fill('34.8');
     await page.getByLabel('East').fill('135.6');
@@ -160,17 +170,18 @@ test.describe('1B.1 map settings', () => {
     await page.goto(`/admin/maps/${tenantA.mapId}/settings`);
     await page.getByLabel('Map name').fill('Tenant A Renamed Map');
     await page.getByRole('button', { name: 'Save' }).click();
-    // Not `getByRole('alert'/'status')`  Ethis app's Next.js dev route
+    // Not `getByRole('alert'/'status')` — this app's Next.js dev route
     // announcer also renders with an accessibility-live-region role on every
     // page (see e2e/auth.spec.ts's identical note), so this is scoped to the
     // form's own success text instead.
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
     // A request against tenant A's own map URL that also tries to smuggle an
-    // explicit mapId/customerId pointed at tenant B in the body  E    // mapSettingsUpdateSchema's `.strict()` mode rejects this outright as an
+    // explicit mapId/customerId pointed at tenant B in the body —
+    // mapSettingsUpdateSchema's `.strict()` mode rejects this outright as an
     // unrecognized field, and even if it didn't, the route never reads a
     // client-supplied mapId/customerId at all (see
-    // app/api/maps/[mapId]/settings/route.ts)  Ethe target map always comes
+    // app/api/maps/[mapId]/settings/route.ts) — the target map always comes
     // from the URL's mapId, verified against the caller's own session via
     // getOwnedMapContext.
     const forgedResult = await page.evaluate(
@@ -191,7 +202,8 @@ test.describe('1B.1 map settings', () => {
     );
     expect(forgedResult.status).toBe(400);
 
-    // A second attempt: forging tenant B's own mapId directly into the URL  E    // getOwnedMapContext denies before any settings body is even parsed.
+    // A second attempt: forging tenant B's own mapId directly into the URL —
+    // getOwnedMapContext denies before any settings body is even parsed.
     const forgedUrlResult = await page.evaluate(async (targetMapId: string) => {
       const response = await fetch(`/api/maps/${targetMapId}/settings`, {
         method: 'PATCH',
@@ -210,7 +222,7 @@ test.describe('1B.1 map settings', () => {
 
     const firestore = await getE2eFirestore();
     const tenantBSnap = await firestore.doc(`maps/${tenantB.mapId}`).get();
-    // Tenant B's map is completely untouched by tenant A's session  Enever
+    // Tenant B's map is completely untouched by tenant A's session — never
     // renamed to "Tenant A Renamed Map", "Forged Cross-Tenant Name", or
     // "Forged Via URL".
     expect(tenantBSnap.data()?.name).toBe(tenantB.mapName);

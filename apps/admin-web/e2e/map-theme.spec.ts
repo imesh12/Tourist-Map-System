@@ -58,9 +58,14 @@ test.describe('1B.7 map theme', () => {
     await expect(page.getByLabel('Parks')).toBeVisible();
     await expect(page.getByLabel('Road labels')).toBeVisible();
     await expect(page.getByLabel('Transit labels')).toBeVisible();
-    await expect(page.getByLabel('Background')).toBeVisible();
-    await expect(page.getByLabel('Roads')).toBeVisible();
-    await expect(page.getByLabel('Water')).toBeVisible();
+    // Checkpoint 1B.8 — each color field now also renders a same-labeled
+    // `<input type="color">` picker (see ColorField, components/color-field.tsx)
+    // whose own accessible name is `"<label> picker"`; every bare-label
+    // lookup below must be `{ exact: true }` to keep resolving to the hex
+    // text field specifically, not both controls ambiguously.
+    await expect(page.getByLabel('Background', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Roads', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Water', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Labels', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Marker style')).toBeVisible();
     await expect(page.getByLabel('Marker size')).toBeVisible();
@@ -71,7 +76,7 @@ test.describe('1B.7 map theme', () => {
     // showing an empty/undefined state.
     await expect(page.getByLabel('Preset')).toHaveValue('STANDARD');
     await expect(page.getByLabel('Business POIs')).toBeChecked();
-    await expect(page.getByLabel('Background')).toHaveValue('');
+    await expect(page.getByLabel('Background', { exact: true })).toHaveValue('');
   });
 
   test('the Tourist Clean preset is selectable and populates the expected visibility/colors (B)', async ({ page }) => {
@@ -92,8 +97,8 @@ test.describe('1B.7 map theme', () => {
     await expect(page.getByLabel('Hospitals')).not.toBeChecked();
     await expect(page.getByLabel('Parks')).toBeChecked();
     await expect(page.getByLabel('Transit', { exact: true })).toBeChecked();
-    await expect(page.getByLabel('Background')).toHaveValue('#F7F8F5');
-    await expect(page.getByLabel('Water')).toHaveValue('#DDEBF4');
+    await expect(page.getByLabel('Background', { exact: true })).toHaveValue('#F7F8F5');
+    await expect(page.getByLabel('Water', { exact: true })).toHaveValue('#DDEBF4');
   });
 
   test('changing the preset updates the live preview immediately, with no Save (C)', async ({ page }) => {
@@ -149,11 +154,12 @@ test.describe('1B.7 map theme', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
-    await page.getByLabel('Water').fill('#123456');
-    // The swatch beside the input only renders a fill once the value is a
-    // valid #RRGGBB — this is the same live, prop-driven state that also
-    // reaches `previewTheme`/`MapPreview`/`MapPreviewInfo` (no Save).
-    await expect(page.locator('.color-swatch-fill')).toHaveCount(1);
+    await page.getByLabel('Water', { exact: true }).fill('#123456');
+    // Checkpoint 1B.8 — the visual `<input type="color">` picker beside the
+    // hex field is synced from the exact same state; this is the same live,
+    // prop-driven value that also reaches `previewTheme`/`MapPreview`/
+    // `MapPreviewInfo` (no Save).
+    await expect(page.getByLabel('Water picker')).toHaveValue('#123456');
     await expect(page.getByText('Map settings saved.')).toHaveCount(0);
   });
 
@@ -209,7 +215,7 @@ test.describe('1B.7 map theme', () => {
     // reduced POIs.
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
     await page.getByLabel('Preset').selectOption('TOURIST_CLEAN');
-    await page.getByLabel('Water').fill('#0000FF');
+    await page.getByLabel('Water', { exact: true }).fill('#0000FF');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 

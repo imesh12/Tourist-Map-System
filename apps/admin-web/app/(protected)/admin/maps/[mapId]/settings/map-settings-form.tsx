@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import {
   DEFAULT_MAP_THEME,
   MAP_AREA_TYPES,
@@ -21,22 +21,48 @@ import {
 } from 'shared-types';
 import { mapSettingsUpdateSchema, type MapParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
+import { ColorField } from '@/components/color-field';
+import { DraftPreviewModal } from '@/components/draft-preview-modal';
+import { formatPublishedAt } from '@/lib/format-timestamp';
 import { MapPreview } from '@/lib/map-preview/map-preview';
 import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
 
 /**
- * The `/admin/map` Map Settings workspace — checkpoint 1B.1, redesigned in
- * checkpoint 1A.10 into a professional two-column workspace (§4): editable
- * cards on the left, a large live Map Preview on the right.
+ * The `/admin/maps/{mapId}/settings` Map Settings workspace — checkpoint
+ * 1B.1, redesigned in checkpoint 1A.10 into a two-column workspace (§4):
+ * editable cards on the left, a live Map Preview on the right. Checkpoint
+ * 1B.8 makes three changes to this file:
+ *
+ * 1. UX repair (§2/§3/§4) — the right column is now wrapped in
+ *    `.workspace-grid-sticky-col` (globals.css) so it stays visible while
+ *    scrolling through Branding/Theme/Colors, and every hex-only color field
+ *    (`primaryColor`/`secondaryColor`/theme background/road/water/label) is
+ *    now a `ColorField` (visual `<input type="color">` + hex text, synced).
+ * 2. The "Preview" button (§6) no longer scrolls to an anchor — it opens
+ *    `DraftPreviewModal`, a real dialog rendering the exact same unsaved
+ *    browser state (provider/style/center/zoom/bounds/theme) the inline
+ *    preview already shows.
+ * 3. Save vs. Publish (§7/§14/§15) — a new Publish button calls
+ *    `POST /api/maps/{mapId}/publish`, disabled whenever this form has
+ *    unsaved edits ("Save changes before publishing."), plus a publication
+ *    status row (Never published / Published version N) sourced from the
+ *    server-authoritative `initialMap.publication` (see
+ *    shared-types' `MapPublicationMeta`) — never fabricated from local
+ *    state alone. "Unsaved Map Settings" is deliberately the only thing
+ *    tracked as local React state here (§15 explicitly permits this,
+ *    scoped conservatively to what this ONE form can actually know about
+ *    itself — categories/POIs/menu items are out of this checkpoint's
+ *    dirty-tracking scope).
  *
  * Client-side `mapSettingsUpdateSchema.safeParse()` here is a UX
  * convenience only (instant feedback, no round-trip for an obviously
- * invalid value) — `PATCH /api/map/settings` re-validates the same schema
- * server-side and is the only boundary that actually matters
- * (docs/stages/STAGE_1B_TECHNICAL_PLAN.md §3). This form never sends
- * `mapId`/`customerId`/`status`/`createdAt`/`updatedAt` — the schema has no
- * such fields, and the server resolves the target map from the verified
- * session, not from anything this form submits.
+ * invalid value) — `PATCH /api/maps/{mapId}/settings` re-validates the same
+ * schema server-side and is the only boundary that actually matters. This
+ * form never sends `mapId`/`customerId`/`status`/`createdAt`/`updatedAt`/
+ * `publication` — the schema has no such fields, and the server resolves
+ * the target map from the verified session, not from anything this form
+ * submits; `publication` is written exclusively by the separate Publish
+ * endpoint (see `handlePublish` below), never by this form's own Save.
  *
  * Numeric fields are plain text inputs (not `<input type="number">`'s
  * built-in spinner UX) kept as strings in state and parsed at submit time —
@@ -46,14 +72,6 @@ import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
  * otherwise blur. The zoom slider (checkpoint 1A.10 §7) reads/writes the
  * exact same string state as the numeric input — one source of truth, two
  * controls.
- *
- * The "Discard changes" action (checkpoint 1A.10 §3) is real, working
- * client-side state reset — no fetch, nothing to fake. "Preview" is a
- * plain in-page anchor link to the Map Preview card below — also real: it
- * scrolls to the same live preview that already reflects every unsaved
- * change, rather than pretending a separate publish-preview engine exists
- * (§3: "do not claim actual publishing functionality exists if it does not
- * yet exist").
  *
  * Theme (checkpoint 1B.7): one `useState` per editable `MapTheme` field,
  * same granular-state convention every other card on this form already
@@ -68,7 +86,29 @@ import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
  * it; no preset in `MAP_THEME_PRESET_DEFAULTS` sets it either, so this form
  * simply never emits it. `previewTheme` below is the single source of truth
  * fed to both the live `<MapPreview>` (§8: updates with no Save) and
- * `buildPayload()`'s `theme` field (Save persists the same value).
+ * `payload`'s `theme` field (Save persists the same value).
+ *
+ * Checkpoint 1B.8 bug fix: `previewTheme`'s (and the new `previewBranding`'s)
+ * colors were previously included the instant a hex field was non-empty,
+ * even mid-typed/invalid (e.g. `#1a`) — that reached `mapThemeToGoogleMapsStyles()`
+ * and, from there, the REAL Google Maps `styles` array, i.e. an invalid
+ * provider style value while the admin was still typing (§4: "Invalid/
+ * incomplete HEX text while typing must... not send invalid provider
+ * styles"). `toValidHexOrUndefined()` below is the fix — a color only ever
+ * reaches the live preview once it matches `#RRGGBB` exactly; the raw text
+ * state feeding the input itself is completely untouched by this gate, so
+ * the field stays fully editable regardless.
+ *
+ * Checkpoint 1B.8 repair round - real hydration bug fix: the "Last
+ * published {timestamp}" row previously formatted its timestamp with
+ * Date.prototype.toLocaleString(), whose output depends on the running
+ * environment's locale/ICU data. Node (this Server Component's SSR pass)
+ * and Chromium (hydrating that same HTML client-side) can disagree on that
+ * default, producing a genuine server/client text mismatch on first paint.
+ * formatPublishedAt() now lives in lib/format-timestamp.ts - a pure,
+ * UTC-getter-only formatter with no Intl/locale dependency, so it always
+ * returns the identical string in both environments. See that module's own
+ * doc comment for the full reasoning.
  */
 
 const MIN_ZOOM = 0;
@@ -83,6 +123,7 @@ interface MapSettingsFormProps {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved';
+type PublishState = 'idle' | 'publishing';
 
 function numberFieldToString(value: number | undefined): string {
   return value === undefined ? '' : String(value);
@@ -96,6 +137,12 @@ function parseOptionalNumber(value: string): number | undefined {
   }
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** See this file's own header comment — never lets a partial/invalid hex value reach a live preview. */
+function toValidHexOrUndefined(value: string): string | undefined {
+  const trimmed = value.trim();
+  return HEX_COLOR_PATTERN.test(trimmed) ? trimmed : undefined;
 }
 
 export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormProps) {
@@ -142,7 +189,22 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
+  // Checkpoint 1B.8 — Draft Preview modal open/closed. The modal is only
+  // ever mounted while open (see the JSX below), so opening/closing it
+  // never leaves a second, hidden `MapPreview`/Google Maps instance alive.
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Checkpoint 1B.8 — publication status, sourced from real Firestore data
+  // (`initialMap.publication`, resolved server-side by `getOwnedMapContext()`),
+  // never fabricated. Updated locally only once `handlePublish()` itself
+  // receives a real server response for THIS publish action.
+  const [publication, setPublication] = useState(initialMap.publication);
+  const [publishState, setPublishState] = useState<PublishState>('idle');
+  const [publishError, setPublishError] = useState<string | undefined>(undefined);
+  const [justPublished, setJustPublished] = useState(false);
+
   const isSaving = saveState === 'saving';
+  const isPublishing = publishState === 'publishing';
   const controlsDisabled = !canEdit || isSaving;
 
   const previewCenter = useMemo(() => {
@@ -167,19 +229,43 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       : undefined;
   }, [areaType, north, south, east, west]);
 
+  // Checkpoint 1B.8 — the same "only a fully-valid hex reaches a live
+  // preview" gate applied to branding, for the Draft Preview modal's accent
+  // header (see DraftPreviewModal's own doc comment). Branding colors don't
+  // feed the basemap itself (MapBranding is admin/tourist-chrome branding,
+  // not `MapTheme` — see that interface's own doc comment, shared-types/src/map.ts),
+  // so this is the one place they get a genuine "live preview" role this
+  // checkpoint.
+  const previewBranding = useMemo(() => {
+    const primary = toValidHexOrUndefined(primaryColor);
+    const secondary = toValidHexOrUndefined(secondaryColor);
+    if (!primary && !secondary && !logoUrl.trim()) {
+      return undefined;
+    }
+    return {
+      ...(logoUrl.trim() ? { logoUrl: logoUrl.trim() } : {}),
+      ...(primary ? { primaryColor: primary } : {}),
+      ...(secondary ? { secondaryColor: secondary } : {}),
+    };
+  }, [logoUrl, primaryColor, secondaryColor]);
+
   // Checkpoint 1B.7 — the single source of truth for both the live preview
-  // (no Save required — §8) and `buildPayload()`'s `theme` field (Save
-  // persists the exact same value). `colors` is only included when at
-  // least one hex field is actually set, mirroring `buildPayload()`'s own
-  // `branding` object below — an absent field means "use the provider's own
-  // default for that element," never a forced value (see `MapThemeColors`'s
-  // doc comment, shared-types/src/map.ts).
+  // (no Save required — §8) and `payload`'s `theme` field (Save persists
+  // the exact same value). `colors` is only included when at least one hex
+  // field is actually a FULLY VALID `#RRGGBB` value (checkpoint 1B.8 fix —
+  // see this file's header comment) — an absent field means "use the
+  // provider's own default for that element," never a forced or
+  // partially-typed value.
   const previewTheme = useMemo<MapTheme>(() => {
     const colors: { background?: string; road?: string; water?: string; label?: string } = {};
-    if (themeBackground.trim()) colors.background = themeBackground.trim();
-    if (themeRoad.trim()) colors.road = themeRoad.trim();
-    if (themeWater.trim()) colors.water = themeWater.trim();
-    if (themeLabel.trim()) colors.label = themeLabel.trim();
+    const background = toValidHexOrUndefined(themeBackground);
+    const road = toValidHexOrUndefined(themeRoad);
+    const water = toValidHexOrUndefined(themeWater);
+    const label = toValidHexOrUndefined(themeLabel);
+    if (background) colors.background = background;
+    if (road) colors.road = road;
+    if (water) colors.water = water;
+    if (label) colors.label = label;
 
     return {
       preset: themePreset,
@@ -214,10 +300,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
 
   /**
    * Selecting a preset POPULATES `visibility`/`colors`/`markerStyle` from
-   * `MAP_THEME_PRESET_DEFAULTS` — it does not lock them (§9 of the
-   * checkpoint: no `CUSTOM` auto-relabeling; see `MapThemePreset`'s doc
-   * comment for the full reasoning). Hand-editing any field afterward
-   * simply leaves `themePreset` exactly as selected.
+   * `MAP_THEME_PRESET_DEFAULTS` — it does not lock them (§9 of checkpoint
+   * 1B.7: no `CUSTOM` auto-relabeling; see `MapThemePreset`'s doc comment
+   * for the full reasoning). Hand-editing any field afterward simply leaves
+   * `themePreset` exactly as selected.
    */
   function handleThemePresetChange(newPreset: MapThemePreset): void {
     const defaults = MAP_THEME_PRESET_DEFAULTS[newPreset];
@@ -280,7 +366,20 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setSaveState('idle');
   }
 
-  function buildPayload(): unknown {
+  // Checkpoint 1B.8 repair round — wrapped in `useCallback` (previously a
+  // plain function declaration referenced from inside the `payload`
+  // `useMemo` below) purely to give that memo's dependency array a STABLE,
+  // lint-clean thing to depend on: `react-hooks/exhaustive-deps` correctly
+  // flags a memo that calls a freshly-redeclared-every-render function
+  // without listing that function itself as a dependency, since it can't
+  // prove the function's own closure is covered by the memo's other deps.
+  // `useCallback`'s own dependency list below is the SAME primitive state
+  // values `buildPayload` actually reads — so `buildPayload` itself is now
+  // provably stable exactly when those values are unchanged, and `payload`
+  // depending on `[buildPayload]` alone is both correct and warning-free.
+  // This is a lint/stability fix only — the values `buildPayload` reads and
+  // returns are byte-for-byte unchanged from before.
+  const buildPayload = useCallback((): unknown => {
     const trimmedLat = centerLat.trim();
     const trimmedLng = centerLng.trim();
     const center = trimmedLat && trimmedLng ? { lat: Number(trimmedLat), lng: Number(trimmedLng) } : undefined;
@@ -314,7 +413,24 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       // "nothing to send yet" state the way an unset branding field has.
       theme: previewTheme,
     };
-  }
+  }, [name, provider, style, areaType, centerLat, centerLng, defaultZoom, north, south, east, west, logoUrl, primaryColor, secondaryColor, previewTheme]);
+
+  // Checkpoint 1B.8 — "Unsaved Map Settings" tracking (§15: explicitly
+  // permitted as LOCAL state, scoped only to this form). `payload` is
+  // recomputed whenever `buildPayload` itself changes identity, which
+  // happens exactly when one of ITS OWN dependencies (every current field
+  // value, listed above) changes — so this is equivalent to depending on
+  // each field directly, just funneled through one stable reference.
+  // `savedPayloadJson`'s `useState` initializer runs exactly once, on
+  // mount, BEFORE any field has been touched — so it captures precisely
+  // "what is currently saved" at that moment. It is updated again only when
+  // a Save actually succeeds (see `handleSubmit`), never on every
+  // keystroke, so it always reflects the last known-saved snapshot, not a
+  // moving target.
+  const payload = useMemo(() => buildPayload(), [buildPayload]);
+  const payloadJson = useMemo(() => JSON.stringify(payload), [payload]);
+  const [savedPayloadJson, setSavedPayloadJson] = useState(() => payloadJson);
+  const hasUnsavedMapSettingsChanges = payloadJson !== savedPayloadJson;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -326,7 +442,6 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setFieldErrors([]);
     setSaveState('idle');
 
-    const payload = buildPayload();
     const parsed = mapSettingsUpdateSchema.safeParse(payload);
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
@@ -357,12 +472,72 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       }
 
       setSaveState('saved');
+      setSavedPayloadJson(payloadJson);
       router.refresh();
     } catch {
       setFormError('Could not reach the server. Please check your connection and try again.');
       setSaveState('idle');
     }
   }
+
+  /**
+   * Publish — checkpoint 1B.8 §7/§14. Sends no body at all: the server
+   * derives every byte of the published snapshot itself from the SAVED
+   * Firestore draft (`POST /api/maps/{mapId}/publish`'s own doc comment).
+   * Disabled (see the JSX below) whenever `hasUnsavedMapSettingsChanges` is
+   * true, `!canEdit`, or a publish/save is already in flight — the guard
+   * here is defense in depth, not the only enforcement.
+   */
+  async function handlePublish(): Promise<void> {
+    if (isPublishing || isSaving || !canEdit || hasUnsavedMapSettingsChanges) {
+      return;
+    }
+
+    setPublishError(undefined);
+    setJustPublished(false);
+    setPublishState('publishing');
+    try {
+      const response = await fetch(`/api/maps/${mapId}/publish`, { method: 'POST' });
+
+      if (!response.ok) {
+        let message = 'Could not publish this map. Please try again.';
+        try {
+          const body = (await response.json()) as { message?: unknown };
+          if (typeof body.message === 'string' && body.message.length > 0) {
+            message = body.message;
+          }
+        } catch {
+          // Body wasn't JSON — fall back to the generic message above.
+        }
+        setPublishError(message);
+        setPublishState('idle');
+        return;
+      }
+
+      const body = (await response.json()) as { publicationId: string; version: number };
+      setPublication((current) => ({
+        currentPublicationId: body.publicationId,
+        version: body.version,
+        // The exact server timestamp isn't known client-side the instant
+        // this response arrives (it resolves server-side via
+        // `FieldValue.serverTimestamp()`) — `justPublished` below drives the
+        // "Published just now" copy for this session; `router.refresh()`
+        // then re-fetches the real, resolved value for any FUTURE render
+        // (e.g. a reload), same as `current?.publishedAt` did before this
+        // publish.
+        publishedAt: current?.publishedAt ?? { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
+        publishedByUid: current?.publishedByUid ?? '',
+      }));
+      setJustPublished(true);
+      setPublishState('idle');
+      router.refresh();
+    } catch {
+      setPublishError('Could not reach the server. Please check your connection and try again.');
+      setPublishState('idle');
+    }
+  }
+
+  const publishDisabled = !canEdit || isPublishing || isSaving || hasUnsavedMapSettingsChanges;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -379,21 +554,48 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
         <div>
           <h1 className="page-title">Map Settings</h1>
           <p className="page-description">
-            Configure how your map is displayed. Changes are saved as a draft — publishing to the public map is not
-            implemented yet.
+            Configure how your map is displayed. Save keeps your changes as a draft; Publish makes the saved draft the
+            live public map.
           </p>
         </div>
         <div className="page-actions">
-          <a href="#map-preview-card" className="btn btn-ghost">
+          <button type="button" className="btn btn-ghost" onClick={() => setPreviewOpen(true)} data-testid="preview-button">
             Preview
-          </a>
+          </button>
           <button type="button" className="btn btn-secondary" onClick={handleDiscard} disabled={controlsDisabled}>
             Discard changes
           </button>
           <button type="submit" className="btn btn-primary" disabled={controlsDisabled}>
             {isSaving ? 'Saving…' : 'Save'}
           </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handlePublish}
+            disabled={publishDisabled}
+            data-testid="publish-button"
+          >
+            {isPublishing ? 'Publishing…' : 'Publish'}
+          </button>
         </div>
+      </div>
+
+      <div className="publication-status" data-testid="publication-status">
+        {publication ? (
+          <span className="badge badge-success">
+            {justPublished ? 'Published just now' : `Published — version ${publication.version}`}
+          </span>
+        ) : (
+          <span className="badge badge-neutral">Never published</span>
+        )}
+        {publication && !justPublished ? (
+          <span className="publication-status-meta">Last published {formatPublishedAt(publication.publishedAt)}</span>
+        ) : null}
+        {hasUnsavedMapSettingsChanges ? (
+          <span className="badge" data-testid="unsaved-map-settings-badge">
+            Unsaved Map Settings
+          </span>
+        ) : null}
       </div>
 
       {!canEdit ? (
@@ -405,6 +607,12 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       {formError ? (
         <div className="alert alert-danger" role="alert">
           {formError}
+        </div>
+      ) : null}
+
+      {publishError ? (
+        <div className="alert alert-danger" role="alert">
+          {publishError}
         </div>
       ) : null}
 
@@ -420,6 +628,12 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
         <div className="alert alert-success" role="status">
           Map settings saved.
         </div>
+      ) : null}
+
+      {hasUnsavedMapSettingsChanges && canEdit ? (
+        <p className="field-hint" data-testid="publish-disabled-hint" style={{ marginTop: `calc(-1 * var(--space-2))`, marginBottom: 'var(--space-4)' }}>
+          Save changes before publishing.
+        </p>
       ) : null}
 
       <div className="workspace-grid">
@@ -652,50 +866,14 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
                 disabled={controlsDisabled}
               />
             </div>
-            <div className="field">
-              <label className="field-label" htmlFor="primaryColor">
-                Primary color
-              </label>
-              <div className="color-field">
-                <span className="color-swatch">
-                  {HEX_COLOR_PATTERN.test(primaryColor) ? (
-                    <span className="color-swatch-fill" style={{ background: primaryColor }} />
-                  ) : null}
-                </span>
-                <input
-                  id="primaryColor"
-                  name="primaryColor"
-                  type="text"
-                  className="input"
-                  placeholder="#RRGGBB"
-                  value={primaryColor}
-                  onChange={(event) => setPrimaryColor(event.target.value)}
-                  disabled={controlsDisabled}
-                />
-              </div>
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor="secondaryColor">
-                Secondary color
-              </label>
-              <div className="color-field">
-                <span className="color-swatch">
-                  {HEX_COLOR_PATTERN.test(secondaryColor) ? (
-                    <span className="color-swatch-fill" style={{ background: secondaryColor }} />
-                  ) : null}
-                </span>
-                <input
-                  id="secondaryColor"
-                  name="secondaryColor"
-                  type="text"
-                  className="input"
-                  placeholder="#RRGGBB"
-                  value={secondaryColor}
-                  onChange={(event) => setSecondaryColor(event.target.value)}
-                  disabled={controlsDisabled}
-                />
-              </div>
-            </div>
+            <ColorField id="primaryColor" label="Primary color" value={primaryColor} onChange={setPrimaryColor} disabled={controlsDisabled} />
+            <ColorField
+              id="secondaryColor"
+              label="Secondary color"
+              value={secondaryColor}
+              onChange={setSecondaryColor}
+              disabled={controlsDisabled}
+            />
           </div>
 
           <div className="card">
@@ -805,84 +983,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
             </div>
 
             <div className="field-row">
-              <div className="field">
-                <label className="field-label" htmlFor="themeBackground">
-                  Background
-                </label>
-                <div className="color-field">
-                  <span className="color-swatch">
-                    {HEX_COLOR_PATTERN.test(themeBackground) ? (
-                      <span className="color-swatch-fill" style={{ background: themeBackground }} />
-                    ) : null}
-                  </span>
-                  <input
-                    id="themeBackground"
-                    type="text"
-                    className="input"
-                    placeholder="#RRGGBB"
-                    value={themeBackground}
-                    onChange={(event) => setThemeBackground(event.target.value)}
-                    disabled={controlsDisabled}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label className="field-label" htmlFor="themeRoad">
-                  Roads
-                </label>
-                <div className="color-field">
-                  <span className="color-swatch">
-                    {HEX_COLOR_PATTERN.test(themeRoad) ? <span className="color-swatch-fill" style={{ background: themeRoad }} /> : null}
-                  </span>
-                  <input
-                    id="themeRoad"
-                    type="text"
-                    className="input"
-                    placeholder="#RRGGBB"
-                    value={themeRoad}
-                    onChange={(event) => setThemeRoad(event.target.value)}
-                    disabled={controlsDisabled}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label className="field-label" htmlFor="themeWater">
-                  Water
-                </label>
-                <div className="color-field">
-                  <span className="color-swatch">
-                    {HEX_COLOR_PATTERN.test(themeWater) ? <span className="color-swatch-fill" style={{ background: themeWater }} /> : null}
-                  </span>
-                  <input
-                    id="themeWater"
-                    type="text"
-                    className="input"
-                    placeholder="#RRGGBB"
-                    value={themeWater}
-                    onChange={(event) => setThemeWater(event.target.value)}
-                    disabled={controlsDisabled}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label className="field-label" htmlFor="themeLabel">
-                  Labels
-                </label>
-                <div className="color-field">
-                  <span className="color-swatch">
-                    {HEX_COLOR_PATTERN.test(themeLabel) ? <span className="color-swatch-fill" style={{ background: themeLabel }} /> : null}
-                  </span>
-                  <input
-                    id="themeLabel"
-                    type="text"
-                    className="input"
-                    placeholder="#RRGGBB"
-                    value={themeLabel}
-                    onChange={(event) => setThemeLabel(event.target.value)}
-                    disabled={controlsDisabled}
-                  />
-                </div>
-              </div>
+              <ColorField id="themeBackground" label="Background" value={themeBackground} onChange={setThemeBackground} disabled={controlsDisabled} />
+              <ColorField id="themeRoad" label="Roads" value={themeRoad} onChange={setThemeRoad} disabled={controlsDisabled} />
+              <ColorField id="themeWater" label="Water" value={themeWater} onChange={setThemeWater} disabled={controlsDisabled} />
+              <ColorField id="themeLabel" label="Labels" value={themeLabel} onChange={setThemeLabel} disabled={controlsDisabled} />
             </div>
 
             <div className="field-row">
@@ -928,7 +1032,7 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
           </div>
         </div>
 
-        <div>
+        <div className="workspace-grid-sticky-col">
           <div className="card" id="map-preview-card">
             <div className="card-title">Map Preview</div>
             <MapPreview
@@ -945,6 +1049,20 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
           </div>
         </div>
       </div>
+
+      {previewOpen ? (
+        <DraftPreviewModal
+          mapName={name}
+          provider={provider}
+          style={style}
+          center={previewCenter}
+          zoom={previewZoom}
+          bounds={previewBounds}
+          theme={previewTheme}
+          branding={previewBranding}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
     </form>
   );
 }

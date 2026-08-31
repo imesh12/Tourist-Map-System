@@ -632,12 +632,28 @@ select:focus-visible,
 }
 
 /* ---------------------------------------------------------------------
-   Admin shell — header + sidebar + content
+   Admin shell — header + sidebar + content — checkpoint 1B.8 §2 fix.
+
+   Previously `.admin-shell` only set `min-height: 100%`, which lets the
+   whole shell grow taller than the viewport once the workspace content is
+   long — at that point the BROWSER scrolls the entire page (header and
+   sidebar included), rather than just the workspace. Locking `.admin-shell`
+   to the actual viewport height and hiding its own overflow makes
+   `.admin-header` genuinely stationary (a normal, non-scrolling flex child)
+   and turns `.admin-body` into the one region that fills exactly the
+   remaining height; `.admin-main` (never `.admin-sidebar`, in the normal
+   case) is then the sole scrolling region. `height: 100vh` first, then
+   `100dvh` as a progressive enhancement — `100dvh` accounts for mobile
+   browser chrome showing/hiding, but isn't supported everywhere, so the
+   `100vh` declaration immediately before it is a safe fallback, not dead
+   code.
 --------------------------------------------------------------------- */
 .admin-shell {
-  min-height: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .admin-header {
@@ -698,6 +714,10 @@ select:focus-visible,
   flex: 1;
   display: flex;
   min-height: 0;
+  /* Belt-and-suspenders against a double scrollbar: `.admin-body` itself
+     never scrolls — `.admin-sidebar` and `.admin-main` each own their own
+     independent `overflow-y: auto` region below. */
+  overflow: hidden;
 }
 
 .admin-sidebar {
@@ -847,18 +867,43 @@ select:focus-visible,
 }
 
 /* ---------------------------------------------------------------------
-   Two-column workspace
+   Two-column workspace — checkpoint 1B.8 §3 widens the preview column and
+   makes it sticky, so it stays visible while the left column's Branding/
+   Theme/Colors cards scroll past.
 --------------------------------------------------------------------- */
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 42%) minmax(360px, 1fr);
+  grid-template-columns: minmax(340px, 38%) minmax(420px, 1fr);
   gap: var(--space-5);
   align-items: start;
+}
+
+/* The right column's own wrapper — `position: sticky` needs a scrolling
+   ancestor with a bounded height to stick within, which `.admin-main` now
+   is (see the admin-shell fix above). `align-self: start` (redundant with
+   the grid's own `align-items: start`, kept explicit here since sticky
+   positioning silently does nothing if a stretched grid item has no room to
+   move) plus a `max-height`/`overflow-y: auto` pair so a preview card
+   taller than the viewport scrolls internally instead of being clipped or
+   pushing the dialog off-screen. */
+.workspace-grid-sticky-col {
+  position: sticky;
+  top: var(--space-6);
+  align-self: start;
+  max-height: calc(100vh - var(--space-6) * 2);
+  max-height: calc(100dvh - var(--space-6) * 2);
+  overflow-y: auto;
 }
 
 @media (max-width: 900px) {
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-grid-sticky-col {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .admin-sidebar {
@@ -914,4 +959,111 @@ select:focus-visible,
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------
+   Color picker input — checkpoint 1B.8 §4, the native `<input type="color">`
+   half of `ColorField` (components/color-field.tsx). Styled to sit at the
+   same height/border-radius as the hex text field beside it.
+--------------------------------------------------------------------- */
+.color-picker-input {
+  appearance: none;
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.color-picker-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.color-picker-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.color-picker-input::-moz-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+/* ---------------------------------------------------------------------
+   Publication status — checkpoint 1B.8 §15. Sits near the Map Settings page
+   header: a server-backed Never published/Published version N badge, plus a
+   separate local "Unsaved Map Settings" indicator (see map-settings-form.tsx's
+   own doc comment for why these two are deliberately never merged into one
+   fake whole-map dirty flag).
+--------------------------------------------------------------------- */
+.publication-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+
+.publication-status-meta {
+  color: var(--color-text-muted);
+}
+
+/* ---------------------------------------------------------------------
+   Draft Preview modal — checkpoint 1B.8 §6. A larger, centered dialog than
+   `.modal` (which is sized for a short yes/no confirmation) — this hosts a
+   full tourist-style map preview area.
+--------------------------------------------------------------------- */
+.draft-preview-overlay {
+  z-index: 200;
+}
+
+.draft-preview-dialog {
+  width: 100%;
+  max-width: 960px;
+  max-height: calc(100vh - var(--space-6) * 2);
+  max-height: calc(100dvh - var(--space-6) * 2);
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.draft-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.draft-preview-badge {
+  margin-bottom: var(--space-1);
+}
+
+.draft-preview-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.draft-preview-notice {
+  margin: var(--space-4) var(--space-5) 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+
+.draft-preview-body {
+  padding: var(--space-5);
 }

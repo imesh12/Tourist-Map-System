@@ -205,5 +205,10 @@ export function GoogleMapsPreview({ style, center, zoom, bounds, onCenterChange,
     return <MapPreviewSummary notice="Could not load the Google Maps preview." />;
   }
 
-  return <div ref={containerRef} data-testid="google-map-preview" className="map-preview-frame" style={{ width: '100%', height: 320 }} />;
+  // Checkpoint 1B.8 §3 — "substantially larger than it is now" (was 320px);
+  // bumped alongside `.workspace-grid`'s wider right column and
+  // `MapPreviewSummary`'s matching `minHeight` (map-preview-summary.tsx), so
+  // every preview state (live map, fallback notice) occupies the same
+  // larger footprint.
+  return <div ref={containerRef} data-testid="google-map-preview" className="map-preview-frame" style={{ width: '100%', height: 520 }} />;
 }

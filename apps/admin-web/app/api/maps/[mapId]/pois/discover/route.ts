@@ -18,6 +18,19 @@ import type { ExternalPoiCandidate, ExternalPoiLocation } from '@/lib/pois/exter
  * The provider/category-capability logic itself
  * (`lib/tenant/category-capabilities.ts`) stays global and map-agnostic,
  * unchanged — only the geography is per-map.
+ *
+ * Checkpoint 1B.8 repair round: the whole handler body now runs inside a
+ * top-level try/catch (see `POST` below). An uncaught exception thrown from
+ * a Route Handler is NOT turned into a JSON error response by Next.js — it
+ * surfaces as the framework's own HTML error page (a dev-mode stack-trace
+ * overlay, or a generic HTML 500 in production), which is fatal for any
+ * caller that assumes an API route always answers with JSON, exactly the
+ * "tried response.json() but received '<!DOCTYPE ...'" symptom this repair
+ * round was asked to explain. This wrapper does not change any successful
+ * or already-handled-error response above — every existing status code and
+ * `code` string this handler returns is unchanged; it only prevents a
+ * genuinely unexpected exception from escaping as HTML instead of JSON, and
+ * preserves server-side logging of the real error for diagnosis.
  */
 
 // An arbitrary, harmless fallback viewport, used ONLY when the requested
@@ -32,89 +45,97 @@ interface RouteParams {
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  if (!isTrustedOrigin(request)) {
-    return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
-  }
-
-  const { mapId } = await params;
-  const result = await getOwnedMapContext(mapId);
-  if (!result.ok) {
-    if (isIdentityDenialReason(result.reason)) {
-      return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+  try {
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
     }
-    return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
-  }
 
-  if (result.context.identity.role !== 'CLIENT_ADMIN') {
-    return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can search for places.' }, { status: 403 });
-  }
+    const { mapId } = await params;
+    const result = await getOwnedMapContext(mapId);
+    if (!result.ok) {
+      if (isIdentityDenialReason(result.reason)) {
+        return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+      }
+      return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
+    }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
-  }
+    if (result.context.identity.role !== 'CLIENT_ADMIN') {
+      return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can search for places.' }, { status: 403 });
+    }
 
-  const parsed = poiDiscoverInputSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Please check your search and try again.' }, { status: 400 });
-  }
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
+    }
 
-  const resolvedMapId = result.context.map.mapId;
-  const firestore = getFirebaseAdminFirestore();
+    const parsed = poiDiscoverInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Please check your search and try again.' }, { status: 400 });
+    }
 
-  const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
-  if (!categorySnap.exists) {
-    return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
-  }
-  const category = categorySchema.safeParse(categorySnap.data());
-  if (!category.success) {
-    return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
-  }
+    const resolvedMapId = result.context.map.mapId;
+    const firestore = getFirebaseAdminFirestore();
 
-  const capability = resolveCategoryCapability({ platformCategoryId: category.data.platformCategoryId });
-  if (!capability || !capability.allowedSources.includes('GOOGLE_PLACES') || !capability.googlePlaces) {
-    return NextResponse.json(
-      { code: 'map/category-not-google-places-eligible', message: 'This category is not linked to a Google Places-eligible platform category.' },
-      { status: 400 },
-    );
-  }
+    const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
+    if (!categorySnap.exists) {
+      return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
+    }
+    const category = categorySchema.safeParse(categorySnap.data());
+    if (!category.success) {
+      return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
+    }
 
-  const provider = getExternalPoiProvider();
-  if (!provider) {
-    return NextResponse.json(
-      { code: 'map/external-provider-unavailable', message: 'Google Places is not configured for this environment.' },
-      { status: 503 },
-    );
-  }
+    const capability = resolveCategoryCapability({ platformCategoryId: category.data.platformCategoryId });
+    if (!capability || !capability.allowedSources.includes('GOOGLE_PLACES') || !capability.googlePlaces) {
+      return NextResponse.json(
+        { code: 'map/category-not-google-places-eligible', message: 'This category is not linked to a Google Places-eligible platform category.' },
+        { status: 400 },
+      );
+    }
 
-  // §9: center is always resolved from THIS specific map's own configured
-  // area — never a client-supplied coordinate, and never a different map's
-  // center. Two maps belonging to the same tenant with different `area`
-  // configurations correctly get different discovery geography.
-  const center: ExternalPoiLocation = result.context.map.area.center
-    ? { latitude: result.context.map.area.center.lat, longitude: result.context.map.area.center.lng }
-    : FALLBACK_DISCOVERY_CENTER;
+    const provider = getExternalPoiProvider();
+    if (!provider) {
+      return NextResponse.json(
+        { code: 'map/external-provider-unavailable', message: 'Google Places is not configured for this environment.' },
+        { status: 503 },
+      );
+    }
 
-  let candidates: readonly ExternalPoiCandidate[];
-  try {
-    candidates = await provider.discoverNearby({
-      center,
-      radiusMeters: parsed.data.radiusMeters,
-      includedTypes: capability.googlePlaces.includedTypes,
+    // §9: center is always resolved from THIS specific map's own configured
+    // area — never a client-supplied coordinate, and never a different map's
+    // center. Two maps belonging to the same tenant with different `area`
+    // configurations correctly get different discovery geography.
+    const center: ExternalPoiLocation = result.context.map.area.center
+      ? { latitude: result.context.map.area.center.lat, longitude: result.context.map.area.center.lng }
+      : FALLBACK_DISCOVERY_CENTER;
+
+    let candidates: readonly ExternalPoiCandidate[];
+    try {
+      candidates = await provider.discoverNearby({
+        center,
+        radiusMeters: parsed.data.radiusMeters,
+        includedTypes: capability.googlePlaces.includedTypes,
+      });
+    } catch {
+      return NextResponse.json(
+        { code: 'map/external-provider-error', message: 'Could not search nearby places right now. Please try again.' },
+        { status: 502 },
+      );
+    }
+
+    const safeCandidates = candidates.flatMap((candidate) => {
+      const parsedCandidate = externalPoiCandidateSchema.safeParse(candidate);
+      return parsedCandidate.success ? [parsedCandidate.data] : [];
     });
-  } catch {
-    return NextResponse.json(
-      { code: 'map/external-provider-error', message: 'Could not search nearby places right now. Please try again.' },
-      { status: 502 },
-    );
+
+    return NextResponse.json({ candidates: safeCandidates });
+  } catch (error) {
+    // See the file header comment — this is the last-resort backstop that
+    // keeps a genuinely unexpected exception from escaping as an HTML error
+    // page to a caller that only ever expects JSON from this route.
+    console.error(JSON.stringify({ event: 'pois.discover.unhandled_error', message: error instanceof Error ? error.message : String(error) }));
+    return NextResponse.json({ code: 'map/internal-error', message: 'Something went wrong. Please try again.' }, { status: 500 });
   }
-
-  const safeCandidates = candidates.flatMap((candidate) => {
-    const parsedCandidate = externalPoiCandidateSchema.safeParse(candidate);
-    return parsedCandidate.success ? [parsedCandidate.data] : [];
-  });
-
-  return NextResponse.json({ candidates: safeCandidates });
 }

@@ -116,6 +116,77 @@ describe('mapSchema', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('publication — checkpoint 1B.8', () => {
+    it('accepts a Map document with no publication field at all (every pre-1B.8 map)', () => {
+      expect(mapSchema.safeParse(validMap).success).toBe(true);
+    });
+
+    it('accepts a Map document with a valid publication pointer', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        publication: {
+          currentPublicationId: 'pub_aB3dEf6gH9jKlMn0pQ',
+          version: 1,
+          publishedAt: { seconds: 1700000002, nanoseconds: 0 },
+          publishedByUid: 'uid_admin_a',
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a publication pointer whose currentPublicationId uses the wrong prefix', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        publication: {
+          currentPublicationId: 'map_aB3dEf6gH9jKlMn0pQ',
+          version: 1,
+          publishedAt: { seconds: 1700000002, nanoseconds: 0 },
+          publishedByUid: 'uid_admin_a',
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a publication pointer with a non-positive version', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        publication: {
+          currentPublicationId: 'pub_aB3dEf6gH9jKlMn0pQ',
+          version: 0,
+          publishedAt: { seconds: 1700000002, nanoseconds: 0 },
+          publishedByUid: 'uid_admin_a',
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a publication pointer missing publishedByUid', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        publication: {
+          currentPublicationId: 'pub_aB3dEf6gH9jKlMn0pQ',
+          version: 1,
+          publishedAt: { seconds: 1700000002, nanoseconds: 0 },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an unknown extra field on the publication pointer (.strict())', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        publication: {
+          currentPublicationId: 'pub_aB3dEf6gH9jKlMn0pQ',
+          version: 1,
+          publishedAt: { seconds: 1700000002, nanoseconds: 0 },
+          publishedByUid: 'uid_admin_a',
+          publicUrl: 'https://forged.example.com/hijack',
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('mapAreaSchema — checkpoint 1B.1', () => {

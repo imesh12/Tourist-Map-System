@@ -16,6 +16,11 @@ import { isLocationWithinBounds } from '@/lib/tenant/poi-bounds';
  * `maps/{verifiedMapId}/pois/{poiId}`, where `verifiedMapId` comes from
  * `getOwnedMapContext()`, so a POI belonging to a different map (§10 — even
  * one owned by the same tenant) is a different, unreachable Firestore path.
+ *
+ * Checkpoint 1B.8 repair round: both `PATCH` and `DELETE` below now run
+ * their whole body inside a top-level try/catch, same hardening and same
+ * reasoning as `pois/discover/route.ts`'s file header comment — an uncaught
+ * exception must never escape a JSON API route as an HTML error page.
  */
 
 interface RouteParams {
@@ -37,125 +42,135 @@ async function loadOwnedPoi(mapId: string, poiId: string) {
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  if (!isTrustedOrigin(request)) {
-    return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
-  }
-
-  const { mapId, poiId } = await params;
-  const result = await getOwnedMapContext(mapId);
-  if (!result.ok) {
-    if (isIdentityDenialReason(result.reason)) {
-      return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
-    }
-    return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
-  }
-
-  if (result.context.identity.role !== 'CLIENT_ADMIN') {
-    return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can edit POIs.' }, { status: 403 });
-  }
-
-  const resolvedMapId = result.context.map.mapId;
-
-  let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
-  }
-
-  const parsed = poiUpdateInputSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the POI and try again.' }, { status: 400 });
-  }
-
-  const { ref: poiRef, existing } = await loadOwnedPoi(resolvedMapId, poiId);
-  if (!existing) {
-    return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
-  }
-
-  if (existing.customerId !== result.context.map.customerId || existing.mapId !== resolvedMapId) {
-    return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
-  }
-
-  if (existing.sourceType === 'GOOGLE_PLACES') {
-    const attemptedFields = Object.keys(parsed.data).filter((key) => key !== 'status');
-    if (attemptedFields.length > 0) {
-      return NextResponse.json(
-        { code: 'map/external-poi-immutable-fields', message: 'Only the status of an imported Google Places POI can be changed here.' },
-        { status: 400 },
-      );
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
     }
-  }
 
-  const firestore = getFirebaseAdminFirestore();
-
-  if (parsed.data.categoryId !== undefined) {
-    const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
-    if (!categorySnap.exists) {
-      return NextResponse.json(
-        { code: 'map/invalid-category', message: 'Select a valid category for this map.' },
-        { status: 400 },
-      );
+    const { mapId, poiId } = await params;
+    const result = await getOwnedMapContext(mapId);
+    if (!result.ok) {
+      if (isIdentityDenialReason(result.reason)) {
+        return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+      }
+      return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
     }
-  }
 
-  const nextLocation =
-    parsed.data.latitude !== undefined && parsed.data.longitude !== undefined
-      ? { latitude: parsed.data.latitude, longitude: parsed.data.longitude }
-      : undefined;
-
-  if (nextLocation) {
-    const area = result.context.map.area;
-    if (area.type === 'BOUNDED' && area.bounds && !isLocationWithinBounds(nextLocation, area.bounds)) {
-      return NextResponse.json(
-        { code: 'map/out-of-bounds', message: 'This location is outside the map’s configured area.' },
-        { status: 400 },
-      );
+    if (result.context.identity.role !== 'CLIENT_ADMIN') {
+      return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can edit POIs.' }, { status: 403 });
     }
+
+    const resolvedMapId = result.context.map.mapId;
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
+    }
+
+    const parsed = poiUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the POI and try again.' }, { status: 400 });
+    }
+
+    const { ref: poiRef, existing } = await loadOwnedPoi(resolvedMapId, poiId);
+    if (!existing) {
+      return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
+    }
+
+    if (existing.customerId !== result.context.map.customerId || existing.mapId !== resolvedMapId) {
+      return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
+    }
+
+    if (existing.sourceType === 'GOOGLE_PLACES') {
+      const attemptedFields = Object.keys(parsed.data).filter((key) => key !== 'status');
+      if (attemptedFields.length > 0) {
+        return NextResponse.json(
+          { code: 'map/external-poi-immutable-fields', message: 'Only the status of an imported Google Places POI can be changed here.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    const firestore = getFirebaseAdminFirestore();
+
+    if (parsed.data.categoryId !== undefined) {
+      const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
+      if (!categorySnap.exists) {
+        return NextResponse.json(
+          { code: 'map/invalid-category', message: 'Select a valid category for this map.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    const nextLocation =
+      parsed.data.latitude !== undefined && parsed.data.longitude !== undefined
+        ? { latitude: parsed.data.latitude, longitude: parsed.data.longitude }
+        : undefined;
+
+    if (nextLocation) {
+      const area = result.context.map.area;
+      if (area.type === 'BOUNDED' && area.bounds && !isLocationWithinBounds(nextLocation, area.bounds)) {
+        return NextResponse.json(
+          { code: 'map/out-of-bounds', message: 'This location is outside the map’s configured area.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    const update: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    if (parsed.data.name !== undefined) update.name = parsed.data.name;
+    if (parsed.data.categoryId !== undefined) update.categoryId = parsed.data.categoryId;
+    if (nextLocation) update.location = nextLocation;
+    if (parsed.data.address !== undefined) update.address = parsed.data.address;
+    if (parsed.data.description !== undefined) update.description = parsed.data.description;
+    if (parsed.data.status !== undefined) update.status = parsed.data.status;
+
+    await poiRef.update(update);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'pois.patch.unhandled_error', message: error instanceof Error ? error.message : String(error) }));
+    return NextResponse.json({ code: 'map/internal-error', message: 'Something went wrong. Please try again.' }, { status: 500 });
   }
-
-  const update: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
-  if (parsed.data.name !== undefined) update.name = parsed.data.name;
-  if (parsed.data.categoryId !== undefined) update.categoryId = parsed.data.categoryId;
-  if (nextLocation) update.location = nextLocation;
-  if (parsed.data.address !== undefined) update.address = parsed.data.address;
-  if (parsed.data.description !== undefined) update.description = parsed.data.description;
-  if (parsed.data.status !== undefined) update.status = parsed.data.status;
-
-  await poiRef.update(update);
-
-  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  if (!isTrustedOrigin(request)) {
-    return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
-  }
-
-  const { mapId, poiId } = await params;
-  const result = await getOwnedMapContext(mapId);
-  if (!result.ok) {
-    if (isIdentityDenialReason(result.reason)) {
-      return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+  try {
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
     }
-    return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
+
+    const { mapId, poiId } = await params;
+    const result = await getOwnedMapContext(mapId);
+    if (!result.ok) {
+      if (isIdentityDenialReason(result.reason)) {
+        return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+      }
+      return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
+    }
+
+    if (result.context.identity.role !== 'CLIENT_ADMIN') {
+      return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can delete POIs.' }, { status: 403 });
+    }
+
+    const resolvedMapId = result.context.map.mapId;
+    const { ref: poiRef, existing } = await loadOwnedPoi(resolvedMapId, poiId);
+    if (!existing) {
+      return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
+    }
+
+    if (existing.customerId !== result.context.map.customerId || existing.mapId !== resolvedMapId) {
+      return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
+    }
+
+    await poiRef.delete();
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'pois.delete.unhandled_error', message: error instanceof Error ? error.message : String(error) }));
+    return NextResponse.json({ code: 'map/internal-error', message: 'Something went wrong. Please try again.' }, { status: 500 });
   }
-
-  if (result.context.identity.role !== 'CLIENT_ADMIN') {
-    return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can delete POIs.' }, { status: 403 });
-  }
-
-  const resolvedMapId = result.context.map.mapId;
-  const { ref: poiRef, existing } = await loadOwnedPoi(resolvedMapId, poiId);
-  if (!existing) {
-    return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
-  }
-
-  if (existing.customerId !== result.context.map.customerId || existing.mapId !== resolvedMapId) {
-    return NextResponse.json({ code: 'map/not-found', message: 'POI not found.' }, { status: 404 });
-  }
-
-  await poiRef.delete();
-
-  return NextResponse.json({ ok: true });
 }

@@ -32,3 +32,4 @@ export * from './category.js';
 export * from './poi.js';
 export * from './external-poi.js';
 export * from './menu-item.js';
+export * from './publication.js';

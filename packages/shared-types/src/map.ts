@@ -1,4 +1,4 @@
-import type { CustomerId, MapId } from './ids.js';
+import type { CustomerId, MapId, PublicationId, Uid } from './ids.js';
 import type {
   Language,
   MapAreaType,
@@ -108,6 +108,36 @@ export interface MapTheme {
 }
 
 /**
+ * The map's own publish/versioning pointer — checkpoint 1B.8, see
+ * docs/architecture/PUBLISHING_ARCHITECTURE.md. Absent means "this map has
+ * never been published" — every map document that predates this checkpoint
+ * has no `publication` field at all, and must keep parsing/rendering safely
+ * as "Never published" rather than requiring a Firestore migration, the same
+ * backward-compatibility contract `branding`/`theme` already establish on
+ * this same interface.
+ *
+ * Only ever written by the trusted `POST /api/maps/{mapId}/publish` server
+ * endpoint, atomically alongside the creation of the immutable
+ * `maps/{mapId}/publications/{publicationId}` snapshot document it points
+ * at (see `MapPublicationSnapshot`, ./publication.js) — never client-
+ * writable directly, and never touched by an ordinary Map Settings Save
+ * (`PATCH /api/maps/{mapId}/settings` has no `publication` field on its own
+ * input schema at all, so a Save can never clear or forge this pointer).
+ *
+ * Deliberately a small, denormalized SUMMARY of the current publication
+ * (not the full snapshot content) — cheap to read alongside the rest of the
+ * map document wherever "is this map published, and as of when" is needed
+ * (e.g. the Map Settings page header), without a second Firestore read. The
+ * full public content lives only in the snapshot document itself.
+ */
+export interface MapPublicationMeta {
+  readonly currentPublicationId: PublicationId;
+  readonly version: number;
+  readonly publishedAt: FirestoreTimestampLike;
+  readonly publishedByUid: Uid;
+}
+
+/**
  * `maps/{mapId}` — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §8/§11.
  *
  * Named `TouristMap` rather than `Map` deliberately, to avoid shadowing the
@@ -133,6 +163,8 @@ export interface TouristMap {
   readonly branding?: MapBranding;
   /** Optional — absent until a Client Admin first saves a theme (checkpoint 1B.7). See `MapTheme`'s own doc comment for the backward-compatibility contract. */
   readonly theme?: MapTheme;
+  /** Optional — absent until this map is first published (checkpoint 1B.8). See `MapPublicationMeta`'s own doc comment above. */
+  readonly publication?: MapPublicationMeta;
   readonly createdAt: FirestoreTimestampLike;
   readonly updatedAt: FirestoreTimestampLike;
 }

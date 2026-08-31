@@ -764,4 +764,160 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
       await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/menuItems/menu_seed`)));
     });
   });
+
+  describe('maps/{mapId}/publications subcollection — checkpoint 1B.8', () => {
+    // Same "server-only, deny-by-default fallback" shape as the categories/
+    // pois/menuItems blocks above: a publication is created exclusively by
+    // `POST /api/maps/{mapId}/publish` (Admin SDK, which bypasses rules by
+    // design — see that route's own doc comment), never by the browser's
+    // own Firestore client. No explicit `match` block exists for this
+    // nested collection either, so the deny-by-default `match /{document=**}`
+    // fallback already covers it — these tests prove that remains true for
+    // publications specifically, including for the map's OWN admin (the one
+    // tenant who might plausibly expect read/write access to their own
+    // map's data), not merely assumed by generalizing from the other
+    // subcollections' proofs.
+    it('denies an own-tenant publication read, even for the map owner', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/publications/pub_seed`), {
+          schemaVersion: 1,
+          publicationId: 'pub_seed',
+          mapId: MAP_A,
+          customerId: TENANT_A,
+          version: 1,
+          publishedAt: serverTimestamp(),
+          publishedByUid: UID_A_ADMIN,
+          map: {
+            name: 'Tenant A Map',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            theme: { preset: 'DEFAULT', markerStyle: 'PIN', visibility: {} },
+          },
+          menu: [],
+          categories: [],
+          pois: [],
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/publications/pub_seed`)));
+    });
+
+    it('denies a client from creating a publication directly, even a well-formed own-tenant one', async () => {
+      await seedFixtures();
+      await assertFails(
+        setDoc(doc(aAdminDb(), `maps/${MAP_A}/publications/pub_forged`), {
+          schemaVersion: 1,
+          publicationId: 'pub_forged',
+          mapId: MAP_A,
+          customerId: TENANT_A,
+          version: 1,
+          publishedAt: serverTimestamp(),
+          publishedByUid: UID_A_ADMIN,
+          map: {
+            name: 'Forged Publish',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            theme: { preset: 'DEFAULT', markerStyle: 'PIN', visibility: {} },
+          },
+          menu: [],
+          categories: [],
+          pois: [],
+        }),
+      );
+    });
+
+    it('denies a client from updating or deleting an existing publication', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/publications/pub_seed_2`), {
+          schemaVersion: 1,
+          publicationId: 'pub_seed_2',
+          mapId: MAP_A,
+          customerId: TENANT_A,
+          version: 1,
+          publishedAt: serverTimestamp(),
+          publishedByUid: UID_A_ADMIN,
+          map: {
+            name: 'Tenant A Map',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            theme: { preset: 'DEFAULT', markerStyle: 'PIN', visibility: {} },
+          },
+          menu: [],
+          categories: [],
+          pois: [],
+        });
+      });
+      await assertFails(updateDoc(doc(aAdminDb(), `maps/${MAP_A}/publications/pub_seed_2`), { version: 2 }));
+      await assertFails(deleteDoc(doc(aAdminDb(), `maps/${MAP_A}/publications/pub_seed_2`)));
+    });
+
+    it('denies an unauthenticated publication read', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/publications/pub_seed_3`), {
+          schemaVersion: 1,
+          publicationId: 'pub_seed_3',
+          mapId: MAP_A,
+          customerId: TENANT_A,
+          version: 1,
+          publishedAt: serverTimestamp(),
+          publishedByUid: UID_A_ADMIN,
+          map: {
+            name: 'Tenant A Map',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            theme: { preset: 'DEFAULT', markerStyle: 'PIN', visibility: {} },
+          },
+          menu: [],
+          categories: [],
+          pois: [],
+        });
+      });
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/publications/pub_seed_3`)));
+    });
+
+    it('denies a cross-tenant publication read even with a well-formed but wrong-tenant path', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_B}/publications/pub_tenant_b`), {
+          schemaVersion: 1,
+          publicationId: 'pub_tenant_b',
+          mapId: MAP_B,
+          customerId: TENANT_B,
+          version: 1,
+          publishedAt: serverTimestamp(),
+          publishedByUid: UID_B_ADMIN,
+          map: {
+            name: 'Tenant B Map',
+            mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
+            area: { type: 'UNBOUNDED' },
+            theme: { preset: 'DEFAULT', markerStyle: 'PIN', visibility: {} },
+          },
+          menu: [],
+          categories: [],
+          pois: [],
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_B}/publications/pub_tenant_b`)));
+    });
+
+    it('denies a client write to the map document\'s own publication pointer field', async () => {
+      await seedFixtures();
+      // `maps/{mapId}` already denies ALL client writes outright (`allow
+      // write: if false` — see firestore.rules), so a client can never set
+      // even a single field, `publication` included. This test targets the
+      // `publication` pointer specifically (rather than re-proving the
+      // already-covered "map writes" describe block above) because it is
+      // the exact field `POST /api/maps/{mapId}/publish` itself updates —
+      // proving a client cannot forge that same field directly is the
+      // publishing feature's own security-relevant claim, not merely an
+      // instance of a more generic rule.
+      await assertFails(
+        updateDoc(doc(aAdminDb(), `maps/${MAP_A}`), {
+          publication: { currentPublicationId: 'pub_forged', version: 999, publishedAt: serverTimestamp(), publishedByUid: UID_A_ADMIN },
+        }),
+      );
+    });
+  });
 });

@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { CATEGORY_ID_PREFIX, CUSTOMER_ID_PREFIX, MAP_ID_PREFIX, MENU_ITEM_ID_PREFIX, POI_ID_PREFIX } from 'shared-types';
+import {
+  CATEGORY_ID_PREFIX,
+  CUSTOMER_ID_PREFIX,
+  MAP_ID_PREFIX,
+  MENU_ITEM_ID_PREFIX,
+  POI_ID_PREFIX,
+  PUBLICATION_ID_PREFIX,
+} from 'shared-types';
 
 /**
  * Format validation only — ID *generation* is trusted-backend-only
@@ -36,6 +43,14 @@ export const poiIdSchema = z
 export const menuItemIdSchema = z
   .string()
   .regex(randomSuffixPattern(MENU_ITEM_ID_PREFIX), `menuItemId must match ${MENU_ITEM_ID_PREFIX}<16-40 url-safe characters>`);
+
+/** checkpoint 1B.8 — see shared-types' `MapPublicationSnapshot`. */
+export const publicationIdSchema = z
+  .string()
+  .regex(
+    randomSuffixPattern(PUBLICATION_ID_PREFIX),
+    `publicationId must match ${PUBLICATION_ID_PREFIX}<16-40 url-safe characters>`,
+  );
 
 /**
  * Firebase Authentication UID. Firebase documents UIDs as 1-128 characters;

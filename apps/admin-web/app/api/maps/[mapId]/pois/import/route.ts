@@ -23,6 +23,11 @@ import { isLocationWithinBounds } from '@/lib/tenant/poi-bounds';
  * same tenant (e.g. a chain restaurant with a Shinjuku location AND an
  * Osaka location, or the same place deliberately added to both a tenant's
  * maps) without either import blocking the other.
+ *
+ * Checkpoint 1B.8 repair round: same top-level try/catch hardening as
+ * `pois/discover/route.ts` — see that file's header comment for the full
+ * reasoning. An uncaught exception here would otherwise surface as Next.js's
+ * own HTML error page instead of JSON.
  */
 
 interface RouteParams {
@@ -30,127 +35,135 @@ interface RouteParams {
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
-  if (!isTrustedOrigin(request)) {
-    return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
-  }
-
-  const { mapId } = await params;
-  const result = await getOwnedMapContext(mapId);
-  if (!result.ok) {
-    if (isIdentityDenialReason(result.reason)) {
-      return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
+  try {
+    if (!isTrustedOrigin(request)) {
+      return NextResponse.json({ code: 'map/unauthorized', message: 'Request not allowed.' }, { status: 403 });
     }
-    return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
-  }
 
-  if (result.context.identity.role !== 'CLIENT_ADMIN') {
-    return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can import places.' }, { status: 403 });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
-  }
-
-  const parsed = poiImportInputSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ code: 'map/invalid-input', message: 'Please check your request and try again.' }, { status: 400 });
-  }
-
-  const resolvedMapId = result.context.map.mapId;
-  const firestore = getFirebaseAdminFirestore();
-
-  const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
-  if (!categorySnap.exists) {
-    return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
-  }
-  const category = categorySchema.safeParse(categorySnap.data());
-  if (!category.success) {
-    return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
-  }
-
-  const capability = resolveCategoryCapability({ platformCategoryId: category.data.platformCategoryId });
-  if (!capability || !capability.allowedSources.includes('GOOGLE_PLACES')) {
-    return NextResponse.json(
-      { code: 'map/category-not-google-places-eligible', message: 'This category is not linked to a Google Places-eligible platform category.' },
-      { status: 400 },
-    );
-  }
-
-  const provider = getExternalPoiProvider();
-  if (!provider) {
-    return NextResponse.json(
-      { code: 'map/external-provider-unavailable', message: 'Google Places is not configured for this environment.' },
-      { status: 503 },
-    );
-  }
-
-  let details: ExternalPoiDetails | undefined;
-  try {
-    details = await provider.getPlaceDetails(parsed.data.providerPlaceId);
-  } catch {
-    return NextResponse.json(
-      { code: 'map/external-provider-error', message: 'Could not import this place right now. Please try again.' },
-      { status: 502 },
-    );
-  }
-  if (!details) {
-    return NextResponse.json({ code: 'map/place-not-found', message: 'This place could not be found.' }, { status: 404 });
-  }
-
-  const location = { latitude: details.location.latitude, longitude: details.location.longitude };
-  const area = result.context.map.area;
-  if (area.type === 'BOUNDED' && area.bounds && !isLocationWithinBounds(location, area.bounds)) {
-    return NextResponse.json(
-      { code: 'map/out-of-bounds', message: 'This place is outside the map’s configured area.' },
-      { status: 400 },
-    );
-  }
-
-  const poisRef = firestore.collection(`maps/${resolvedMapId}/pois`);
-
-  try {
-    const poiId = await firestore.runTransaction(async (transaction) => {
-      // Duplicate-import protection, scoped to THIS map's own `pois`
-      // subcollection only — see the file header comment for why the same
-      // place can legitimately be imported into two different maps.
-      const dupSnap = await transaction.get(
-        poisRef.where('provider', '==', parsed.data.provider).where('providerPlaceId', '==', parsed.data.providerPlaceId).limit(1),
-      );
-      if (!dupSnap.empty) {
-        throw new DuplicateImportError();
+    const { mapId } = await params;
+    const result = await getOwnedMapContext(mapId);
+    if (!result.ok) {
+      if (isIdentityDenialReason(result.reason)) {
+        return NextResponse.json({ code: 'map/unauthorized', message: 'You must be signed in with a fully set-up account.' }, { status: 401 });
       }
+      return NextResponse.json({ code: 'map/not-found', message: 'Map not found.' }, { status: 404 });
+    }
 
-      const newPoiId = generatePoiId();
-      transaction.set(poisRef.doc(newPoiId), {
-        poiId: newPoiId,
-        customerId: result.context.map.customerId,
-        mapId: resolvedMapId,
-        categoryId: parsed.data.categoryId,
-        name: details.name,
-        location,
-        ...(details.address ? { address: details.address } : {}),
-        sourceType: 'GOOGLE_PLACES',
-        provider: parsed.data.provider,
-        providerPlaceId: parsed.data.providerPlaceId,
-        status: 'ENABLED',
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return newPoiId;
-    });
+    if (result.context.identity.role !== 'CLIENT_ADMIN') {
+      return NextResponse.json({ code: 'map/forbidden', message: 'Only a Client Admin can import places.' }, { status: 403 });
+    }
 
-    return NextResponse.json({ ok: true, poiId }, { status: 201 });
-  } catch (error) {
-    if (error instanceof DuplicateImportError) {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Invalid request.' }, { status: 400 });
+    }
+
+    const parsed = poiImportInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ code: 'map/invalid-input', message: 'Please check your request and try again.' }, { status: 400 });
+    }
+
+    const resolvedMapId = result.context.map.mapId;
+    const firestore = getFirebaseAdminFirestore();
+
+    const categorySnap = await firestore.doc(`maps/${resolvedMapId}/categories/${parsed.data.categoryId}`).get();
+    if (!categorySnap.exists) {
+      return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
+    }
+    const category = categorySchema.safeParse(categorySnap.data());
+    if (!category.success) {
+      return NextResponse.json({ code: 'map/invalid-category', message: 'Select a valid category for this map.' }, { status: 400 });
+    }
+
+    const capability = resolveCategoryCapability({ platformCategoryId: category.data.platformCategoryId });
+    if (!capability || !capability.allowedSources.includes('GOOGLE_PLACES')) {
       return NextResponse.json(
-        { code: 'map/duplicate-import', message: 'This place has already been imported.' },
-        { status: 409 },
+        { code: 'map/category-not-google-places-eligible', message: 'This category is not linked to a Google Places-eligible platform category.' },
+        { status: 400 },
       );
     }
-    throw error;
+
+    const provider = getExternalPoiProvider();
+    if (!provider) {
+      return NextResponse.json(
+        { code: 'map/external-provider-unavailable', message: 'Google Places is not configured for this environment.' },
+        { status: 503 },
+      );
+    }
+
+    let details: ExternalPoiDetails | undefined;
+    try {
+      details = await provider.getPlaceDetails(parsed.data.providerPlaceId);
+    } catch {
+      return NextResponse.json(
+        { code: 'map/external-provider-error', message: 'Could not import this place right now. Please try again.' },
+        { status: 502 },
+      );
+    }
+    if (!details) {
+      return NextResponse.json({ code: 'map/place-not-found', message: 'This place could not be found.' }, { status: 404 });
+    }
+
+    const location = { latitude: details.location.latitude, longitude: details.location.longitude };
+    const area = result.context.map.area;
+    if (area.type === 'BOUNDED' && area.bounds && !isLocationWithinBounds(location, area.bounds)) {
+      return NextResponse.json(
+        { code: 'map/out-of-bounds', message: 'This place is outside the map’s configured area.' },
+        { status: 400 },
+      );
+    }
+
+    const poisRef = firestore.collection(`maps/${resolvedMapId}/pois`);
+
+    try {
+      const poiId = await firestore.runTransaction(async (transaction) => {
+        // Duplicate-import protection, scoped to THIS map's own `pois`
+        // subcollection only — see the file header comment for why the same
+        // place can legitimately be imported into two different maps.
+        const dupSnap = await transaction.get(
+          poisRef.where('provider', '==', parsed.data.provider).where('providerPlaceId', '==', parsed.data.providerPlaceId).limit(1),
+        );
+        if (!dupSnap.empty) {
+          throw new DuplicateImportError();
+        }
+
+        const newPoiId = generatePoiId();
+        transaction.set(poisRef.doc(newPoiId), {
+          poiId: newPoiId,
+          customerId: result.context.map.customerId,
+          mapId: resolvedMapId,
+          categoryId: parsed.data.categoryId,
+          name: details.name,
+          location,
+          ...(details.address ? { address: details.address } : {}),
+          sourceType: 'GOOGLE_PLACES',
+          provider: parsed.data.provider,
+          providerPlaceId: parsed.data.providerPlaceId,
+          status: 'ENABLED',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return newPoiId;
+      });
+
+      return NextResponse.json({ ok: true, poiId }, { status: 201 });
+    } catch (error) {
+      if (error instanceof DuplicateImportError) {
+        return NextResponse.json(
+          { code: 'map/duplicate-import', message: 'This place has already been imported.' },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
+  } catch (error) {
+    // See the file header comment — last-resort backstop so a genuinely
+    // unexpected exception never escapes as an HTML error page to a caller
+    // that only ever expects JSON from this route.
+    console.error(JSON.stringify({ event: 'pois.import.unhandled_error', message: error instanceof Error ? error.message : String(error) }));
+    return NextResponse.json({ code: 'map/internal-error', message: 'Something went wrong. Please try again.' }, { status: 500 });
   }
 }
 

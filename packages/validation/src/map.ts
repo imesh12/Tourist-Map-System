@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LANGUAGES, MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
-import { customerIdSchema, mapIdSchema } from './ids.js';
+import { customerIdSchema, mapIdSchema, publicationIdSchema, uidSchema } from './ids.js';
 import { mapThemeSchema } from './map-theme.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
@@ -60,6 +60,48 @@ export const mapAreaSchema = z
   });
 
 /**
+ * `TouristMap.mapProvider` — exported (not inlined into `mapSchema`) so
+ * checkpoint 1B.8's `publication.ts` can validate a stored publication
+ * snapshot's own `map.mapProvider` field against the exact same shape,
+ * without either file importing a runtime schema value FROM the other (that
+ * would be a circular module dependency — `publication.ts` already imports
+ * `mapAreaSchema`/this export FROM `map.ts`, so `map.ts` must never import
+ * anything back from `publication.ts`; see `mapPublicationMetaSchema` below
+ * for the same constraint applied to the map document's own publication
+ * pointer field).
+ */
+export const mapProviderConfigSchema = z.object({
+  provider: z.enum(MAP_PROVIDER_NAMES),
+  style: z.enum(MAP_STYLES),
+});
+
+/**
+ * `TouristMap.publication` — checkpoint 1B.8, mirrors shared-types'
+ * `MapPublicationMeta`. Deliberately defined HERE (inside map.ts, alongside
+ * `mapSchema` itself) rather than in `publication.ts` — `publication.ts`
+ * needs `mapAreaSchema`/`mapThemeSchema`/`mapProviderConfigSchema`/
+ * `mapBrandingSchema` from THIS file to validate a full publication
+ * snapshot's `map` field, so `map.ts` must never import a runtime schema
+ * value back from `publication.ts`, or the two modules would form a runtime
+ * circular dependency (unlike a `import type`-only cycle, which TypeScript
+ * safely erases, a cycle between actual `z.object(...)` values evaluated at
+ * module-load time can genuinely break — one side would see the other's
+ * export as `undefined` depending on evaluation order). Colocating this
+ * small pointer-only schema with `mapSchema` keeps the dependency graph a
+ * simple one-directional edge: `publication.ts` → `map.ts`, never the
+ * reverse.
+ */
+export const mapPublicationMetaSchema = z
+  .object({
+    currentPublicationId: publicationIdSchema,
+    version: z.number().int().min(1),
+    publishedAt: firestoreTimestampLikeSchema,
+    publishedByUid: uidSchema,
+  })
+  .strict();
+export type MapPublicationMetaParsed = z.infer<typeof mapPublicationMetaSchema>;
+
+/**
  * Mirrors shared-types' `TouristMap` interface. `customerId` is the
  * ownership field — this schema validates its *format* (via
  * `customerIdSchema`) but, per docs/stages/STAGE_1A_TECHNICAL_PLAN.md §10,
@@ -81,10 +123,7 @@ export const mapSchema = z
       .refine((languages) => new Set(languages).size === languages.length, {
         message: 'enabledLanguages must not contain duplicates',
       }),
-    mapProvider: z.object({
-      provider: z.enum(MAP_PROVIDER_NAMES),
-      style: z.enum(MAP_STYLES),
-    }),
+    mapProvider: mapProviderConfigSchema,
     area: mapAreaSchema,
     // Optional — absent until a Client Admin first saves branding
     // (checkpoint 1B.1). Every map document provisioned by checkpoint 1A.5
@@ -98,6 +137,10 @@ export const mapSchema = z
     // existing/fixture-seeded map would fail read-side validation and fail
     // closed — see MapTheme's own doc comment (shared-types/src/map.ts).
     theme: mapThemeSchema.optional(),
+    // Optional — absent until this map is first published (checkpoint
+    // 1B.8). Same backward-compatibility contract as `branding`/`theme`
+    // above — see `MapPublicationMeta`'s own doc comment (shared-types/src/map.ts).
+    publication: mapPublicationMetaSchema.optional(),
     createdAt: firestoreTimestampLikeSchema,
     updatedAt: firestoreTimestampLikeSchema,
   })
