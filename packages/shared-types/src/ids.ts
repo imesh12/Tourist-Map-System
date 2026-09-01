@@ -20,6 +20,8 @@ export const POI_ID_PREFIX = 'poi_' as const;
 export const MENU_ITEM_ID_PREFIX = 'menu_' as const;
 /** checkpoint 1B.8 — see `MapPublicationSnapshot` (./publication.js). */
 export const PUBLICATION_ID_PREFIX = 'pub_' as const;
+/** checkpoint 1B.11 — see `Page` (./page.js). */
+export const PAGE_ID_PREFIX = 'page_' as const;
 
 export type CustomerId = Branded<string, 'CustomerId'>;
 export type MapId = Branded<string, 'MapId'>;
@@ -27,6 +29,7 @@ export type CategoryId = Branded<string, 'CategoryId'>;
 export type PoiId = Branded<string, 'PoiId'>;
 export type MenuItemId = Branded<string, 'MenuItemId'>;
 export type PublicationId = Branded<string, 'PublicationId'>;
+export type PageId = Branded<string, 'PageId'>;
 
 /**
  * Firebase Authentication UID. Deliberately branded but otherwise treated as

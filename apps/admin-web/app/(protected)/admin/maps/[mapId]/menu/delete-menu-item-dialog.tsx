@@ -19,7 +19,7 @@ import { useEffect } from 'react';
  */
 interface DeleteMenuItemDialogProps {
   readonly label: string;
-  readonly type: 'CATEGORY' | 'FEATURE';
+  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE';
   readonly linkedName?: string;
   readonly isDeleting: boolean;
   readonly onCancel: () => void;
@@ -40,7 +40,9 @@ export function DeleteMenuItemDialog({ label, type, linkedName, isDeleting, onCa
   const bodyText =
     type === 'CATEGORY'
       ? `This will not delete ${linkedName ? `the ${linkedName} category` : 'the linked category'} or its POIs.`
-      : 'This only removes it from the menu — nothing else is affected.';
+      : type === 'PAGE'
+        ? `This will not delete ${linkedName ? `the "${linkedName}" page` : 'the linked page'} — only its link from the public menu.`
+        : 'This only removes it from the menu — nothing else is affected.';
 
   return (
     <div className="modal-overlay" onClick={onCancel}>

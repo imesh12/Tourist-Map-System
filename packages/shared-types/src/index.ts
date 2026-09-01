@@ -39,4 +39,5 @@ export * from './category.js';
 export * from './platform-category.js';
 export * from './poi.js';
 export * from './public-feature.js';
+export * from './page.js';
 export * from './menu-item.js';

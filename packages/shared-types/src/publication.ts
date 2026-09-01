@@ -52,13 +52,28 @@ export interface PublicationMenuFeatureItem {
   readonly featureKey: string;
 }
 
-export type PublicationMenuItem = PublicationMenuCategoryItem | PublicationMenuFeatureItem;
+/** checkpoint 1B.11 — mirrors `PublicationMenuCategoryItem`'s shape for a `PAGE` menu item. Only ever produced when the referenced Page exists, is `ENABLED`, and is itself included in `pages` below — see `buildPublicMenuProjection()`'s own doc comment (apps/admin-web/lib/tenant/menu-projection.ts) for the exact fail-closed rule. */
+export interface PublicationMenuPageItem {
+  readonly type: 'PAGE';
+  readonly label: string;
+  readonly icon: CategoryIcon;
+  readonly pageId: string;
+}
+
+export type PublicationMenuItem = PublicationMenuCategoryItem | PublicationMenuFeatureItem | PublicationMenuPageItem;
 
 /** The narrow, public-safe projection of a `Category` a publication snapshot ever stores — never `customerId`/`mapId`/`enabled`/`order`/`sourceType`/timestamps, all of which are admin-only bookkeeping. */
 export interface PublishedCategory {
   readonly categoryId: string;
   readonly name: string;
   readonly icon: CategoryIcon;
+}
+
+/** The narrow, public-safe projection of a `Page` a publication snapshot ever stores — checkpoint 1B.11. Never `customerId`/`mapId`/`status`/timestamps, all of which are admin-only bookkeeping; only `ENABLED` pages are ever included (`buildPublicationContent()`'s own rule, mirroring `PublishedCategory`'s identical "only enabled" filter). */
+export interface PublishedPage {
+  readonly pageId: string;
+  readonly title: string;
+  readonly content: string;
 }
 
 /** The narrow, public-safe projection of a `Poi` a publication snapshot ever stores — never `customerId`/`mapId`/`sourceType`/`provider`/`providerPlaceId`/`status`/timestamps. */
@@ -115,6 +130,8 @@ export interface MapPublicationSnapshot {
   readonly menu: readonly PublicationMenuItem[];
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];
+  /** checkpoint 1B.11 — only `ENABLED` Pages, see `PublishedPage`'s own doc comment. */
+  readonly pages: readonly PublishedPage[];
 }
 
 /**

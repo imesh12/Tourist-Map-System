@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import type { CategoryIcon } from 'shared-types';
-import type { CategoryParsed } from 'validation';
+import type { CategoryParsed, PageParsed } from 'validation';
 import { getPublicFeatureRegistryEntry, type PublicFeatureRegistryEntry } from 'shared-types';
+import { DEFAULT_PAGE_MENU_ICON } from '@/lib/tenant/menu-projection';
 import { ALL_CATEGORY_ICONS, categoryIconOptionLabel, CATEGORY_ICON_META } from '../categories/category-icons';
 
 /**
@@ -23,13 +24,15 @@ import { ALL_CATEGORY_ICONS, categoryIconOptionLabel, CATEGORY_ICON_META } from 
  */
 
 export interface MenuItemFormValues {
-  readonly type: 'CATEGORY' | 'FEATURE';
+  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE';
   /** Meaningful only when `type === 'CATEGORY'`. */
   readonly categoryId: string;
   /** Meaningful only when `type === 'FEATURE'`. */
   readonly featureKey: string;
+  /** Meaningful only when `type === 'PAGE'`. */
+  readonly pageId: string;
   readonly label: string;
-  /** `''` = inherited/default icon; otherwise a controlled `CategoryIcon` override. Only ever sent when `type === 'CATEGORY'`. */
+  /** `''` = inherited/default icon; otherwise a controlled `CategoryIcon` override. Only ever sent when `type === 'CATEGORY'` or `type === 'PAGE'`. */
   readonly icon: string;
   readonly status: 'ENABLED' | 'DISABLED';
 }
@@ -39,10 +42,14 @@ interface MenuItemFormDrawerProps {
   readonly initialValues: MenuItemFormValues;
   /** Every tenant category — used to resolve the linked category's name/icon for display (both create-mode option labels and edit-mode read-only display). */
   readonly categories: readonly CategoryParsed[];
+  /** Every tenant page — used to resolve the linked page's title for display, mirroring `categories` above. */
+  readonly pages: readonly PageParsed[];
   /** Enabled categories not already linked to any existing menu item — what the CREATE-mode Category `<select>` actually offers (§11/§12). Irrelevant in edit mode. */
   readonly selectableCategories: readonly CategoryParsed[];
   /** Released features not already linked to any existing menu item — what the CREATE-mode Feature `<select>` offers (§7/§12). Irrelevant in edit mode. */
   readonly selectableFeatures: readonly PublicFeatureRegistryEntry[];
+  /** Enabled pages not already linked to any existing menu item — what the CREATE-mode Page `<select>` offers, mirroring `selectableCategories`. Irrelevant in edit mode. */
+  readonly selectablePages: readonly PageParsed[];
   readonly isSaving: boolean;
   readonly formError?: string;
   readonly fieldErrors: readonly string[];
@@ -54,17 +61,20 @@ export function MenuItemFormDrawer({
   mode,
   initialValues,
   categories,
+  pages,
   selectableCategories,
   selectableFeatures,
+  selectablePages,
   isSaving,
   formError,
   fieldErrors,
   onCancel,
   onSubmit,
 }: MenuItemFormDrawerProps) {
-  const [type, setType] = useState<'CATEGORY' | 'FEATURE'>(initialValues.type);
+  const [type, setType] = useState<'CATEGORY' | 'FEATURE' | 'PAGE'>(initialValues.type);
   const [categoryId, setCategoryId] = useState(initialValues.categoryId || selectableCategories[0]?.categoryId || '');
   const [featureKey, setFeatureKey] = useState(initialValues.featureKey || selectableFeatures[0]?.key || '');
+  const [pageId, setPageId] = useState(initialValues.pageId || selectablePages[0]?.pageId || '');
   const [label, setLabel] = useState(initialValues.label);
   const [labelTouched, setLabelTouched] = useState(mode === 'edit');
   const [icon, setIcon] = useState(initialValues.icon);
@@ -91,6 +101,7 @@ export function MenuItemFormDrawer({
   // label) has no such filtering, so it resolves correctly in both modes —
   // Repair Round 1 (checkpoint 1B.6).
   const linkedFeature = getPublicFeatureRegistryEntry(mode === 'edit' ? initialValues.featureKey : featureKey);
+  const linkedPage = pages.find((page) => page.pageId === (mode === 'edit' ? initialValues.pageId : pageId));
 
   function handleCategoryChange(nextCategoryId: string): void {
     setCategoryId(nextCategoryId);
@@ -108,17 +119,36 @@ export function MenuItemFormDrawer({
     }
   }
 
+  function handlePageChange(nextPageId: string): void {
+    setPageId(nextPageId);
+    if (!labelTouched) {
+      const page = selectablePages.find((entry) => entry.pageId === nextPageId);
+      if (page) setLabel(page.title);
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (isSaving) {
       return;
     }
-    onSubmit({ type, categoryId, featureKey, label, icon: type === 'CATEGORY' ? icon : '', status });
+    onSubmit({
+      type,
+      categoryId,
+      featureKey,
+      pageId,
+      label,
+      icon: type === 'CATEGORY' || type === 'PAGE' ? icon : '',
+      status,
+    });
   }
 
   const noCategoriesAvailable = type === 'CATEGORY' && mode === 'create' && selectableCategories.length === 0;
   const noFeaturesAvailable = type === 'FEATURE' && mode === 'create' && selectableFeatures.length === 0;
-  const canSubmit = mode === 'edit' || (type === 'CATEGORY' ? !noCategoriesAvailable : !noFeaturesAvailable);
+  const noPagesAvailable = type === 'PAGE' && mode === 'create' && selectablePages.length === 0;
+  const canSubmit =
+    mode === 'edit' ||
+    (type === 'CATEGORY' ? !noCategoriesAvailable : type === 'PAGE' ? !noPagesAvailable : !noFeaturesAvailable);
 
   return (
     <div className="drawer-overlay" onClick={onCancel}>
@@ -171,6 +201,15 @@ export function MenuItemFormDrawer({
                   <button
                     type="button"
                     className="segmented-option"
+                    aria-pressed={type === 'PAGE'}
+                    onClick={() => setType('PAGE')}
+                    disabled={isSaving}
+                  >
+                    Page
+                  </button>
+                  <button
+                    type="button"
+                    className="segmented-option"
                     aria-pressed={type === 'FEATURE'}
                     onClick={() => setType('FEATURE')}
                     disabled={isSaving}
@@ -183,7 +222,9 @@ export function MenuItemFormDrawer({
               <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
                 {type === 'CATEGORY'
                   ? 'Linked to a category — the link, and which category it points to, cannot be changed here. Remove this item and add a new one to link a different category.'
-                  : 'Linked to a feature — the link cannot be changed here. Remove this item and add a new one to link a different feature.'}
+                  : type === 'PAGE'
+                    ? 'Linked to a page — the link, and which page it points to, cannot be changed here. Remove this item and add a new one to link a different page.'
+                    : 'Linked to a feature — the link cannot be changed here. Remove this item and add a new one to link a different feature.'}
               </p>
             )}
 
@@ -262,6 +303,79 @@ export function MenuItemFormDrawer({
                       <option value="">
                         {linkedCategory ? `Use category icon (${CATEGORY_ICON_META[linkedCategory.icon].label})` : 'Use category icon'}
                       </option>
+                      {ALL_CATEGORY_ICONS.map((value: CategoryIcon) => (
+                        <option key={value} value={value}>
+                          {categoryIconOptionLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )
+            ) : type === 'PAGE' ? (
+              mode === 'create' && noPagesAvailable ? (
+                <div className="empty-state">
+                  <p>No eligible pages — every enabled page is already in the menu, or you have none yet.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="field">
+                    <label className="field-label" htmlFor="menuItemPage">
+                      Page
+                    </label>
+                    {mode === 'create' ? (
+                      <select
+                        id="menuItemPage"
+                        className="select"
+                        required
+                        value={pageId}
+                        onChange={(event) => handlePageChange(event.target.value)}
+                        disabled={isSaving}
+                      >
+                        {selectablePages.map((page) => (
+                          <option key={page.pageId} value={page.pageId}>
+                            {page.title}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p id="menuItemPage" className="field-static-value">
+                        {linkedPage ? linkedPage.title : 'Unknown page'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="menuItemLabel">
+                      Public label
+                    </label>
+                    <input
+                      id="menuItemLabel"
+                      className="input"
+                      type="text"
+                      required
+                      autoFocus
+                      value={label}
+                      onChange={(event) => {
+                        setLabelTouched(true);
+                        setLabel(event.target.value);
+                      }}
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="menuItemIcon">
+                      Icon
+                    </label>
+                    <select
+                      id="menuItemIcon"
+                      className="select"
+                      value={icon}
+                      onChange={(event) => setIcon(event.target.value)}
+                      disabled={isSaving}
+                    >
+                      <option value="">Use default icon ({CATEGORY_ICON_META[DEFAULT_PAGE_MENU_ICON].label})</option>
                       {ALL_CATEGORY_ICONS.map((value: CategoryIcon) => (
                         <option key={value} value={value}>
                           {categoryIconOptionLabel(value)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MAP_THEME } from 'shared-types';
-import type { CategoryParsed, MapParsed, MenuItemParsed, PoiParsed } from 'validation';
+import type { CategoryParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
 import { buildPublicationContent } from './build-publication-snapshot';
 
 /**
@@ -72,6 +72,36 @@ function categoryMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'CA
     label: 'Gourmet',
     categoryId: 'cat_restaurant00000000000',
     order: 0,
+    status: 'ENABLED',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function page(overrides: Partial<PageParsed> = {}): PageParsed {
+  return {
+    pageId: 'page_wifi0000000000000000000',
+    customerId: 'cust_a0000000000000000000',
+    mapId: 'map_a0000000000000000000000',
+    title: 'Wi-Fi Guide',
+    content: 'Network: Guest\nPassword: welcome',
+    status: 'ENABLED',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function pageMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'PAGE' }>> = {}): MenuItemParsed {
+  return {
+    menuItemId: 'menu_c0000000000000000000',
+    customerId: 'cust_a0000000000000000000',
+    mapId: 'map_a0000000000000000000000',
+    type: 'PAGE',
+    label: 'Wi-Fi',
+    pageId: 'page_wifi0000000000000000000',
+    order: 1,
     status: 'ENABLED',
     createdAt: TIMESTAMP,
     updatedAt: TIMESTAMP,
@@ -170,6 +200,48 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
       mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
       area: { type: 'UNBOUNDED' },
       theme: DEFAULT_MAP_THEME,
+    });
+  });
+
+  describe('pages — checkpoint 1B.11', () => {
+    it('includes only ENABLED pages', () => {
+      const content = buildPublicationContent(
+        map(),
+        [],
+        [],
+        [],
+        [page({ status: 'ENABLED' }), page({ pageId: 'page_disabled00000000000000', status: 'DISABLED', title: 'Retired' })],
+      );
+      expect(content.pages).toHaveLength(1);
+      expect(content.pages[0]).toEqual({
+        pageId: 'page_wifi0000000000000000000',
+        title: 'Wi-Fi Guide',
+        content: 'Network: Guest\nPassword: welcome',
+      });
+    });
+
+    it('never includes admin-only page fields (customerId/mapId/status/timestamps)', () => {
+      const content = buildPublicationContent(map(), [], [], [], [page()]);
+      expect(content.pages[0]).toEqual({
+        pageId: 'page_wifi0000000000000000000',
+        title: 'Wi-Fi Guide',
+        content: 'Network: Guest\nPassword: welcome',
+      });
+    });
+
+    it('defaults to an empty pages array when omitted (backward-compatible default)', () => {
+      const content = buildPublicationContent(map(), [], [], []);
+      expect(content.pages).toEqual([]);
+    });
+
+    it('includes a PAGE menu item only when the referenced page is enabled, via delegation to buildPublicMenuProjection()', () => {
+      const content = buildPublicationContent(map(), [], [], [pageMenuItem()], [page()]);
+      expect(content.menu).toEqual([{ type: 'PAGE', label: 'Wi-Fi', icon: 'INFORMATION', pageId: 'page_wifi0000000000000000000' }]);
+    });
+
+    it('excludes a PAGE menu item whose referenced page is disabled', () => {
+      const content = buildPublicationContent(map(), [], [], [pageMenuItem()], [page({ status: 'DISABLED' })]);
+      expect(content.menu).toEqual([]);
     });
   });
 });

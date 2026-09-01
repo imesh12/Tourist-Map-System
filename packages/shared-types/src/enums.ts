@@ -185,6 +185,17 @@ export const POI_STATUSES = ['ENABLED', 'DISABLED'] as const;
 export type PoiStatus = (typeof POI_STATUSES)[number];
 
 /**
+ * A Page's visibility state — checkpoint 1B.11, see ./page.js. Mirrors
+ * `PoiStatus`'s exact shape (its own doc comment's precedent: "separate
+ * small enum per domain concept," even where the values happen to be
+ * identical to another enum's). Disabling a Page never deletes it — the
+ * document remains stored, simply excluded from `buildPublicationContent()`
+ * and from any `PAGE` menu item's public projection until re-enabled.
+ */
+export const PAGE_STATUSES = ['ENABLED', 'DISABLED'] as const;
+export type PageStatus = (typeof PAGE_STATUSES)[number];
+
+/**
  * Which external service authored a `sourceType: 'GOOGLE_PLACES'` POI's
  * content — checkpoint 1B.4. Only meaningful alongside that `sourceType`;
  * a `CLIENT_CUSTOM` POI's `provider`/`providerPlaceId` are always absent
@@ -209,7 +220,18 @@ export type PoiProvider = (typeof POI_PROVIDERS)[number];
  * "two optional fields on one flat interface" — the checkpoint's own
  * instruction is explicit: "Do not support malformed mixed states."
  */
-export const MENU_ITEM_TYPES = ['CATEGORY', 'FEATURE'] as const;
+/**
+ * checkpoint 1B.11 — extended with `PAGE`: a menu item may now also link to
+ * a map-scoped informational `Page` (./page.js), a THIRD, independent
+ * discriminated-union branch alongside `CATEGORY`/`FEATURE` — never encoded
+ * as a `FEATURE` (a Page is tenant content, not a platform-registered
+ * capability) and never as a fake `Category` (a Page creates no map marker
+ * and has no `icon`/`enabled`/`order` taxonomy fields). See shared-types'
+ * `MenuItem` (./menu-item.js) and `packages/validation/src/menu-item.ts`'s
+ * `menuItemSchema`/`menuItemCreateInputSchema` discriminated unions for the
+ * enforced shape.
+ */
+export const MENU_ITEM_TYPES = ['CATEGORY', 'FEATURE', 'PAGE'] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number];
 
 /**

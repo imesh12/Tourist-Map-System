@@ -86,6 +86,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     menu: snapshot.menu,
     categories: snapshot.categories,
     pois: snapshot.pois,
+    pages: snapshot.pages,
   };
 
   return NextResponse.json(publicSnapshot);

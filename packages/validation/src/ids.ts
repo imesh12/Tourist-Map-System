@@ -4,6 +4,7 @@ import {
   CUSTOMER_ID_PREFIX,
   MAP_ID_PREFIX,
   MENU_ITEM_ID_PREFIX,
+  PAGE_ID_PREFIX,
   POI_ID_PREFIX,
   PUBLICATION_ID_PREFIX,
 } from 'shared-types';
@@ -51,6 +52,11 @@ export const publicationIdSchema = z
     randomSuffixPattern(PUBLICATION_ID_PREFIX),
     `publicationId must match ${PUBLICATION_ID_PREFIX}<16-40 url-safe characters>`,
   );
+
+/** checkpoint 1B.11 — see shared-types' `Page`. */
+export const pageIdSchema = z
+  .string()
+  .regex(randomSuffixPattern(PAGE_ID_PREFIX), `pageId must match ${PAGE_ID_PREFIX}<16-40 url-safe characters>`);
 
 /**
  * Firebase Authentication UID. Firebase documents UIDs as 1-128 characters;

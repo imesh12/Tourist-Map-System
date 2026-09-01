@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { getPublicFeatureRegistryEntry, listReleasedFeatures } from 'shared-types';
-import { menuItemCreateInputSchema, menuItemUpdateInputSchema, type CategoryParsed, type MenuItemParsed } from 'validation';
+import { menuItemCreateInputSchema, menuItemUpdateInputSchema, type CategoryParsed, type MenuItemParsed, type PageParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
+import { DEFAULT_PAGE_MENU_ICON } from '@/lib/tenant/menu-projection';
 import { CATEGORY_ICON_META } from '../categories/category-icons';
 import { DeleteMenuItemDialog } from './delete-menu-item-dialog';
 import { MenuItemFormDrawer, type MenuItemFormValues } from './menu-item-form-drawer';
@@ -31,6 +32,7 @@ interface MenuBuilderManagerProps {
   readonly mapName: string;
   readonly initialMenuItems: readonly MenuItemParsed[];
   readonly categories: readonly CategoryParsed[];
+  readonly pages: readonly PageParsed[];
   readonly canEdit: boolean;
 }
 
@@ -45,8 +47,16 @@ async function parseSafeErrorMessage(response: Response, fallback: string): Prom
   }
 }
 
-function emptyFormValues(defaultCategoryId: string, defaultFeatureKey: string): MenuItemFormValues {
-  return { type: 'CATEGORY', categoryId: defaultCategoryId, featureKey: defaultFeatureKey, label: '', icon: '', status: 'ENABLED' };
+function emptyFormValues(defaultCategoryId: string, defaultFeatureKey: string, defaultPageId: string): MenuItemFormValues {
+  return {
+    type: 'CATEGORY',
+    categoryId: defaultCategoryId,
+    featureKey: defaultFeatureKey,
+    pageId: defaultPageId,
+    label: '',
+    icon: '',
+    status: 'ENABLED',
+  };
 }
 
 function menuItemToFormValues(menuItem: MenuItemParsed): MenuItemFormValues {
@@ -54,13 +64,17 @@ function menuItemToFormValues(menuItem: MenuItemParsed): MenuItemFormValues {
     type: menuItem.type,
     categoryId: menuItem.type === 'CATEGORY' ? menuItem.categoryId : '',
     featureKey: menuItem.type === 'FEATURE' ? menuItem.featureKey : '',
+    pageId: menuItem.type === 'PAGE' ? menuItem.pageId : '',
     label: menuItem.label,
-    icon: menuItem.type === 'CATEGORY' ? (menuItem.icon ?? '') : '',
+    // checkpoint 1B.11 — a PAGE item's icon override shares CATEGORY's
+    // identical optional-icon-override shape (see `MenuItemPage` in
+    // shared-types), so it belongs on this same branch.
+    icon: menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? (menuItem.icon ?? '') : '',
     status: menuItem.status,
   };
 }
 
-export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categories, canEdit }: MenuBuilderManagerProps) {
+export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categories, pages, canEdit }: MenuBuilderManagerProps) {
   const [menuItems, setMenuItems] = useState<readonly MenuItemParsed[]>(initialMenuItems);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -82,6 +96,14 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     return map;
   }, [categories]);
 
+  const pageById = useMemo(() => {
+    const map = new Map<string, PageParsed>();
+    for (const page of pages) {
+      map.set(page.pageId, page);
+    }
+    return map;
+  }, [pages]);
+
   const usedCategoryIds = useMemo(
     () => new Set(menuItems.filter((item) => item.type === 'CATEGORY').map((item) => item.categoryId)),
     [menuItems],
@@ -90,12 +112,13 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     () => new Set(menuItems.filter((item) => item.type === 'FEATURE').map((item) => item.featureKey)),
     [menuItems],
   );
+  const usedPageIds = useMemo(() => new Set(menuItems.filter((item) => item.type === 'PAGE').map((item) => item.pageId)), [menuItems]);
 
   // §11: only enabled categories are ever offered for a NEW menu link.
-  // §12: a category (or feature) already in the menu is never offered
-  // again — the server enforces uniqueness authoritatively regardless, this
-  // is UX convenience only, mirroring `eligibleCategories` in
-  // `pois-manager.tsx`.
+  // §12: a category (or feature, or page) already in the menu is never
+  // offered again — the server enforces uniqueness authoritatively
+  // regardless, this is UX convenience only, mirroring `eligibleCategories`
+  // in `pois-manager.tsx`.
   const selectableCategories = useMemo(
     () => categories.filter((category) => category.enabled && !usedCategoryIds.has(category.categoryId)),
     [categories, usedCategoryIds],
@@ -103,6 +126,12 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
   const selectableFeatures = useMemo(
     () => ALL_RELEASED_FEATURES.filter((feature) => !usedFeatureKeys.has(feature.key)),
     [usedFeatureKeys],
+  );
+  // checkpoint 1B.11 — same "enabled and not already linked" eligibility
+  // rule as `selectableCategories` above, applied to Pages.
+  const selectablePages = useMemo(
+    () => pages.filter((page) => page.status === 'ENABLED' && !usedPageIds.has(page.pageId)),
+    [pages, usedPageIds],
   );
 
   async function refetchMenuItems(): Promise<void> {
@@ -152,7 +181,15 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
             ...(values.icon ? { icon: values.icon } : {}),
             status: values.status,
           }
-        : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status };
+        : values.type === 'PAGE'
+          ? {
+              type: 'PAGE' as const,
+              pageId: values.pageId,
+              label: values.label,
+              ...(values.icon ? { icon: values.icon } : {}),
+              status: values.status,
+            }
+          : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status };
 
     const parsed = menuItemCreateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -187,10 +224,11 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     const payload = {
       label: values.label,
       status: values.status,
-      // `icon` is only ever meaningful for a CATEGORY item — `menuItemUpdateInputSchema`
-      // has no type-awareness of its own, but the route rejects `icon` on a
-      // FEATURE item's target, so this form never sends it for one.
-      ...(menuItem.type === 'CATEGORY' ? { icon: values.icon ? values.icon : null } : {}),
+      // `icon` is only ever meaningful for a CATEGORY or PAGE item —
+      // `menuItemUpdateInputSchema` has no type-awareness of its own, but the
+      // route rejects `icon` on a FEATURE item's target, so this form never
+      // sends it for one.
+      ...(menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? { icon: values.icon ? values.icon : null } : {}),
     };
     const parsed = menuItemUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -369,6 +407,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
                 const isBusy = busyMenuItemId === menuItem.menuItemId || isRefetching;
                 const category = menuItem.type === 'CATEGORY' ? categoryById.get(menuItem.categoryId) : undefined;
                 const feature = menuItem.type === 'FEATURE' ? getPublicFeatureRegistryEntry(menuItem.featureKey) : undefined;
+                const page = menuItem.type === 'PAGE' ? pageById.get(menuItem.pageId) : undefined;
 
                 return (
                   <tr key={menuItem.menuItemId}>
@@ -400,7 +439,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
                       </div>
                     </td>
                     <td>{menuItem.label}</td>
-                    <td>{menuItem.type === 'CATEGORY' ? 'Category' : 'Feature'}</td>
+                    <td>{menuItem.type === 'CATEGORY' ? 'Category' : menuItem.type === 'PAGE' ? 'Page' : 'Feature'}</td>
                     <td>
                       {menuItem.type === 'CATEGORY' ? (
                         category ? (
@@ -411,6 +450,16 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
                           </span>
                         ) : (
                           <span className="field-hint">Unknown category</span>
+                        )
+                      ) : menuItem.type === 'PAGE' ? (
+                        page ? (
+                          <span className="icon-cell">
+                            <span aria-hidden="true">{CATEGORY_ICON_META[menuItem.icon ?? DEFAULT_PAGE_MENU_ICON].emoji}</span>
+                            {page.title}
+                            {page.status !== 'ENABLED' ? <span className="badge badge-neutral">Page disabled</span> : null}
+                          </span>
+                        ) : (
+                          <span className="field-hint">Unknown page</span>
                         )
                       ) : feature ? (
                         feature.label
@@ -459,11 +508,13 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
           initialValues={
             drawer.mode === 'edit'
               ? menuItemToFormValues(drawer.menuItem)
-              : emptyFormValues(selectableCategories[0]?.categoryId ?? '', selectableFeatures[0]?.key ?? '')
+              : emptyFormValues(selectableCategories[0]?.categoryId ?? '', selectableFeatures[0]?.key ?? '', selectablePages[0]?.pageId ?? '')
           }
           categories={categories}
+          pages={pages}
           selectableCategories={selectableCategories}
           selectableFeatures={selectableFeatures}
+          selectablePages={selectablePages}
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}
@@ -476,7 +527,13 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
         <DeleteMenuItemDialog
           label={deleteTarget.label}
           type={deleteTarget.type}
-          linkedName={deleteTarget.type === 'CATEGORY' ? categoryById.get(deleteTarget.categoryId)?.name : undefined}
+          linkedName={
+            deleteTarget.type === 'CATEGORY'
+              ? categoryById.get(deleteTarget.categoryId)?.name
+              : deleteTarget.type === 'PAGE'
+                ? pageById.get(deleteTarget.pageId)?.title
+                : undefined
+          }
           isDeleting={isDeleting}
           onCancel={cancelDelete}
           onConfirm={confirmDelete}

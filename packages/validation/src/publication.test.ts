@@ -49,6 +49,7 @@ const validSnapshot = {
       location: { latitude: 35.0116, longitude: 135.7681 },
     },
   ],
+  pages: [{ pageId: 'page_aB3dEf6gH9jKlMn0pQ', title: 'Wi-Fi Guide', content: 'Network: Guest\nPassword: welcome' }],
 };
 
 describe('mapPublicationSnapshotSchema', () => {
@@ -56,9 +57,74 @@ describe('mapPublicationSnapshotSchema', () => {
     expect(mapPublicationSnapshotSchema.safeParse(validSnapshot).success).toBe(true);
   });
 
-  it('accepts a snapshot with empty menu/categories/pois arrays (a map with no publishable content yet)', () => {
-    const result = mapPublicationSnapshotSchema.safeParse({ ...validSnapshot, menu: [], categories: [], pois: [] });
+  it('accepts a snapshot with empty menu/categories/pois/pages arrays (a map with no publishable content yet)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({ ...validSnapshot, menu: [], categories: [], pois: [], pages: [] });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a PAGE menu item', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      menu: [...validSnapshot.menu, { type: 'PAGE', label: 'Wi-Fi', icon: 'INFORMATION', pageId: 'page_aB3dEf6gH9jKlMn0pQ' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a PAGE menu item missing pageId', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      menu: [{ type: 'PAGE', label: 'Broken', icon: 'INFORMATION' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a PAGE menu item mixing pageId and categoryId (malformed mixed state)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      menu: [
+        {
+          type: 'PAGE',
+          label: 'Broken',
+          icon: 'INFORMATION',
+          pageId: 'page_aB3dEf6gH9jKlMn0pQ',
+          categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a page missing content', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pages: [{ pageId: 'page_aB3dEf6gH9jKlMn0pQ', title: 'Wi-Fi Guide' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a page with a malformed pageId', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pages: [{ pageId: 'not-a-page-id', title: 'Wi-Fi Guide', content: 'x' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a legacy stored document predating checkpoint 1B.11 (no `pages` field at all), normalizing it to `pages: []`', () => {
+    // A publication document written before checkpoint 1B.11 introduced
+    // Pages is an IMMUTABLE stored artifact — it will never gain a `pages`
+    // field retroactively. `.default([])` on the schema (not `.optional()`)
+    // is what makes this both backward-compatible AND non-weakening: the
+    // key is optional on INPUT, but the PARSED result always has a real
+    // `pages` array, matching shared-types' non-optional
+    // `readonly pages: readonly PublishedPage[]` contract exactly.
+    const withoutPages: Record<string, unknown> = { ...validSnapshot };
+    delete withoutPages.pages;
+    const result = mapPublicationSnapshotSchema.safeParse(withoutPages);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pages).toEqual([]);
+    }
   });
 
   it('accepts a POI with optional address/description', () => {
@@ -209,8 +275,18 @@ describe('publicMapSnapshotSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('accepts an empty pois/categories/menu snapshot (an unpublished-content map that was still explicitly published)', () => {
-    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, menu: [], categories: [], pois: [] });
+  it('accepts an empty pois/categories/menu/pages snapshot (an unpublished-content map that was still explicitly published)', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, menu: [], categories: [], pois: [], pages: [] });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a legacy public snapshot predating checkpoint 1B.11 (no `pages` field), normalizing it to `pages: []` — this is the exact shape tourist-web’s public-map client parses for a pre-Pages stored publication', () => {
+    const legacyPublicSnapshot: Record<string, unknown> = { ...publicSnapshot };
+    delete legacyPublicSnapshot.pages;
+    const result = publicMapSnapshotSchema.safeParse(legacyPublicSnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pages).toEqual([]);
+    }
   });
 });

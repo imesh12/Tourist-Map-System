@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { MENU_ITEM_STATUSES, RELEASED_FEATURE_KEYS } from 'shared-types';
 import { categoryIconSchema } from './category.js';
-import { categoryIdSchema, customerIdSchema, mapIdSchema, menuItemIdSchema } from './ids.js';
+import { categoryIdSchema, customerIdSchema, mapIdSchema, menuItemIdSchema, pageIdSchema } from './ids.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -84,6 +84,24 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       updatedAt: firestoreTimestampLikeSchema,
     })
     .strict(),
+  // checkpoint 1B.11 — a THIRD branch, never a bolt-on optional field on the
+  // two branches above. `icon` mirrors the CATEGORY branch's identical
+  // optional-override shape (see shared-types' `MenuItemPage` doc comment).
+  z
+    .object({
+      menuItemId: menuItemIdSchema,
+      customerId: customerIdSchema,
+      mapId: mapIdSchema,
+      type: z.literal('PAGE'),
+      label: menuItemLabelSchema,
+      pageId: pageIdSchema,
+      icon: menuItemIconSchema.optional(),
+      order: menuItemOrderSchema,
+      status: menuItemStatusSchema,
+      createdAt: firestoreTimestampLikeSchema,
+      updatedAt: firestoreTimestampLikeSchema,
+    })
+    .strict(),
 ]);
 export type MenuItemParsed = z.infer<typeof menuItemSchema>;
 
@@ -115,6 +133,25 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       type: z.literal('FEATURE'),
       featureKey: menuItemFeatureKeySchema,
       label: menuItemLabelSchema,
+      order: menuItemOrderSchema.optional(),
+      status: menuItemStatusSchema.optional(),
+    })
+    .strict(),
+  /**
+   * checkpoint 1B.11 — `pageId` is validated for FORMAT only here; the route
+   * handler is additionally responsible for verifying the referenced Page
+   * actually exists (and is enabled, if the desired status is ENABLED — same
+   * rule the CATEGORY branch's route handling already applies) under the
+   * caller's own authenticated map before writing anything, and for
+   * enforcing the "at most once per map" uniqueness rule the same way it
+   * already does for `categoryId`/`featureKey`.
+   */
+  z
+    .object({
+      type: z.literal('PAGE'),
+      pageId: pageIdSchema,
+      label: menuItemLabelSchema,
+      icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
     })

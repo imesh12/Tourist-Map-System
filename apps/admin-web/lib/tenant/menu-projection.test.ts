@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CategoryParsed, MenuItemParsed } from 'validation';
+import type { CategoryParsed, MenuItemParsed, PageParsed } from 'validation';
 import { buildPublicMenuProjection } from './menu-projection';
 
 /**
@@ -51,6 +51,36 @@ function featureMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'FEA
     label: 'Search',
     featureKey: 'SEARCH',
     order: 1,
+    status: 'ENABLED',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function page(overrides: Partial<PageParsed> = {}): PageParsed {
+  return {
+    pageId: 'page_wifi0000000000000000000',
+    customerId: 'cust_a0000000000000000000',
+    mapId: 'map_a0000000000000000000000',
+    title: 'Wi-Fi Guide',
+    content: 'Network: Guest',
+    status: 'ENABLED',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function pageMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'PAGE' }>> = {}): MenuItemParsed {
+  return {
+    menuItemId: 'menu_c0000000000000000000',
+    customerId: 'cust_a0000000000000000000',
+    mapId: 'map_a0000000000000000000000',
+    type: 'PAGE',
+    label: 'Wi-Fi',
+    pageId: 'page_wifi0000000000000000000',
+    order: 2,
     status: 'ENABLED',
     createdAt: TIMESTAMP,
     updatedAt: TIMESTAMP,
@@ -193,5 +223,66 @@ describe('buildPublicMenuProjection', () => {
 
     expect(menuItems).toEqual(menuItemsSnapshot);
     expect(categories).toEqual(categoriesSnapshot);
+  });
+
+  describe('PAGE menu items — checkpoint 1B.11', () => {
+    it('projects an enabled PAGE item linked to an enabled page', () => {
+      const result = buildPublicMenuProjection([pageMenuItem()], [], [page()]);
+      expect(result).toEqual([{ type: 'PAGE', label: 'Wi-Fi', icon: 'INFORMATION', pageId: 'page_wifi0000000000000000000' }]);
+    });
+
+    it('excludes a DISABLED PAGE menu item', () => {
+      const result = buildPublicMenuProjection([pageMenuItem({ status: 'DISABLED' })], [], [page()]);
+      expect(result).toEqual([]);
+    });
+
+    it('fails closed on a PAGE item referencing a pageId that does not exist (broken/deleted reference)', () => {
+      const result = buildPublicMenuProjection([pageMenuItem({ pageId: 'page_does_not_exist000000' })], [], [page()]);
+      expect(result).toEqual([]);
+    });
+
+    it('fails closed on a PAGE item referencing a disabled page', () => {
+      const result = buildPublicMenuProjection([pageMenuItem()], [], [page({ status: 'DISABLED' })]);
+      expect(result).toEqual([]);
+    });
+
+    it('defaults a PAGE item’s icon to INFORMATION when no override is set (a Page has no icon of its own to fall back to)', () => {
+      const result = buildPublicMenuProjection([pageMenuItem()], [], [page()]);
+      expect(result[0]).toMatchObject({ icon: 'INFORMATION' });
+    });
+
+    it('prefers the menu item’s own icon override over the PAGE default', () => {
+      const result = buildPublicMenuProjection([pageMenuItem({ icon: 'STATION' })], [], [page()]);
+      expect(result[0]).toMatchObject({ icon: 'STATION' });
+    });
+
+    it('projects a mixed CATEGORY + FEATURE + PAGE menu in order, skipping a disabled page link', () => {
+      const result = buildPublicMenuProjection(
+        [
+          categoryMenuItem({ menuItemId: 'menu_gourmet000000000000000', order: 0 }),
+          featureMenuItem({ menuItemId: 'menu_search000000000000000', order: 1 }),
+          pageMenuItem({ menuItemId: 'menu_wifi00000000000000000', order: 2, label: 'Wi-Fi', pageId: 'page_wifi0000000000000000000' }),
+          pageMenuItem({
+            menuItemId: 'menu_disabled_page00000000',
+            order: 3,
+            label: 'Disabled Page Link',
+            pageId: 'page_disabled00000000000000',
+          }),
+        ],
+        [category()],
+        [page(), page({ pageId: 'page_disabled00000000000000', status: 'DISABLED' })],
+      );
+
+      expect(result).toEqual([
+        { type: 'CATEGORY', label: 'Gourmet', icon: 'FOOD', categoryId: 'cat_restaurant00000000000' },
+        { type: 'FEATURE', label: 'Search', icon: 'INFORMATION', featureKey: 'SEARCH' },
+        { type: 'PAGE', label: 'Wi-Fi', icon: 'INFORMATION', pageId: 'page_wifi0000000000000000000' },
+      ]);
+    });
+
+    it('treats an omitted pages argument as no pages available (backward-compatible default)', () => {
+      const result = buildPublicMenuProjection([pageMenuItem()], []);
+      expect(result).toEqual([]);
+    });
   });
 });

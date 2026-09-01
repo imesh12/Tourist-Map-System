@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { describeMapContextDenial, getOwnedMapContext } from '@/lib/tenant/map-context';
 import { loadTenantCategories } from '@/lib/tenant/load-categories';
 import { loadTenantMenuItems } from '@/lib/tenant/load-menu-items';
+import { loadTenantPages } from '@/lib/tenant/load-pages';
 import { MenuBuilderManager } from './menu-builder-manager';
 
 export const metadata: Metadata = {
@@ -47,7 +48,11 @@ export default async function MenuBuilderPage({ params }: PageParams) {
   }
 
   const { map } = result.context;
-  const [categories, menuItems] = await Promise.all([loadTenantCategories(map.mapId), loadTenantMenuItems(map.mapId)]);
+  const [categories, menuItems, pages] = await Promise.all([
+    loadTenantCategories(map.mapId),
+    loadTenantMenuItems(map.mapId),
+    loadTenantPages(map.mapId),
+  ]);
 
   return (
     <MenuBuilderManager
@@ -55,6 +60,7 @@ export default async function MenuBuilderPage({ params }: PageParams) {
       mapName={map.name}
       initialMenuItems={menuItems}
       categories={categories}
+      pages={pages}
       canEdit={result.context.identity.role === 'CLIENT_ADMIN'}
     />
   );

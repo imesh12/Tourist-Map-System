@@ -558,6 +558,55 @@ describe('firestore.rules — checkpoint 1A.6 tenant isolation', () => {
     });
   });
 
+  describe('maps/{mapId}/pages subcollection — checkpoint 1B.11', () => {
+    // Same "server-only, deny-by-default fallback" shape as the categories
+    // block above: Pages CMS data goes exclusively through the trusted
+    // `/api/maps/{mapId}/pages` Route Handlers (Admin SDK, which bypasses
+    // rules by design), never the browser's own Firestore client. No
+    // explicit `match` block exists for this nested collection either, so
+    // the deny-by-default `match /{document=**}` fallback already covers
+    // it — these tests prove that remains true for Pages specifically,
+    // rather than assuming the categories proof generalizes (§15 of the
+    // checkpoint: "update rules/tests as necessary... do not weaken existing
+    // rules to make tests easier" — this block proves no weakening was
+    // needed at all).
+    it('denies an own-tenant page read, even for the map owner', async () => {
+      await seedFixtures();
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), `maps/${MAP_A}/pages/page_seed`), {
+          pageId: 'page_seed',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          title: 'Wi-Fi Guide',
+          content: 'Network: Guest\nPassword: welcome',
+          status: 'ENABLED',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await assertFails(getDoc(doc(aAdminDb(), `maps/${MAP_A}/pages/page_seed`)));
+    });
+
+    it('denies an own-tenant page write', async () => {
+      await seedFixtures();
+      await assertFails(
+        setDoc(doc(aAdminDb(), `maps/${MAP_A}/pages/page_forged`), {
+          pageId: 'page_forged',
+          customerId: TENANT_A,
+          mapId: MAP_A,
+          title: 'Forged',
+          content: 'Forged content',
+          status: 'ENABLED',
+        }),
+      );
+    });
+
+    it('denies an unauthenticated page read', async () => {
+      await seedFixtures();
+      await assertFails(getDoc(doc(unauthedDb(), `maps/${MAP_A}/pages/page_seed`)));
+    });
+  });
+
   describe('maps/{mapId}/pois subcollection — checkpoint 1B.3', () => {
     // Same "server-only, deny-by-default fallback" shape as the categories
     // block immediately above: POI data goes exclusively through the

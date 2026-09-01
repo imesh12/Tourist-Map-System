@@ -27,9 +27,48 @@ const validFeatureMenuItem = {
   updatedAt: { seconds: 1700000001, nanoseconds: 0 },
 };
 
+const validPageMenuItem = {
+  menuItemId: 'menu_aB3dEf6gH9jKlMn0pS',
+  customerId: 'cust_aB3dEf6gH9jKlMn0pQ',
+  mapId: 'map_aB3dEf6gH9jKlMn0pQ',
+  type: 'PAGE',
+  label: 'Shuttle',
+  pageId: 'page_aB3dEf6gH9jKlMn0pQ',
+  order: 2,
+  status: 'ENABLED',
+  createdAt: { seconds: 1700000000, nanoseconds: 0 },
+  updatedAt: { seconds: 1700000001, nanoseconds: 0 },
+};
+
 describe('menuItemSchema', () => {
   it('accepts a valid CATEGORY menu item', () => {
     expect(menuItemSchema.safeParse(validCategoryMenuItem).success).toBe(true);
+  });
+
+  it('accepts a valid PAGE menu item', () => {
+    expect(menuItemSchema.safeParse(validPageMenuItem).success).toBe(true);
+  });
+
+  it('accepts a valid PAGE menu item with an icon override', () => {
+    expect(menuItemSchema.safeParse({ ...validPageMenuItem, icon: 'INFORMATION' }).success).toBe(true);
+  });
+
+  it('rejects a PAGE item missing pageId', () => {
+    const { pageId, ...rest } = validPageMenuItem;
+    void pageId;
+    expect(menuItemSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects a PAGE item that also carries categoryId (malformed mixed state)', () => {
+    expect(menuItemSchema.safeParse({ ...validPageMenuItem, categoryId: 'cat_aB3dEf6gH9jKlMn0pQ' }).success).toBe(false);
+  });
+
+  it('rejects a PAGE item that also carries featureKey (malformed mixed state)', () => {
+    expect(menuItemSchema.safeParse({ ...validPageMenuItem, featureKey: 'SEARCH' }).success).toBe(false);
+  });
+
+  it('rejects a CATEGORY item that also carries pageId (malformed mixed state)', () => {
+    expect(menuItemSchema.safeParse({ ...validCategoryMenuItem, pageId: 'page_aB3dEf6gH9jKlMn0pQ' }).success).toBe(false);
   });
 
   it('accepts a valid CATEGORY menu item with an icon override', () => {
@@ -82,6 +121,38 @@ describe('menuItemCreateInputSchema', () => {
   it('accepts a minimal valid FEATURE create input', () => {
     const result = menuItemCreateInputSchema.safeParse({ type: 'FEATURE', featureKey: 'MY_LOCATION', label: 'My Location' });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a minimal valid PAGE create input', () => {
+    const result = menuItemCreateInputSchema.safeParse({ type: 'PAGE', pageId: 'page_aB3dEf6gH9jKlMn0pQ', label: 'Shuttle' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a full PAGE create input with icon/order/status', () => {
+    const result = menuItemCreateInputSchema.safeParse({
+      type: 'PAGE',
+      pageId: 'page_aB3dEf6gH9jKlMn0pQ',
+      label: 'Shuttle',
+      icon: 'INFORMATION',
+      order: 3,
+      status: 'DISABLED',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a PAGE input carrying categoryId', () => {
+    const result = menuItemCreateInputSchema.safeParse({
+      type: 'PAGE',
+      pageId: 'page_aB3dEf6gH9jKlMn0pQ',
+      categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+      label: 'Shuttle',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a malformed pageId', () => {
+    const result = menuItemCreateInputSchema.safeParse({ type: 'PAGE', pageId: 'not-a-page-id', label: 'Shuttle' });
+    expect(result.success).toBe(false);
   });
 
   it('accepts a full CATEGORY create input with icon/order/status', () => {

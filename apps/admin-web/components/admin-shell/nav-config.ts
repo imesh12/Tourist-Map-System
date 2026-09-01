@@ -39,6 +39,11 @@ export function buildAdminNavSections(activeMapId?: string): readonly NavSection
       { kind: 'link', label: 'Categories', href: `/admin/maps/${activeMapId}/categories`, icon: 'tag' },
       { kind: 'link', label: 'POIs / Spots', href: `/admin/maps/${activeMapId}/pois`, icon: 'pin' },
       { kind: 'link', label: 'Menu Builder', href: `/admin/maps/${activeMapId}/menu`, icon: 'menu' },
+      // checkpoint 1B.11 — map-scoped Pages CMS, distinct from the
+      // tenant-global "future" Pages placeholder below (line ~51), which is
+      // an unrelated, not-yet-built product direction item and must stay
+      // untouched.
+      { kind: 'link', label: 'Pages', href: `/admin/maps/${activeMapId}/pages`, icon: 'page' },
       { kind: 'future', label: 'Map Preview', icon: 'preview' },
     );
   }

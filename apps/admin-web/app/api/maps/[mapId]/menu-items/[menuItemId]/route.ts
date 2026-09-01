@@ -81,6 +81,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     return NextResponse.json({ code: 'map/not-found', message: 'Menu item not found.' }, { status: 404 });
   }
 
+  // checkpoint 1B.11: a PAGE item's icon is an optional client override, the
+  // exact same shape a CATEGORY item's already is — only a FEATURE item's
+  // icon is permanently fixed to its registry entry.
   if (existing.type === 'FEATURE' && parsed.data.icon !== undefined) {
     return NextResponse.json(
       { code: 'map/menu-item-immutable-fields', message: 'A feature menu item always uses its default icon and cannot be overridden.' },

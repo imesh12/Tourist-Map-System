@@ -1,5 +1,12 @@
-import { DEFAULT_MAP_THEME, type PublicationMenuItem, type PublishedCategory, type PublishedMapSummary, type PublishedPoi } from 'shared-types';
-import type { CategoryParsed, MapParsed, MenuItemParsed, PoiParsed } from 'validation';
+import {
+  DEFAULT_MAP_THEME,
+  type PublicationMenuItem,
+  type PublishedCategory,
+  type PublishedMapSummary,
+  type PublishedPage,
+  type PublishedPoi,
+} from 'shared-types';
+import type { CategoryParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
 import { buildPublicMenuProjection } from './menu-projection';
 
 /**
@@ -43,6 +50,7 @@ export interface PublicationContent {
   readonly menu: readonly PublicationMenuItem[];
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];
+  readonly pages: readonly PublishedPage[];
 }
 
 export function buildPublicationContent(
@@ -50,6 +58,7 @@ export function buildPublicationContent(
   categories: readonly CategoryParsed[],
   pois: readonly PoiParsed[],
   menuItems: readonly MenuItemParsed[],
+  pages: readonly PageParsed[] = [],
 ): PublicationContent {
   const publishedCategories: PublishedCategory[] = categories
     .filter((category) => category.enabled)
@@ -68,12 +77,21 @@ export function buildPublicationContent(
       ...(poi.description ? { description: poi.description } : {}),
     }));
 
-  // `buildPublicMenuProjection()` is given every category (not just the
-  // already-enabled subset above) — it applies its own, already-correct
-  // enabled/disabled check per menu item internally; passing the full list
+  // checkpoint 1B.11 — only `ENABLED` Pages are ever published, mirroring
+  // `publishedCategories`'s identical "only enabled" filter above. A Page
+  // creates no marker and has no category relationship, so — unlike POIs —
+  // there is no cross-reference to validate here; a Page's PUBLIC visibility
+  // depends only on its own `status`.
+  const publishedPages: PublishedPage[] = pages
+    .filter((page) => page.status === 'ENABLED')
+    .map((page) => ({ pageId: page.pageId, title: page.title, content: page.content }));
+
+  // `buildPublicMenuProjection()` is given every category/page (not just the
+  // already-enabled subsets above) — it applies its own, already-correct
+  // enabled/disabled check per menu item internally; passing the full lists
   // lets it make that decision itself rather than this function
   // second-guessing it.
-  const menu = buildPublicMenuProjection(menuItems, categories);
+  const menu = buildPublicMenuProjection(menuItems, categories, pages);
 
   const publishedMap: PublishedMapSummary = {
     name: map.name,
@@ -88,5 +106,6 @@ export function buildPublicationContent(
     menu,
     categories: publishedCategories,
     pois: publishedPois,
+    pages: publishedPages,
   };
 }

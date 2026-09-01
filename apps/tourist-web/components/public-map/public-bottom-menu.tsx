@@ -29,6 +29,15 @@ import { categoryIconMeta } from '@/lib/public-map/category-icon-meta';
  * scrollable strip... do not make the entire bottom of the screen
  * permanently huge") — `app/globals.css`'s `.public-bottom-menu` rule is
  * `overflow-x: auto` with a fixed height, never growing with item count.
+ *
+ * checkpoint 1B.11 — a `PAGE` item is a one-shot trigger like a `FEATURE`
+ * item (never toggles filter state), but it is its own explicit branch
+ * rather than folded into the FEATURE fallthrough below: once `CATEGORY` is
+ * excluded, the remaining union member is no longer just `FEATURE` now that
+ * `PublicationMenuItem` has three variants, so `PAGE` must be checked
+ * explicitly before that fallthrough can safely assume `FEATURE` — the same
+ * fix already applied to `buildPublicMenuProjection()`'s identical
+ * CATEGORY/FEATURE narrowing (apps/admin-web/lib/tenant/menu-projection.ts).
  */
 export interface PublicBottomMenuProps {
   readonly menu: readonly PublicationMenuItem[];
@@ -36,9 +45,17 @@ export interface PublicBottomMenuProps {
   readonly onSelectCategory: (categoryId: string | null) => void;
   readonly onOpenSearch: () => void;
   readonly onRequestMyLocation: () => void;
+  readonly onOpenPage: (pageId: string) => void;
 }
 
-export function PublicBottomMenu({ menu, selectedCategoryId, onSelectCategory, onOpenSearch, onRequestMyLocation }: PublicBottomMenuProps) {
+export function PublicBottomMenu({
+  menu,
+  selectedCategoryId,
+  onSelectCategory,
+  onOpenSearch,
+  onRequestMyLocation,
+  onOpenPage,
+}: PublicBottomMenuProps) {
   if (menu.length === 0) {
     // An admin who publishes zero menu items has deliberately chosen no
     // public navigation at all (§7: "render only what publication has
@@ -69,6 +86,20 @@ export function PublicBottomMenu({ menu, selectedCategoryId, onSelectCategory, o
               className="public-menu-item"
               aria-pressed={isActive}
               onClick={() => onSelectCategory(item.categoryId)}
+            >
+              <span aria-hidden="true">{categoryIconMeta(item.icon).emoji}</span> {item.label}
+            </button>
+          );
+        }
+
+        if (item.type === 'PAGE') {
+          return (
+            <button
+              key={item.pageId}
+              type="button"
+              data-testid={`public-menu-page-${item.pageId}`}
+              className="public-menu-item"
+              onClick={() => onOpenPage(item.pageId)}
             >
               <span aria-hidden="true">{categoryIconMeta(item.icon).emoji}</span> {item.label}
             </button>

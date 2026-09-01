@@ -155,6 +155,71 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     }
   }
 
+  if (parsed.data.type === 'PAGE') {
+    const pageInput = parsed.data;
+
+    // Never trust pageId merely because it's well-formed — it must
+    // reference a Page that exists under THIS already-verified map, same
+    // "even a page from a different map owned by the same tenant is a
+    // different, unreachable Firestore path" reasoning the CATEGORY branch
+    // above already documents.
+    const pageSnap = await firestore.doc(`maps/${resolvedMapId}/pages/${pageInput.pageId}`).get();
+    if (!pageSnap.exists) {
+      return NextResponse.json({ code: 'map/invalid-page', message: 'Select a valid page for this map.' }, { status: 400 });
+    }
+
+    const pageEnabled = pageSnap.data()?.status === 'ENABLED';
+    if (!pageEnabled && desiredStatus === 'ENABLED') {
+      return NextResponse.json(
+        { code: 'map/page-disabled', message: 'This page is disabled — enable it first, or add this menu item as Disabled.' },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const menuItemId = await firestore.runTransaction(async (transaction) => {
+        const duplicateSnap = await transaction.get(
+          menuItemsRef.where('type', '==', 'PAGE').where('pageId', '==', pageInput.pageId).limit(1),
+        );
+        if (!duplicateSnap.empty) {
+          throw new DuplicateMenuItemError();
+        }
+
+        let order = pageInput.order;
+        if (order === undefined) {
+          const existing = await transaction.get(menuItemsRef);
+          order = existing.size;
+        }
+
+        const newMenuItemId = generateMenuItemId();
+        transaction.set(menuItemsRef.doc(newMenuItemId), {
+          menuItemId: newMenuItemId,
+          customerId: result.context.map.customerId,
+          mapId: resolvedMapId,
+          type: 'PAGE',
+          label: pageInput.label,
+          pageId: pageInput.pageId,
+          ...(pageInput.icon ? { icon: pageInput.icon } : {}),
+          order,
+          status: desiredStatus,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return newMenuItemId;
+      });
+
+      return NextResponse.json({ ok: true, menuItemId }, { status: 201 });
+    } catch (error) {
+      if (error instanceof DuplicateMenuItemError) {
+        return NextResponse.json(
+          { code: 'map/duplicate-menu-item', message: 'This page is already in the menu.' },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
+  }
+
   const featureInput = parsed.data;
 
   try {

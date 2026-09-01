@@ -12,6 +12,7 @@ import { buildMarkerIcon, resolveMarkerVisualConfig } from '@/lib/public-map/mar
 import { myLocationErrorMessage, requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
 import { createPoiMarkerLayer, type PoiMarkerLayer } from '@/lib/public-map/poi-marker-layer';
 import { filterPoisByCategory } from '@/lib/public-map/public-poi-filter';
+import { PageOverlay } from './page-overlay';
 import { PoiDetailCard } from './poi-detail-card';
 import { PublicBottomMenu } from './public-bottom-menu';
 import { PublicSearch } from './public-search';
@@ -86,12 +87,13 @@ export function TouristMap({ snapshot }: TouristMapProps) {
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [myLocation, setMyLocation] = useState<MyLocationState>({ status: 'idle' });
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const { mapProvider, area, theme } = snapshot.map;
-  const { pois, categories, menu } = snapshot;
+  const { pois, categories, menu, pages } = snapshot;
   const isDiagnosticsMode = process.env.NODE_ENV !== 'production';
   const canLoadLiveMap = Boolean(apiKey) && mapProvider.provider === 'GOOGLE_MAPS';
 
@@ -102,6 +104,9 @@ export function TouristMap({ snapshot }: TouristMapProps) {
   );
   const visiblePois = useMemo(() => filterPoisByCategory(pois, selectedCategoryId), [pois, selectedCategoryId]);
   const selectedPoi: PublishedPoi | undefined = selectedPoiId ? visiblePois.find((poi) => poi.poiId === selectedPoiId) : undefined;
+  // checkpoint 1B.11 §12: resolved from the already-loaded `snapshot.pages`
+  // — never an independent fetch when a PAGE menu item is clicked.
+  const selectedPage = selectedPageId ? pages.find((page) => page.pageId === selectedPageId) : undefined;
 
   // §6: "If the currently selected POI is hidden by a category change: close
   // the selected POI detail rather than leaving stale content visible."
@@ -123,6 +128,10 @@ export function TouristMap({ snapshot }: TouristMapProps) {
   const handleSelectPoi = useCallback((poiId: string) => {
     setSelectedPoiId(poiId);
     setSearchOpen(false);
+    // checkpoint 1B.11 §13: a Page overlay and a POI detail card occupy the
+    // same visual slot — selecting a POI closes any open Page rather than
+    // stacking two overlays. Never touches `selectedCategoryId`/map camera.
+    setSelectedPageId(null);
   }, []);
 
   const handleSelectSearchResult = useCallback(
@@ -139,6 +148,20 @@ export function TouristMap({ snapshot }: TouristMapProps) {
   const handleCloseDetail = useCallback(() => setSelectedPoiId(null), []);
   const handleOpenSearch = useCallback(() => setSearchOpen(true), []);
   const handleCloseSearch = useCallback(() => setSearchOpen(false), []);
+
+  // checkpoint 1B.11 §12/§13: opens the Page as an information overlay,
+  // reading only the already-loaded `snapshot.pages` (resolved above as
+  // `selectedPage`) — no network request. Deliberately does NOT touch
+  // `selectedCategoryId` or the map camera (§13: "opening a Page must not
+  // destroy map state unnecessarily... the map position doesn't reset"), and
+  // closes any open POI detail/search for the same single-overlay-slot
+  // reason `handleSelectPoi` closes an open Page.
+  const handleOpenPage = useCallback((pageId: string) => {
+    setSelectedPageId(pageId);
+    setSelectedPoiId(null);
+    setSearchOpen(false);
+  }, []);
+  const handleClosePage = useCallback(() => setSelectedPageId(null), []);
 
   const handleRequestMyLocation = useCallback(() => {
     requestMyLocation({
@@ -302,6 +325,7 @@ export function TouristMap({ snapshot }: TouristMapProps) {
         </p>
       ) : null}
       {selectedPoi ? <PoiDetailCard poi={selectedPoi} category={categoryById.get(selectedPoi.categoryId)} onClose={handleCloseDetail} /> : null}
+      {selectedPage ? <PageOverlay page={selectedPage} onClose={handleClosePage} /> : null}
       {myLocation.status === 'success' ? (
         <p data-testid="my-location-status" className="my-location-banner" role="status">
           Showing your current location.
@@ -319,6 +343,7 @@ export function TouristMap({ snapshot }: TouristMapProps) {
         onSelectCategory={handleSelectCategory}
         onOpenSearch={handleOpenSearch}
         onRequestMyLocation={handleRequestMyLocation}
+        onOpenPage={handleOpenPage}
       />
       {isDiagnosticsMode ? (
         <dl data-testid="tourist-map-diagnostics" className="tourist-map-diagnostics" aria-hidden="true">
@@ -357,6 +382,8 @@ export function TouristMap({ snapshot }: TouristMapProps) {
           <dd data-testid="tourist-map-diag-selected-category">{selectedCategoryId ?? 'ALL'}</dd>
           <dt>selectedPoi</dt>
           <dd data-testid="tourist-map-diag-selected-poi">{selectedPoiId ?? 'none'}</dd>
+          <dt>selectedPage</dt>
+          <dd data-testid="tourist-map-diag-selected-page">{selectedPageId ?? 'none'}</dd>
           <dt>userLocation</dt>
           <dd data-testid="tourist-map-diag-user-location">{myLocation.status === 'success' ? 'set' : 'unset'}</dd>
         </dl>

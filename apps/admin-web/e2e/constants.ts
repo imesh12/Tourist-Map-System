@@ -99,11 +99,40 @@ export const E2E_APP_ENV: Record<string, string> = {
   // NEXT_PUBLIC_: the browser has no legitimate need to read this, it's a
   // server-side decision about which Origin header value to trust.
   APP_ORIGIN: E2E_APP_ORIGIN,
-  // checkpoint 1B.4 — deliberately omit GOOGLE_PLACES_API_KEY entirely (not
-  // set to '' the way NEXT_PUBLIC_GOOGLE_MAPS_API_KEY above is) and instead
-  // opt into the deterministic in-process fake provider
-  // (lib/pois/fake-external-provider.ts) via this flag — see
-  // lib/pois/provider-registry.ts's resolution order. This is what proves
+  // E2E repair round (post-1B.11): this was previously left entirely
+  // UNSET here on the theory that a local machine would simply never have
+  // a real `GOOGLE_PLACES_API_KEY` configured — but `lib/pois/provider-registry.ts`'s
+  // resolution order makes a real key win UNCONDITIONALLY over
+  // `E2E_FAKE_EXTERNAL_POI_PROVIDER` (by design — "a misconfigured
+  // environment can never accidentally serve fake data in production"; see
+  // that file's own doc comment, unchanged here). The exact same leak this
+  // file's own `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` comment above already
+  // documents discovering at checkpoint 1A.10 (a developer's real
+  // `.env.local` value flowing into `next dev` because Next.js only skips
+  // loading a `.env.local` value for a key ALREADY present in
+  // `process.env` at startup) applies identically here: once this machine's
+  // `apps/admin-web/.env.local` gained a real `GOOGLE_PLACES_API_KEY`, that
+  // real key leaked into this "deterministic" E2E process, made
+  // `getExternalPoiProvider()` return the real `GooglePlacesProvider`
+  // instead of `FakeGooglePlacesProvider`, and broke every assertion in
+  // `e2e/google-places-discovery.spec.ts`/`e2e/maps.spec.ts` that depends on
+  // the fake provider's deterministic results (missing Sakura Sushi
+  // Bar/Tokyo Ramen House, missing Import buttons, the fake error scenario
+  // returning a real 200 instead of the fake-injected 502). Explicitly
+  // setting it to `''` here — exactly mirroring `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`'s
+  // own fix above — closes that leak: `provider-registry.ts`'s own
+  // `if (apiKey)` check treats `''` as falsy, so it correctly falls through
+  // to the `E2E_FAKE_EXTERNAL_POI_PROVIDER` branch below, restoring the
+  // deterministic fake provider regardless of what a developer's own
+  // `.env.local` happens to contain. `provider-registry.ts`'s resolution
+  // order itself (real key always wins) is NOT changed — this is purely an
+  // E2E harness config fix, not a redesign of checkpoint 1B.4.
+  GOOGLE_PLACES_API_KEY: '',
+  // checkpoint 1B.4 — opts into the deterministic in-process fake provider
+  // (lib/pois/fake-external-provider.ts) — see
+  // lib/pois/provider-registry.ts's resolution order. Combined with the
+  // explicit `GOOGLE_PLACES_API_KEY: ''` above (which guarantees the real
+  // key can never leak in and pre-empt this), this is what proves
   // e2e/google-places-discovery.spec.ts never makes a real, billable Google
   // Places request: the real GooglePlacesProvider class is never even
   // instantiated while this flag is the only thing enabling discovery.

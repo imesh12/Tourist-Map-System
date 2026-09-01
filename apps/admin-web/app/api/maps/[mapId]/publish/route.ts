@@ -7,6 +7,7 @@ import { buildPublicationContent } from '@/lib/tenant/build-publication-snapshot
 import { generatePublicationId } from '@/lib/tenant/generate-publication-id';
 import { loadTenantCategories } from '@/lib/tenant/load-categories';
 import { loadTenantMenuItems } from '@/lib/tenant/load-menu-items';
+import { loadTenantPages } from '@/lib/tenant/load-pages';
 import { loadTenantPois } from '@/lib/tenant/load-pois';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
 
@@ -98,10 +99,11 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   const resolvedCustomerId = result.context.identity.customer.customerId;
   const publishedByUid = result.context.identity.uid;
 
-  const [categories, pois, menuItems] = await Promise.all([
+  const [categories, pois, menuItems, pages] = await Promise.all([
     loadTenantCategories(resolvedMapId),
     loadTenantPois(resolvedMapId),
     loadTenantMenuItems(resolvedMapId),
+    loadTenantPages(resolvedMapId),
   ]);
 
   const firestore = getFirebaseAdminFirestore();
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       // `result.context.map` resolved at the top of the request — see the
       // file header comment for exactly why that distinction is the fix for
       // "publication version 2 uses the old map name".
-      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems);
+      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages);
 
       const nextVersion = (mapParsed.data.publication?.version ?? 0) + 1;
       const publishedAt = FieldValue.serverTimestamp();
@@ -147,6 +149,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         menu: content.menu,
         categories: content.categories,
         pois: content.pois,
+        pages: content.pages,
       });
 
       transaction.update(mapRef, {

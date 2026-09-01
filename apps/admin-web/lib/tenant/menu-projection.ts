@@ -1,5 +1,8 @@
 import { getPublicFeatureRegistryEntry, type CategoryIcon } from 'shared-types';
-import type { CategoryParsed, MenuItemParsed } from 'validation';
+import type { CategoryParsed, MenuItemParsed, PageParsed } from 'validation';
+
+/** checkpoint 1B.11 — the effective icon a `PAGE` menu item without a client override falls back to. A Page has no `icon` field of its own (unlike a `Category`), so this is a fixed default rather than a per-document fallback. Exported so the admin Menu Builder UI can display the exact same default rather than hardcoding a second copy of this value. */
+export const DEFAULT_PAGE_MENU_ICON: CategoryIcon = 'INFORMATION';
 
 /**
  * `buildPublicMenuProjection()` — checkpoint 1B.5 §21, see
@@ -57,13 +60,23 @@ export interface PublicMenuProjectionFeatureItem {
   readonly featureKey: string;
 }
 
-export type PublicMenuProjectionItem = PublicMenuProjectionCategoryItem | PublicMenuProjectionFeatureItem;
+/** checkpoint 1B.11 — mirrors `PublicMenuProjectionCategoryItem`'s shape for a `PAGE` menu item. */
+export interface PublicMenuProjectionPageItem {
+  readonly type: 'PAGE';
+  readonly label: string;
+  readonly icon: CategoryIcon;
+  readonly pageId: string;
+}
+
+export type PublicMenuProjectionItem = PublicMenuProjectionCategoryItem | PublicMenuProjectionFeatureItem | PublicMenuProjectionPageItem;
 
 export function buildPublicMenuProjection(
   menuItems: readonly MenuItemParsed[],
   categories: readonly CategoryParsed[],
+  pages: readonly PageParsed[] = [],
 ): readonly PublicMenuProjectionItem[] {
   const categoryById = new Map(categories.map((category) => [category.categoryId, category] as const));
+  const pageById = new Map(pages.map((page) => [page.pageId, page] as const));
 
   const sorted = [...menuItems].sort((a, b) => a.order - b.order || a.menuItemId.localeCompare(b.menuItemId));
 
@@ -90,16 +103,34 @@ export function buildPublicMenuProjection(
       continue;
     }
 
-    const registryEntry = getPublicFeatureRegistryEntry(item.featureKey);
-    if (!registryEntry || !registryEntry.released) {
-      // Unknown/retired feature key — fail closed the same way.
+    if (item.type === 'FEATURE') {
+      const registryEntry = getPublicFeatureRegistryEntry(item.featureKey);
+      if (!registryEntry || !registryEntry.released) {
+        // Unknown/retired feature key — fail closed the same way.
+        continue;
+      }
+      projection.push({
+        type: 'FEATURE',
+        label: item.label,
+        icon: registryEntry.icon,
+        featureKey: item.featureKey,
+      });
+      continue;
+    }
+
+    // checkpoint 1B.11 — `item.type === 'PAGE'`. A broken (deleted) or
+    // disabled Page reference is excluded the exact same "fail closed, never
+    // throw, never touch the MenuItem document" way a CATEGORY item's
+    // broken/disabled category reference already is above.
+    const page = pageById.get(item.pageId);
+    if (!page || page.status !== 'ENABLED') {
       continue;
     }
     projection.push({
-      type: 'FEATURE',
+      type: 'PAGE',
       label: item.label,
-      icon: registryEntry.icon,
-      featureKey: item.featureKey,
+      icon: item.icon ?? DEFAULT_PAGE_MENU_ICON,
+      pageId: item.pageId,
     });
   }
 

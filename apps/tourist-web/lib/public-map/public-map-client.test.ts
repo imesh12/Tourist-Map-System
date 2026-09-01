@@ -36,6 +36,12 @@ const validPublicSnapshot = {
   menu: [],
   categories: [],
   pois: [],
+  // Deliberately no `pages` field — this fixture predates checkpoint 1B.11
+  // (which introduced Pages) and stands in for a real, immutable stored
+  // publication document written before that checkpoint. `publicMapSnapshotSchema`
+  // must still accept it and normalize it to `pages: []` (see
+  // packages/validation/src/publication.ts and test (A) below), rather than
+  // rejecting every publication that predates Pages.
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -66,6 +72,11 @@ describe('fetchPublicMapSnapshot — checkpoint 1B.9', () => {
     if (result.status === 'ok') {
       expect(result.snapshot.map.name).toBe('Kyoto Tours Map');
       expect(result.snapshot.version).toBe(1);
+      // checkpoint 1B.11 regression fix: this fixture predates Pages (no
+      // `pages` field at all), proving a legacy stored publication is still
+      // accepted and its `pages` normalized to an empty array rather than
+      // being rejected outright.
+      expect(result.snapshot.pages).toEqual([]);
     }
   });
 

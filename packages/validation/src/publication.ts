@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CATEGORY_ICONS } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
-import { categoryIdSchema, customerIdSchema, mapIdSchema, poiIdSchema, publicationIdSchema, uidSchema } from './ids.js';
+import { categoryIdSchema, customerIdSchema, mapIdSchema, pageIdSchema, poiIdSchema, publicationIdSchema, uidSchema } from './ids.js';
 import { latitudeSchema, longitudeSchema, mapAreaSchema, mapProviderConfigSchema } from './map.js';
 import { mapThemeSchema } from './map-theme.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
@@ -43,6 +43,15 @@ const publicationMenuItemSchema = z.discriminatedUnion('type', [
       featureKey: z.string().trim().min(1),
     })
     .strict(),
+  // checkpoint 1B.11.
+  z
+    .object({
+      type: z.literal('PAGE'),
+      label: z.string().trim().min(1),
+      icon: z.enum(CATEGORY_ICONS),
+      pageId: pageIdSchema,
+    })
+    .strict(),
 ]);
 
 const publishedCategorySchema = z
@@ -50,6 +59,15 @@ const publishedCategorySchema = z
     categoryId: categoryIdSchema,
     name: z.string().trim().min(1),
     icon: z.enum(CATEGORY_ICONS),
+  })
+  .strict();
+
+/** checkpoint 1B.11 — mirrors `publishedCategorySchema`'s role for `PublishedPage`. */
+const publishedPageSchema = z
+  .object({
+    pageId: pageIdSchema,
+    title: z.string().trim().min(1),
+    content: z.string().trim().min(1),
   })
   .strict();
 
@@ -87,6 +105,18 @@ export const mapPublicationSnapshotSchema = z
     menu: z.array(publicationMenuItemSchema),
     categories: z.array(publishedCategorySchema),
     pois: z.array(publishedPoiSchema),
+    // checkpoint 1B.11 regression fix: `.default([])` keeps `pages` REQUIRED
+    // on the parsed/output type (MapPublicationSnapshotParsed.pages is
+    // always `PublishedPage[]`, never undefined — matching shared-types'
+    // non-optional `readonly pages: readonly PublishedPage[]`) while making
+    // the KEY optional on the input side only. A stored/legacy publication
+    // document written before checkpoint 1B.11 (no `pages` field at all)
+    // still parses successfully and is normalized to `pages: []`. This does
+    // NOT weaken validation of a *present* `pages` field — an array that is
+    // the wrong type, or whose entries fail `publishedPageSchema`, still
+    // fails parsing exactly as before. `.strict()` is unaffected: it only
+    // governs unrecognized top-level keys, not this field's optionality.
+    pages: z.array(publishedPageSchema).default([]),
   })
   .strict();
 

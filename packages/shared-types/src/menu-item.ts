@@ -1,5 +1,5 @@
 import type { CategoryIcon, MenuItemStatus } from './enums.js';
-import type { CategoryId, CustomerId, MapId, MenuItemId } from './ids.js';
+import type { CategoryId, CustomerId, MapId, MenuItemId, PageId } from './ids.js';
 import type { ReleasedFeatureKey } from './public-feature.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 
@@ -69,4 +69,23 @@ export interface MenuItemFeature extends MenuItemCommon {
   readonly featureKey: ReleasedFeatureKey;
 }
 
-export type MenuItem = MenuItemCategory | MenuItemFeature;
+/**
+ * checkpoint 1B.11 — a menu item that links to a map-scoped `Page`
+ * (./page.js). Never encoded as a `FEATURE` (a Page is tenant content, not a
+ * platform-registered capability like SEARCH/MY_LOCATION) and never as a
+ * fake `MenuItemCategory` (linking `pageId` there would be a malformed mixed
+ * state the discriminated union itself must reject). `icon` is the same
+ * OPTIONAL client override `MenuItemCategory` offers — when absent, the
+ * effective display icon defaults to `INFORMATION` (resolved at projection
+ * time, `apps/admin-web/lib/tenant/menu-projection.ts`, mirroring how a
+ * `MenuItemCategory`'s effective icon falls back to its linked category's
+ * own `icon`) — a Page has no `icon` field of its own to fall back to,
+ * unlike a `Category`.
+ */
+export interface MenuItemPage extends MenuItemCommon {
+  readonly type: 'PAGE';
+  readonly pageId: PageId;
+  readonly icon?: CategoryIcon;
+}
+
+export type MenuItem = MenuItemCategory | MenuItemFeature | MenuItemPage;

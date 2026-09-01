@@ -209,6 +209,58 @@ body {
   line-height: 1.4;
 }
 
+/* Selected Page overlay — checkpoint 1B.11 §12, floating card (desktop/
+   tablet) by default, mirrors `.poi-detail-card`'s exact rule shape. */
+.page-overlay {
+  position: absolute;
+  z-index: 3;
+  top: 1rem;
+  right: 1rem;
+  width: min(340px, calc(100% - 2rem));
+  max-height: calc(100% - 6rem);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 1rem 1.25rem;
+}
+
+.page-overlay-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 32px;
+  height: 32px;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.page-overlay-close:focus-visible {
+  outline: 2px solid #2f6fed;
+  outline-offset: 2px;
+}
+
+.page-overlay-title {
+  margin: 0 1.75rem 0.5rem 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.page-overlay-content {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  /* §4/§12: the one mechanism that preserves the author's plain-text line
+     breaks safely — no `dangerouslySetInnerHTML`, ever. */
+  white-space: pre-wrap;
+}
+
 /* Floating bottom menu — the published Menu Builder navigation + "All". */
 .public-bottom-menu {
   position: absolute;
@@ -344,7 +396,8 @@ body {
    near-full-width bottom sheet / top sheet instead of a small floating
    panel, and the bottom menu keeps a compact, thumb-reachable height. */
 @media (max-width: 640px) {
-  .poi-detail-card {
+  .poi-detail-card,
+  .page-overlay {
     top: auto;
     right: 0;
     left: 0;
