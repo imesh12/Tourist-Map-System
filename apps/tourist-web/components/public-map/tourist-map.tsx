@@ -2,88 +2,57 @@
 'use client';
 
 import { importLibrary } from '@googlemaps/js-api-loader';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mapThemeToGoogleMapsStyles } from 'map-theme-adapter';
+import type { CategoryIcon, PublishedPoi } from 'shared-types';
 import type { PublicMapSnapshotParsed } from 'validation';
 import { ensureGoogleMapsApiConfigured } from '@/lib/public-map/google-maps-loader';
+import { computeBoundsForPois } from '@/lib/public-map/map-camera-utils';
+import { buildMarkerIcon, resolveMarkerVisualConfig } from '@/lib/public-map/marker-style-adapter';
+import { myLocationErrorMessage, requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
+import { createPoiMarkerLayer, type PoiMarkerLayer } from '@/lib/public-map/poi-marker-layer';
+import { filterPoisByCategory } from '@/lib/public-map/public-poi-filter';
+import { PoiDetailCard } from './poi-detail-card';
+import { PublicBottomMenu } from './public-bottom-menu';
+import { PublicSearch } from './public-search';
 
 /**
- * The public tourist map — checkpoint 1B.9 §4/§6/§8/§10.
+ * The public tourist map — checkpoint 1B.9 §4/§6/§8/§10, extended by
+ * checkpoint 1B.10 into the first genuinely interactive public experience
+ * (POI markers, category filtering, the published Menu Builder navigation,
+ * local search, My Location, and the selected-POI detail card).
  *
- * A CLIENT component (Google Maps is a browser-only SDK) that renders
- * EXCLUSIVELY from the already-fetched, already-validated publication
- * snapshot its server-component parent (app/maps/[mapId]/page.tsx) passes
- * down — this component never fetches anything itself, never talks to
- * Firestore, and never talks to admin-web's API directly (§10: "Client
- * component: loads Google Maps JS, renders map, applies theme"). This keeps
- * the server/client boundary clean: all data-fetching and 404/unpublished/
- * error handling happens once, server-side, in the parent.
+ * Still renders EXCLUSIVELY from the already-fetched, already-validated
+ * `snapshot` prop its server-component parent passes down (1B.9's own
+ * architecture, UNCHANGED by this checkpoint — §1 of 1B.10's spec: "Do not
+ * make TouristMap independently re-fetch the snapshot"). Every new feature
+ * here — markers, filter, search, menu — reads only `snapshot.pois`/
+ * `snapshot.categories`/`snapshot.menu`, never a second network call.
  *
- * Reuses `mapThemeToGoogleMapsStyles` from the shared `map-theme-adapter`
- * package — the exact same theme translation `admin-web`'s live preview
- * uses (checkpoint 1B.7) — so a Client Admin's chosen `MapTheme` renders
- * identically here as it did in their own live preview. Never duplicates
- * that logic.
+ * Interaction state (selected category, selected POI, search-overlay open,
+ * My Location result) is deliberately ALL client-side component state —
+ * §6: "filter state is client-side only for this checkpoint... no Firestore
+ * write... no authentication" — nothing here is persisted anywhere, and a
+ * fresh page load always starts from the full, unfiltered snapshot.
  *
- * Geography (§8): `area.type === 'BOUNDED'` with real `bounds` initializes
- * the map via `fitBounds()` rather than a fixed center/zoom — the
- * checkpoint's own guidance ("acceptable to fit/initialize to bounds rather
- * than enforcing hard movement constraints") is followed literally: a
- * visitor can still freely pan/zoom away from the initial view afterward,
- * nothing here locks the camera. Every other case (UNBOUNDED, or a BOUNDED
- * area whose `bounds` is for some reason absent) falls back to
- * `center`/`defaultZoom` from the snapshot, with the same harmless default
- * viewport `google-maps-preview.tsx` uses when even those are absent.
- *
- * Marker style (§9): this checkpoint does not render POI markers yet, so
- * `snapshot.map.theme.markerStyle` is not consumed by this component at
- * all — see `lib/public-map/marker-style-adapter.ts` for the foundation a
- * future POI layer will use, deliberately not wired in here.
- *
- * Checkpoint 1B.9 §18 — a small, deterministic test-diagnostics block
- * (`data-testid="tourist-map-diagnostics"`) is rendered ONLY when
- * `NODE_ENV !== 'production'` (true for `next dev`, the mode this app's own
- * E2E suite runs under — see apps/admin-web/e2e/constants.ts's
- * `E2E_TOURIST_APP_ENV` — and false for a real `next build`/`next start`
- * deployment), so it never reaches production tourist users but stays
- * assertable in tests without inspecting live Google Maps SDK internals —
- * the same reasoning `map-preview-info.tsx`'s "no real key in E2E" doc
- * comment gives for admin-web's own equivalent row.
- *
- * E2E repair round (checkpoint 1B.9, render-decoupling repair) — the
- * diagnostics block above, and the accessible `tourist-map` canvas
- * container below, are rendered UNCONDITIONALLY once this component mounts
- * — never gated behind `apiKey` being present or the Google Maps SDK
- * actually loading successfully. Both are derived purely from the
- * already-validated publication `snapshot` this component receives as a
- * prop; neither has ever depended on a live `google.maps.Map` existing.
- * Gating them behind SDK success was an unintended coupling introduced when
- * this component was first built, and it directly contradicted this
- * project's own established, deliberate convention — see
- * `apps/admin-web/e2e/map-preview.spec.ts` and `map-theme.spec.ts`'s own
- * doc comments — that NO real, billed Google Maps API key is EVER
- * configured for hermetic/CI E2E, anywhere in this codebase; the live SDK
- * path is exercised manually only. Because `E2E_TOURIST_APP_ENV` correctly
- * follows that same convention (`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ''`, see
- * `apps/admin-web/e2e/constants.ts`), the old apiKey-gated structure meant
- * the diagnostics/canvas testids could never appear under E2E at all — not
- * a flake, a structural impossibility. The fix does not add a fake key or
- * any Google Maps network mock (which would be new, inconsistent
- * infrastructure); it simply stops requiring Maps SDK success for content
- * that never needed it. The `.tourist-map-canvas` / `.tourist-map-diagnostics`
- * / `.tourist-map-unavailable` rules in `app/globals.css` already use
- * `position: absolute; inset: 0` specifically so canvas + diagnostics +
- * "unavailable" message can coexist as overlays — this was already the
- * intended layered architecture, just not fully wired up in this file.
- * `TouristMapUnavailable` still renders (still real, still tourist-facing,
- * still not faking success) whenever the live map genuinely can't load —
- * apiKey missing, an unsupported provider, or a client-side load error —
- * it now sits ALONGSIDE the (SDK-empty but accessibly-labeled) canvas
- * region rather than replacing the whole component tree.
+ * E2E repair round doc comment (checkpoint 1B.9, unchanged by this
+ * checkpoint) explains why the diagnostics block and the accessible canvas
+ * container render unconditionally, independent of Google Maps SDK success
+ * — this checkpoint leans on that same posture for its own new interactive
+ * elements: `PublicBottomMenu`/`PublicSearch`/`PoiDetailCard` are all plain
+ * React/DOM, entirely independent of whether a live `google.maps.Map` ever
+ * loads, which is what makes every one of 1B.10's E2E scenarios provable in
+ * this project's hermetic no-key environment (see
+ * apps/admin-web/e2e/public-tourist-map-interaction.spec.ts's own header
+ * comment) — only the actual POI *markers* (`poi-marker-layer.ts`) require a
+ * live SDK, and that file is never exercised by this project's E2E for the
+ * same reason `google-maps-preview.tsx`'s live path never is (see
+ * `apps/admin-web/e2e/map-preview.spec.ts`'s own doc comment).
  */
 
 const DEFAULT_CENTER = { lat: 35.6812, lng: 139.7671 }; // Tokyo Station — an arbitrary, harmless default viewport, matching admin-web's own.
 const DEFAULT_ZOOM = 5;
+const USER_LOCATION_ZOOM = 15;
 
 function mapStyleToMapTypeId(style: PublicMapSnapshotParsed['map']['mapProvider']['style']): google.maps.MapTypeId {
   switch (style) {
@@ -101,6 +70,7 @@ function mapStyleToMapTypeId(style: PublicMapSnapshotParsed['map']['mapProvider'
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error';
+type MyLocationState = { readonly status: 'idle' } | { readonly status: 'success' } | { readonly status: 'error'; readonly reason: MyLocationFailureReason };
 
 export interface TouristMapProps {
   readonly snapshot: PublicMapSnapshotParsed;
@@ -109,16 +79,96 @@ export interface TouristMapProps {
 export function TouristMap({ snapshot }: TouristMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
+  const markerLayerRef = useRef<PoiMarkerLayer | undefined>(undefined);
+  const userLocationMarkerRef = useRef<google.maps.Marker | undefined>(undefined);
+  const hasUserChangedCategoryRef = useRef(false);
   const [status, setStatus] = useState<LoadStatus>('loading');
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [myLocation, setMyLocation] = useState<MyLocationState>({ status: 'idle' });
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const { mapProvider, area, theme } = snapshot.map;
+  const { pois, categories, menu } = snapshot;
   const isDiagnosticsMode = process.env.NODE_ENV !== 'production';
-  // Whether the live Google Maps SDK load is even attempted — see this
-  // component's top doc comment ("E2E repair round") for why the canvas
-  // container and diagnostics below no longer wait on this being true.
   const canLoadLiveMap = Boolean(apiKey) && mapProvider.provider === 'GOOGLE_MAPS';
 
+  const categoryById = useMemo(() => new Map(categories.map((category) => [category.categoryId, category] as const)), [categories]);
+  const categoryIconById = useMemo<ReadonlyMap<string, CategoryIcon>>(
+    () => new Map(categories.map((category) => [category.categoryId, category.icon] as const)),
+    [categories],
+  );
+  const visiblePois = useMemo(() => filterPoisByCategory(pois, selectedCategoryId), [pois, selectedCategoryId]);
+  const selectedPoi: PublishedPoi | undefined = selectedPoiId ? visiblePois.find((poi) => poi.poiId === selectedPoiId) : undefined;
+
+  // §6: "If the currently selected POI is hidden by a category change: close
+  // the selected POI detail rather than leaving stale content visible."
+  const handleSelectCategory = useCallback(
+    (categoryId: string | null) => {
+      hasUserChangedCategoryRef.current = true;
+      setSelectedCategoryId(categoryId);
+      setSelectedPoiId((current) => {
+        if (current === null) {
+          return current;
+        }
+        const stillVisible = pois.some((poi) => poi.poiId === current && (categoryId === null || poi.categoryId === categoryId));
+        return stillVisible ? current : null;
+      });
+    },
+    [pois],
+  );
+
+  const handleSelectPoi = useCallback((poiId: string) => {
+    setSelectedPoiId(poiId);
+    setSearchOpen(false);
+  }, []);
+
+  const handleSelectSearchResult = useCallback(
+    (poi: PublishedPoi) => {
+      // A search result may belong to a category currently filtered out —
+      // selecting it is an explicit intent to see THAT place, so the filter
+      // resets to "All" rather than silently failing to show the card.
+      setSelectedCategoryId(null);
+      handleSelectPoi(poi.poiId);
+    },
+    [handleSelectPoi],
+  );
+
+  const handleCloseDetail = useCallback(() => setSelectedPoiId(null), []);
+  const handleOpenSearch = useCallback(() => setSearchOpen(true), []);
+  const handleCloseSearch = useCallback(() => setSearchOpen(false), []);
+
+  const handleRequestMyLocation = useCallback(() => {
+    requestMyLocation({
+      onSuccess: (position) => {
+        setMyLocation({ status: 'success' });
+        if (mapRef.current) {
+          const point = { lat: position.latitude, lng: position.longitude };
+          mapRef.current.panTo(point);
+          mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? USER_LOCATION_ZOOM, USER_LOCATION_ZOOM));
+
+          const spec = buildMarkerIcon({ shape: 'dot', pixelSize: 18, color: '#1a73e8', glyph: '', selected: true });
+          if (!userLocationMarkerRef.current) {
+            userLocationMarkerRef.current = new google.maps.Marker({
+              map: mapRef.current,
+              position: point,
+              title: 'Your location',
+              zIndex: 2000,
+              icon: { url: spec.url, scaledSize: new google.maps.Size(spec.width, spec.height), anchor: new google.maps.Point(spec.anchorX, spec.anchorY) },
+            });
+          } else {
+            userLocationMarkerRef.current.setPosition(point);
+          }
+        }
+      },
+      onError: (reason) => setMyLocation({ status: 'error', reason }),
+    });
+  }, []);
+
+  // The Google Maps SDK load — unchanged from checkpoint 1B.9 apart from
+  // also creating the POI marker layer once the map exists.
   useEffect(() => {
     if (!apiKey || !containerRef.current || mapProvider.provider !== 'GOOGLE_MAPS') {
       return;
@@ -137,16 +187,8 @@ export function TouristMap({ snapshot }: TouristMapProps) {
           zoom: area.defaultZoom ?? DEFAULT_ZOOM,
           mapTypeId: mapStyleToMapTypeId(mapProvider.style),
           styles: [...mapThemeToGoogleMapsStyles(theme)],
-          // A public tourist visitor is never editing anything — the
-          // default "Keep exploring"/legal attribution/zoom controls stay
-          // exactly as Google provides them (§4 of google-theme-adapter's
-          // own doc comment: a `styles` array cannot and does not attempt
-          // to touch that required UI).
         });
 
-        // §8: initialize to bounds when the map is BOUNDED and real bounds
-        // exist, rather than a fixed center/zoom — this only sets the
-        // INITIAL viewport; nothing here restricts later panning/zooming.
         if (area.type === 'BOUNDED' && area.bounds) {
           map.fitBounds({
             north: area.bounds.north,
@@ -157,6 +199,7 @@ export function TouristMap({ snapshot }: TouristMapProps) {
         }
 
         mapRef.current = map;
+        markerLayerRef.current = createPoiMarkerLayer(map);
         setStatus('ready');
       })
       .catch(() => {
@@ -167,18 +210,66 @@ export function TouristMap({ snapshot }: TouristMapProps) {
 
     return () => {
       cancelled = true;
+      markerLayerRef.current?.destroy();
+      markerLayerRef.current = undefined;
+      mapRef.current = undefined;
+      userLocationMarkerRef.current = undefined;
     };
-    // Mount-only, matching google-maps-preview.tsx's own established
-    // convention — this component's `snapshot` prop never changes after
-    // first render (a fresh page load fetches a fresh snapshot instead), so
-    // there is no "sync on prop change" concern to replicate here.
+    // Mount-only, matching 1B.9's own established convention (`snapshot`
+    // never changes after first render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey]);
 
-  // What (if anything) explains why no live map is showing — still a real,
-  // tourist-friendly message (never faking success when configuration is
-  // genuinely missing), just no longer the ONLY thing this component
-  // renders. See the top doc comment's "E2E repair round" paragraph.
+  // Re-sync markers whenever the visible POI set or selection changes —
+  // independent of the mount effect above so a category-filter/selection
+  // change never re-creates the whole `google.maps.Map` instance.
+  useEffect(() => {
+    if (!markerLayerRef.current) {
+      return;
+    }
+    const visual = resolveMarkerVisualConfig(theme.markerStyle);
+    markerLayerRef.current.sync({
+      pois: visiblePois,
+      categoryIconById,
+      shape: visual.shape,
+      pixelSize: visual.pixelSize,
+      selectedPoiId,
+      onSelect: handleSelectPoi,
+    });
+  }, [visiblePois, categoryIconById, selectedPoiId, theme.markerStyle, handleSelectPoi, status]);
+
+  // §12: fit the camera to the filtered set on an EXPLICIT category change
+  // only — never on initial mount, so the configured UNBOUNDED/BOUNDED
+  // starting camera (1B.9 §8) is never immediately overridden.
+  useEffect(() => {
+    if (!hasUserChangedCategoryRef.current || !mapRef.current) {
+      return;
+    }
+    const bounds = computeBoundsForPois(visiblePois);
+    if (bounds) {
+      mapRef.current.fitBounds(bounds);
+      return;
+    }
+    // `noUncheckedIndexedAccess` types `visiblePois[0]` as possibly
+    // `undefined` even guarded by `.length === 1` above it — narrow into a
+    // local and guard it explicitly rather than asserting non-null; this
+    // branch is unreachable in practice whenever the length check passes.
+    const onlyVisiblePoi = visiblePois.length === 1 ? visiblePois[0] : undefined;
+    if (onlyVisiblePoi) {
+      mapRef.current.panTo({ lat: onlyVisiblePoi.location.latitude, lng: onlyVisiblePoi.location.longitude });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategoryId]);
+
+  // §12: pan to a selected POI without destroying the configured experience.
+  useEffect(() => {
+    if (!selectedPoi || !mapRef.current) {
+      return;
+    }
+    mapRef.current.panTo({ lat: selectedPoi.location.latitude, lng: selectedPoi.location.longitude });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPoiId]);
+
   const unavailableMessage = !apiKey
     ? 'Map preview is unavailable in this environment.'
     : mapProvider.provider !== 'GOOGLE_MAPS'
@@ -190,25 +281,10 @@ export function TouristMap({ snapshot }: TouristMapProps) {
   return (
     <>
       {canLoadLiveMap && status === 'loading' ? (
-        // The client-side Google Maps SDK load phase — rendered ALONGSIDE
-        // (not instead of) the canvas div below: the div must stay mounted
-        // the whole time so `new Map(containerRef.current, ...)` has a real
-        // node to attach to once `importLibrary('maps')` resolves. §13's
-        // "Loading: 'Loading map…'" wording applies here, so a visitor
-        // never sees a silent blank canvas while the SDK/script loads.
-        // Gated on `canLoadLiveMap` (not just `status`) because `status`
-        // never leaves its initial 'loading' value when no live load is
-        // ever attempted (missing key / unsupported provider) — this line
-        // would otherwise show "Loading map…" forever in exactly the cases
-        // `unavailableMessage` below already explains permanently.
         <p data-testid="tourist-map-loading" className="tourist-map-message-text" role="status">
           Loading map…
         </p>
       ) : null}
-      {/* Always mounted — the accessible map region for this map, regardless
-          of whether a live Google Maps object ever attaches inside it. See
-          the top doc comment's "E2E repair round" paragraph for why this no
-          longer waits on SDK/key success. */}
       <div
         ref={containerRef}
         data-testid="tourist-map"
@@ -217,6 +293,33 @@ export function TouristMap({ snapshot }: TouristMapProps) {
         className="tourist-map-canvas"
       />
       {unavailableMessage ? <TouristMapUnavailable message={unavailableMessage} /> : null}
+      {visiblePois.length === 0 ? (
+        // §8 — a subtle empty-state, not an application error, whenever the
+        // current filter (or the published content itself) leaves nothing
+        // to show.
+        <p data-testid="public-poi-empty-state" className="public-poi-empty-state" role="status">
+          {pois.length === 0 ? 'No places have been published yet.' : 'No places in this category yet.'}
+        </p>
+      ) : null}
+      {selectedPoi ? <PoiDetailCard poi={selectedPoi} category={categoryById.get(selectedPoi.categoryId)} onClose={handleCloseDetail} /> : null}
+      {myLocation.status === 'success' ? (
+        <p data-testid="my-location-status" className="my-location-banner" role="status">
+          Showing your current location.
+        </p>
+      ) : null}
+      {myLocation.status === 'error' ? (
+        <p data-testid="my-location-message" className="my-location-banner" role="status">
+          {myLocationErrorMessage(myLocation.reason)}
+        </p>
+      ) : null}
+      {searchOpen ? <PublicSearch pois={pois} categories={categories} onSelect={handleSelectSearchResult} onClose={handleCloseSearch} /> : null}
+      <PublicBottomMenu
+        menu={menu}
+        selectedCategoryId={selectedCategoryId}
+        onSelectCategory={handleSelectCategory}
+        onOpenSearch={handleOpenSearch}
+        onRequestMyLocation={handleRequestMyLocation}
+      />
       {isDiagnosticsMode ? (
         <dl data-testid="tourist-map-diagnostics" className="tourist-map-diagnostics" aria-hidden="true">
           <dt>preset</dt>
@@ -235,6 +338,27 @@ export function TouristMap({ snapshot }: TouristMapProps) {
           <dd data-testid="tourist-map-diag-marker-style">
             {theme.markerStyle.style},{theme.markerStyle.size}
           </dd>
+          {/* Checkpoint 1B.10 — a deterministic, dev-mode-only DOM
+              representation of the currently visible POI set, so E2E can
+              prove filtering/publication-safety without ever depending on a
+              live Google Maps marker (this project's hermetic E2E never has
+              a real key — see this file's own top doc comment). Names are
+              sorted alphabetically (not published order) purely so an
+              assertion never depends on incidental Firestore/array order.
+              `poiId`s are not sensitive — they already appear verbatim in
+              the public snapshot every visitor's browser receives. */}
+          <dt>poiCount</dt>
+          <dd data-testid="tourist-map-diag-poi-count">{visiblePois.length}</dd>
+          <dt>poiNames</dt>
+          <dd data-testid="tourist-map-diag-poi-names">
+            {[...visiblePois].map((poi) => poi.name).sort().join(' | ') || 'none'}
+          </dd>
+          <dt>selectedCategory</dt>
+          <dd data-testid="tourist-map-diag-selected-category">{selectedCategoryId ?? 'ALL'}</dd>
+          <dt>selectedPoi</dt>
+          <dd data-testid="tourist-map-diag-selected-poi">{selectedPoiId ?? 'none'}</dd>
+          <dt>userLocation</dt>
+          <dd data-testid="tourist-map-diag-user-location">{myLocation.status === 'success' ? 'set' : 'unset'}</dd>
         </dl>
       ) : null}
     </>

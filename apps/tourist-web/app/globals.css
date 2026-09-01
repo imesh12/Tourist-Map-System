@@ -115,6 +115,257 @@ body {
 }
 
 /**
+ * Checkpoint 1B.10 — the interactive layer's floating UI. All of it lives
+ * inside `.tourist-map-body` (already `position: relative` — see above), so
+ * every rule below is `position: absolute` relative to that region, never
+ * the full viewport — the map itself stays visible behind every overlay
+ * (§16: "Avoid overlays covering the entire map unnecessarily").
+ */
+
+.public-poi-empty-state {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.my-location-banner {
+  position: absolute;
+  top: 3.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Selected POI detail — floating card (desktop/tablet) by default. */
+.poi-detail-card {
+  position: absolute;
+  z-index: 3;
+  top: 1rem;
+  right: 1rem;
+  width: min(340px, calc(100% - 2rem));
+  max-height: calc(100% - 6rem);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 1rem 1.25rem;
+}
+
+.poi-detail-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 32px;
+  height: 32px;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.poi-detail-close:focus-visible,
+.public-search-close:focus-visible,
+.public-menu-item:focus-visible,
+.public-search-result:focus-visible,
+.public-search-input:focus-visible {
+  outline: 2px solid #2f6fed;
+  outline-offset: 2px;
+}
+
+.poi-detail-name {
+  margin: 0 1.75rem 0.35rem 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.poi-detail-category {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.poi-detail-description,
+.poi-detail-address {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Floating bottom menu — the published Menu Builder navigation + "All". */
+.public-bottom-menu {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  -webkit-overflow-scrolling: touch;
+}
+
+.public-menu-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.public-menu-item[aria-pressed='true'] {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
+.public-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Search overlay — a compact panel (desktop/tablet) by default. */
+.public-search-overlay {
+  position: absolute;
+  z-index: 4;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 0.75rem 1rem 1rem;
+  overflow: hidden;
+}
+
+.public-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.public-search-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.public-search-close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.public-search-input {
+  margin-top: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.public-search-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.public-search-results {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.public-search-result {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.public-search-result-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.public-search-result-category {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Mobile (§16: 390×844 conceptually) — the card/overlay become a
+   near-full-width bottom sheet / top sheet instead of a small floating
+   panel, and the bottom menu keeps a compact, thumb-reachable height. */
+@media (max-width: 640px) {
+  .poi-detail-card {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 4rem; /* sits above the floating bottom menu, matching §3's mobile mockup */
+    width: 100%;
+    max-height: 55%;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .public-search-overlay {
+    top: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-height: 70%;
+    border-radius: 0 0 16px 16px;
+  }
+}
+
+/**
  * The full-viewport "nothing here but a sentence" state — shared by
  * loading.tsx, not-found.tsx, and page.tsx's own 'error' branch (via
  * `MapMessageState`).
