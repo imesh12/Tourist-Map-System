@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PAGE_STATUSES } from 'shared-types';
 import { customerIdSchema, mapIdSchema, pageIdSchema } from './ids.js';
+import { localizedTextSchema } from './language.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -26,6 +27,14 @@ export const pageTitleSchema = z.string().trim().min(1).max(TITLE_MAX_LENGTH);
 export const pageContentSchema = z.string().trim().min(1).max(CONTENT_MAX_LENGTH);
 export const pageStatusSchema = z.enum(PAGE_STATUSES);
 
+/** checkpoint 1B.17A — a Page's translated fields, mirroring shared-types' `PageTranslations`. Each field's translation bound matches its own scalar schema's max length exactly (§13). */
+export const pageTranslationsSchema = z
+  .object({
+    title: localizedTextSchema(TITLE_MAX_LENGTH).optional(),
+    content: localizedTextSchema(CONTENT_MAX_LENGTH).optional(),
+  })
+  .strict();
+
 /**
  * Full stored document — defense-in-depth validation for reads, mirroring
  * `categorySchema`/`poiSchema`'s role.
@@ -36,6 +45,8 @@ export const pageSchema = z.object({
   mapId: mapIdSchema,
   title: pageTitleSchema,
   content: pageContentSchema,
+  // checkpoint 1B.17A — optional, backward compatible, mirrors `categorySchema.translations`.
+  translations: pageTranslationsSchema.optional(),
   status: pageStatusSchema,
   createdAt: firestoreTimestampLikeSchema,
   updatedAt: firestoreTimestampLikeSchema,

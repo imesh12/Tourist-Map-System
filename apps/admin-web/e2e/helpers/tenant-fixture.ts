@@ -31,7 +31,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import { CUSTOMER_ID_PREFIX, MAP_ID_PREFIX } from 'shared-types';
+import { CUSTOMER_ID_PREFIX, DEFAULT_PUBLIC_CONTENT_LANGUAGE, MAP_ID_PREFIX } from 'shared-types';
 import { getE2eAdminAuth, getE2eAdminFirestore } from './e2e-admin-app';
 
 function generateId(prefix: string): string {
@@ -119,8 +119,11 @@ export async function provisionTestTenant(options: ProvisionTestTenantOptions): 
     customerId,
     name: mapName,
     status: 'DRAFT',
-    defaultLanguage: 'EN',
-    enabledLanguages: ['EN'],
+    // checkpoint 1B.17A — matches the real provisioning/creation code paths'
+    // own `PublicContentLanguage` defaults (see their doc comments), so this
+    // fixture keeps producing the exact same document shape.
+    defaultLanguage: DEFAULT_PUBLIC_CONTENT_LANGUAGE,
+    enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
     mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
     area: { type: 'UNBOUNDED' },
     createdAt: FieldValue.serverTimestamp(),
@@ -205,8 +208,8 @@ export async function provisionAdditionalMap(options: ProvisionAdditionalMapOpti
     customerId: options.customerId,
     name: options.mapName,
     status: 'DRAFT',
-    defaultLanguage: 'EN',
-    enabledLanguages: ['EN'],
+    defaultLanguage: DEFAULT_PUBLIC_CONTENT_LANGUAGE,
+    enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
     mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
     area: options.area ?? { type: 'UNBOUNDED' },
     createdAt: FieldValue.serverTimestamp(),

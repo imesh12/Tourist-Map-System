@@ -1,4 +1,9 @@
 import type { CategoryIcon } from './enums.js';
+import type { CategoryTranslations } from './category.js';
+import type { PublicContentLanguage } from './language.js';
+import type { MenuItemTranslations } from './menu-item.js';
+import type { PageTranslations } from './page.js';
+import type { PoiTranslations } from './poi.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 import type { MapAreaConfig, MapBranding, MapProviderConfig, MapTheme } from './map.js';
 
@@ -43,6 +48,8 @@ export interface PublicationMenuCategoryItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly categoryId: string;
+  /** checkpoint 1B.17A — see `MenuItemTranslations`'s own doc comment (./menu-item.js). Absent on every publication predating this checkpoint. */
+  readonly translations?: MenuItemTranslations;
 }
 
 export interface PublicationMenuFeatureItem {
@@ -50,6 +57,7 @@ export interface PublicationMenuFeatureItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly featureKey: string;
+  readonly translations?: MenuItemTranslations;
 }
 
 /** checkpoint 1B.11 — mirrors `PublicationMenuCategoryItem`'s shape for a `PAGE` menu item. Only ever produced when the referenced Page exists, is `ENABLED`, and is itself included in `pages` below — see `buildPublicMenuProjection()`'s own doc comment (apps/admin-web/lib/tenant/menu-projection.ts) for the exact fail-closed rule. */
@@ -58,6 +66,7 @@ export interface PublicationMenuPageItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly pageId: string;
+  readonly translations?: MenuItemTranslations;
 }
 
 export type PublicationMenuItem = PublicationMenuCategoryItem | PublicationMenuFeatureItem | PublicationMenuPageItem;
@@ -67,6 +76,8 @@ export interface PublishedCategory {
   readonly categoryId: string;
   readonly name: string;
   readonly icon: CategoryIcon;
+  /** checkpoint 1B.17A — see `CategoryTranslations`'s own doc comment (./category.js). Absent on every publication predating this checkpoint. */
+  readonly translations?: CategoryTranslations;
 }
 
 /** The narrow, public-safe projection of a `Page` a publication snapshot ever stores — checkpoint 1B.11. Never `customerId`/`mapId`/`status`/timestamps, all of which are admin-only bookkeeping; only `ENABLED` pages are ever included (`buildPublicationContent()`'s own rule, mirroring `PublishedCategory`'s identical "only enabled" filter). */
@@ -74,6 +85,8 @@ export interface PublishedPage {
   readonly pageId: string;
   readonly title: string;
   readonly content: string;
+  /** checkpoint 1B.17A — see `PageTranslations`'s own doc comment (./page.js). */
+  readonly translations?: PageTranslations;
 }
 
 /** The narrow, public-safe projection of a `Poi` a publication snapshot ever stores — never `customerId`/`mapId`/`sourceType`/`provider`/`providerPlaceId`/`status`/timestamps. */
@@ -87,6 +100,8 @@ export interface PublishedPoi {
   };
   readonly address?: string;
   readonly description?: string;
+  /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment (./poi.js). */
+  readonly translations?: PoiTranslations;
 }
 
 /** The map-level fields a publication snapshot carries — a fixed, deliberately narrow subset of `TouristMap`, never `customerId`/`status`/`defaultLanguage`/`enabledLanguages`/`publication`/timestamps. `theme` is always fully resolved (never absent) — see `buildPublicationContent()`'s own doc comment (apps/admin-web/lib/tenant/build-publication-snapshot.ts) for why a snapshot never forces a public consumer to re-implement the `DEFAULT_MAP_THEME` fallback itself. */
@@ -127,6 +142,27 @@ export interface MapPublicationSnapshot {
   readonly publishedAt: FirestoreTimestampLike;
   readonly publishedByUid: string;
   readonly map: PublishedMapSummary;
+  /**
+   * checkpoint 1B.17A — the map's public-content language configuration AT
+   * THE MOMENT OF THIS PUBLISH, captured into the immutable snapshot exactly
+   * like every other published field (§10 of the checkpoint: "Published
+   * content MUST remain immutable after publishing. Changing draft
+   * translations/language settings later must not mutate an already-
+   * published version."). Top-level (not nested inside `map`/
+   * `PublishedMapSummary`) since it is not a visual/basemap concern — see
+   * `PublishedMapSummary`'s own doc comment for why `defaultLanguage`/
+   * `enabledLanguages` are deliberately excluded from that narrower summary.
+   * REQUIRED on this parsed/output type — never absent — even though a
+   * publication document written before this checkpoint has neither field at
+   * all: `packages/validation`'s `mapPublicationSnapshotSchema` normalizes a
+   * legacy snapshot to `DEFAULT_PUBLIC_CONTENT_LANGUAGE`/
+   * `[DEFAULT_PUBLIC_CONTENT_LANGUAGE]` at parse time (`.default(...)`,
+   * mirroring the exact pattern already established for this same schema's
+   * `pages` field), so every consumer of the PARSED type can rely on these
+   * being real values, never `undefined`.
+   */
+  readonly defaultLanguage: PublicContentLanguage;
+  readonly supportedLanguages: readonly PublicContentLanguage[];
   readonly menu: readonly PublicationMenuItem[];
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];

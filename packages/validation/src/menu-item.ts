@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MENU_ITEM_STATUSES, RELEASED_FEATURE_KEYS } from 'shared-types';
 import { categoryIconSchema } from './category.js';
 import { categoryIdSchema, customerIdSchema, mapIdSchema, menuItemIdSchema, pageIdSchema } from './ids.js';
+import { localizedTextSchema } from './language.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -47,6 +48,13 @@ export const menuItemFeatureKeySchema = z.enum(RELEASED_FEATURE_KEYS);
 /** A `CATEGORY` menu item's optional client icon override — reuses the same controlled `categoryIconSchema` catalog, never a free-form string (§16: "No arbitrary SVG/HTML/script"). */
 export const menuItemIconSchema = categoryIconSchema;
 
+/** checkpoint 1B.17A — a MenuItem's translated fields, mirroring shared-types' `MenuItemTranslations`. Shared by every `menuItemSchema` branch below (§13 preserves `menuItemLabelSchema`'s own `LABEL_MAX_LENGTH` bound). */
+export const menuItemTranslationsSchema = z
+  .object({
+    label: localizedTextSchema(LABEL_MAX_LENGTH).optional(),
+  })
+  .strict();
+
 /**
  * Full stored document — defense-in-depth validation for reads, mirroring
  * `categorySchema`/`poiSchema`'s role. A real discriminated union: the
@@ -62,6 +70,8 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       mapId: mapIdSchema,
       type: z.literal('CATEGORY'),
       label: menuItemLabelSchema,
+      // checkpoint 1B.17A — optional, backward compatible, shared by every branch below.
+      translations: menuItemTranslationsSchema.optional(),
       categoryId: categoryIdSchema,
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema,
@@ -77,6 +87,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       mapId: mapIdSchema,
       type: z.literal('FEATURE'),
       label: menuItemLabelSchema,
+      translations: menuItemTranslationsSchema.optional(),
       featureKey: menuItemFeatureKeySchema,
       order: menuItemOrderSchema,
       status: menuItemStatusSchema,
@@ -94,6 +105,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       mapId: mapIdSchema,
       type: z.literal('PAGE'),
       label: menuItemLabelSchema,
+      translations: menuItemTranslationsSchema.optional(),
       pageId: pageIdSchema,
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema,

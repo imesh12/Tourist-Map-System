@@ -1,6 +1,7 @@
 import {
   DEFAULT_MAP_THEME,
   type PublicationMenuItem,
+  type PublicContentLanguage,
   type PublishedCategory,
   type PublishedMapSummary,
   type PublishedPage,
@@ -47,6 +48,19 @@ import { buildPublicMenuProjection } from './menu-projection';
 
 export interface PublicationContent {
   readonly map: PublishedMapSummary;
+  /**
+   * checkpoint 1B.17A — sourced from the map's own `defaultLanguage`/
+   * `enabledLanguages` (see shared-types' `TouristMap` doc comment for why
+   * those field names, unchanged, now hold `PublicContentLanguage` values).
+   * Captured onto the publication itself, not merely referenced from the
+   * live map document, so an already-published snapshot's language config
+   * stays exactly what it was at publish time even if the map's OWN
+   * draft language settings are changed afterward (§10: "changing draft
+   * translations/language settings later must not mutate an already-
+   * published version").
+   */
+  readonly defaultLanguage: PublicContentLanguage;
+  readonly supportedLanguages: readonly PublicContentLanguage[];
   readonly menu: readonly PublicationMenuItem[];
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];
@@ -62,7 +76,15 @@ export function buildPublicationContent(
 ): PublicationContent {
   const publishedCategories: PublishedCategory[] = categories
     .filter((category) => category.enabled)
-    .map((category) => ({ categoryId: category.categoryId, name: category.name, icon: category.icon }));
+    .map((category) => ({
+      categoryId: category.categoryId,
+      name: category.name,
+      icon: category.icon,
+      // checkpoint 1B.17A — passed through unchanged from the source
+      // document; absent for every category no editor has translated yet
+      // (1B.17B builds that editor).
+      ...(category.translations ? { translations: category.translations } : {}),
+    }));
 
   const publishedCategoryIds = new Set(publishedCategories.map((category) => category.categoryId));
 
@@ -75,6 +97,7 @@ export function buildPublicationContent(
       location: poi.location,
       ...(poi.address ? { address: poi.address } : {}),
       ...(poi.description ? { description: poi.description } : {}),
+      ...(poi.translations ? { translations: poi.translations } : {}),
     }));
 
   // checkpoint 1B.11 — only `ENABLED` Pages are ever published, mirroring
@@ -84,7 +107,12 @@ export function buildPublicationContent(
   // depends only on its own `status`.
   const publishedPages: PublishedPage[] = pages
     .filter((page) => page.status === 'ENABLED')
-    .map((page) => ({ pageId: page.pageId, title: page.title, content: page.content }));
+    .map((page) => ({
+      pageId: page.pageId,
+      title: page.title,
+      content: page.content,
+      ...(page.translations ? { translations: page.translations } : {}),
+    }));
 
   // `buildPublicMenuProjection()` is given every category/page (not just the
   // already-enabled subsets above) — it applies its own, already-correct
@@ -103,6 +131,8 @@ export function buildPublicationContent(
 
   return {
     map: publishedMap,
+    defaultLanguage: map.defaultLanguage,
+    supportedLanguages: map.enabledLanguages,
     menu,
     categories: publishedCategories,
     pois: publishedPois,

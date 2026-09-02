@@ -285,4 +285,16 @@ describe('buildPublicMenuProjection', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('translations — checkpoint 1B.17A', () => {
+    it('passes a CATEGORY menu item\'s translations through unchanged', () => {
+      const result = buildPublicMenuProjection([categoryMenuItem({ translations: { label: { ja: 'グルメ' } } })], [category()]);
+      expect(result[0]).toMatchObject({ translations: { label: { ja: 'グルメ' } } });
+    });
+
+    it('omits the translations field entirely when the source menu item has none (backward compatible)', () => {
+      const result = buildPublicMenuProjection([categoryMenuItem()], [category()]);
+      expect(result[0]).not.toHaveProperty('translations');
+    });
+  });
 });

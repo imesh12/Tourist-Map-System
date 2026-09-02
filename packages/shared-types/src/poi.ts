@@ -1,6 +1,13 @@
 import type { PoiProvider, PoiSourceType, PoiStatus } from './enums.js';
 import type { CategoryId, CustomerId, MapId, PoiId } from './ids.js';
+import type { LocalizedText } from './language.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
+
+/** checkpoint 1B.17A — a POI's translated fields. See `CategoryTranslations`'s own doc comment (./category.js) for the general pattern; a POI has two translatable human-facing fields (`name`, `description`) rather than one. */
+export interface PoiTranslations {
+  readonly name?: LocalizedText;
+  readonly description?: LocalizedText;
+}
 
 /**
  * `maps/{mapId}/pois/{poiId}` — checkpoint 1B.3, see
@@ -69,6 +76,8 @@ export interface Poi {
   readonly provider?: PoiProvider;
   /** Only present when `sourceType === 'GOOGLE_PLACES'` — the external Google Places `id`/resource name this POI was imported from, used for duplicate-import detection (checkpoint 1B.4 §"duplicate-import protection"). */
   readonly providerPlaceId?: string;
+  /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment above. */
+  readonly translations?: PoiTranslations;
   readonly status: PoiStatus;
   readonly createdAt: FirestoreTimestampLike;
   readonly updatedAt: FirestoreTimestampLike;

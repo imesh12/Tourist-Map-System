@@ -87,6 +87,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   if (parsed.data.theme !== undefined) {
     update.theme = parsed.data.theme;
   }
+  // checkpoint 1B.17A — same "only written if present" partial-update
+  // pattern `branding`/`theme` already use. `languages` is one atomic
+  // optional object (`mapLanguageConfigSchema`, packages/validation/src/language.ts)
+  // bundling `defaultLanguage`+`supportedLanguages` together specifically so
+  // "default must always be within supported" is fully checkable by that
+  // schema's own `.refine()` using only the values in THIS request body —
+  // never a partial write that could leave a map with a default language
+  // that isn't (or is no longer) one of its supported languages. Stored back
+  // onto the map document's existing `defaultLanguage`/`enabledLanguages`
+  // fields (the checkpoint's own field-repurposing decision — see
+  // shared-types' `TouristMap` doc comment), not a new field name. This is a
+  // DRAFT-only write, same as every other field on this route — it never
+  // touches `maps/{mapId}/publications/*` or the map's `publication`
+  // pointer, so changing language config here can never mutate an
+  // already-published snapshot (§8/§10 of the checkpoint).
+  if (parsed.data.languages !== undefined) {
+    update.defaultLanguage = parsed.data.languages.defaultLanguage;
+    update.enabledLanguages = parsed.data.languages.supportedLanguages;
+  }
 
   await mapRef.update(update);
 

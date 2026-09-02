@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { POI_PROVIDERS, POI_SOURCE_TYPES, POI_STATUSES } from 'shared-types';
 import { categoryIdSchema, customerIdSchema, mapIdSchema, poiIdSchema } from './ids.js';
+import { localizedTextSchema } from './language.js';
 import { latitudeSchema, longitudeSchema } from './map.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
@@ -26,6 +27,14 @@ export const poiProviderSchema = z.enum(POI_PROVIDERS);
 /** checkpoint 1B.4 — an opaque external identifier (Google's own Place `id`/resource name), not one of this codebase's own branded ID formats, so only a length bound is enforced, not a prefix/character-class regex. */
 export const poiProviderPlaceIdSchema = z.string().trim().min(1).max(300);
 
+/** checkpoint 1B.17A — a POI's translated fields, mirroring shared-types' `PoiTranslations`. Each field's translation bound matches its own scalar schema's max length exactly (§13). */
+export const poiTranslationsSchema = z
+  .object({
+    name: localizedTextSchema(NAME_MAX_LENGTH).optional(),
+    description: localizedTextSchema(DESCRIPTION_MAX_LENGTH).optional(),
+  })
+  .strict();
+
 /** Stored `location` shape — a plain `{latitude, longitude}` object, see shared-types' `Poi` doc comment for why not a Firestore `GeoPoint`. */
 export const poiLocationSchema = z.object({
   latitude: latitudeSchema,
@@ -50,6 +59,8 @@ export const poiSchema = z.object({
   sourceType: poiSourceTypeSchema,
   provider: poiProviderSchema.optional(),
   providerPlaceId: poiProviderPlaceIdSchema.optional(),
+  // checkpoint 1B.17A — optional, backward compatible, mirrors `categorySchema.translations`.
+  translations: poiTranslationsSchema.optional(),
   status: poiStatusSchema,
   createdAt: firestoreTimestampLikeSchema,
   updatedAt: firestoreTimestampLikeSchema,

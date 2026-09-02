@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAP_PROVIDER_NAMES, MAP_STYLES } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
+import { mapLanguageConfigSchema } from './language.js';
 import { mapAreaSchema } from './map.js';
 import { mapThemeSchema } from './map-theme.js';
 
@@ -17,6 +18,19 @@ import { mapThemeSchema } from './map-theme.js';
  * is never decided by this schema either way — the server resolves which
  * map to update from the verified session's own tenant context
  * (`getCurrentClientContext()`), never from anything in this payload.
+ *
+ * `languages` — checkpoint 1B.17A §8. A single optional, ATOMIC field
+ * (`mapLanguageConfigSchema`, packages/validation/src/language.ts) rather
+ * than two independently-optional `defaultLanguage`/`supportedLanguages`
+ * fields: default+supported are always sent TOGETHER, exactly once, or not
+ * at all, mirroring `theme`'s identical "one optional embedded object" shape
+ * above. This is what makes "default must always be supported" (§8) fully
+ * checkable by the schema alone — `mapLanguageConfigSchema`'s own `.refine()`
+ * has both values in hand in the SAME request, with no dependency on
+ * already-stored state a schema can't see. Changing language configuration
+ * is still just an ordinary Save (never a Publish) — the route handler only
+ * ever writes `maps/{mapId}` here, exactly like every other field on this
+ * schema; it can never touch an already-published `publications/*` snapshot.
  */
 export const mapSettingsUpdateSchema = z
   .object({
@@ -33,6 +47,7 @@ export const mapSettingsUpdateSchema = z
     // (./map-theme.ts) for why this alone is sufficient to satisfy "reject
     // raw provider style JSON" without a separate check here.
     theme: mapThemeSchema.optional(),
+    languages: mapLanguageConfigSchema.optional(),
   })
   .strict();
 

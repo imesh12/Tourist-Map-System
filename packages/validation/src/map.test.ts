@@ -187,6 +187,36 @@ describe('mapSchema', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('multilingual data foundation — checkpoint 1B.17A', () => {
+    it('accepts a document already stored with legacy Language codes (EN/[EN]) — every map document written before this checkpoint', () => {
+      const result = mapSchema.safeParse({ ...validMap, defaultLanguage: 'EN', enabledLanguages: ['EN'] });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.defaultLanguage).toBe('en');
+        expect(result.data.enabledLanguages).toEqual(['en']);
+      }
+    });
+
+    it('accepts a document already stored with current PublicContentLanguage codes', () => {
+      const result = mapSchema.safeParse({ ...validMap, defaultLanguage: 'ja', enabledLanguages: ['ja', 'en'] });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an unregistered/malformed language code even after legacy normalization', () => {
+      const result = mapSchema.safeParse({ ...validMap, defaultLanguage: 'DE', enabledLanguages: ['DE'] });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects enabledLanguages exceeding the registry\'s own size (deterministic upper bound)', () => {
+      const result = mapSchema.safeParse({
+        ...validMap,
+        defaultLanguage: 'ja',
+        enabledLanguages: ['ja', 'en', 'zh-CN', 'zh-TW', 'ko', 'fr', 'es', 'ja'],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('mapAreaSchema — checkpoint 1B.1', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageCreateInputSchema, pageSchema, pageUpdateInputSchema } from './page';
+import { pageCreateInputSchema, pageSchema, pageTranslationsSchema, pageUpdateInputSchema } from './page';
 
 const validPage = {
   pageId: 'page_aB3dEf6gH9jKlMn0pQ',
@@ -28,6 +28,33 @@ describe('pageSchema', () => {
 
   it('rejects a malformed pageId', () => {
     expect(pageSchema.safeParse({ ...validPage, pageId: 'not-a-page-id' }).success).toBe(false);
+  });
+});
+
+describe('pageSchema — translations (checkpoint 1B.17A, scenario 20)', () => {
+  it('accepts a Page document with no translations field at all (backward compatibility)', () => {
+    expect(pageSchema.safeParse(validPage).success).toBe(true);
+  });
+
+  it('accepts a Page document with a valid title/content translations bag', () => {
+    const result = pageSchema.safeParse({
+      ...validPage,
+      translations: { title: { ja: 'シャトルバス情報' }, content: { ja: '無料シャトルバス' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a translations bag keyed by an unregistered language code', () => {
+    expect(pageSchema.safeParse({ ...validPage, translations: { title: { de: 'Info' } } }).success).toBe(false);
+  });
+
+  it("rejects a translated title exceeding pageTitleSchema's own TITLE_MAX_LENGTH bound", () => {
+    const result = pageSchema.safeParse({ ...validPage, translations: { title: { en: 'a'.repeat(151) } } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown field on the translations object (strict mode)', () => {
+    expect(pageTranslationsSchema.safeParse({ title: { en: 'Info' }, name: { en: 'nope' } }).success).toBe(false);
   });
 });
 

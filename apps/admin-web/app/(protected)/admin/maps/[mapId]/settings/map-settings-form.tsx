@@ -11,6 +11,8 @@ import {
   MAP_STYLES,
   MAP_THEME_PRESET_DEFAULTS,
   MAP_THEME_PRESETS,
+  PUBLIC_CONTENT_LANGUAGE_CODES,
+  listPublicContentLanguages,
   type MapAreaType,
   type MapMarkerSize,
   type MapMarkerStyle,
@@ -18,6 +20,7 @@ import {
   type MapStyle,
   type MapTheme,
   type MapThemePreset,
+  type PublicContentLanguage,
 } from 'shared-types';
 import { mapSettingsUpdateSchema, type MapParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
@@ -109,6 +112,31 @@ import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
  * UTC-getter-only formatter with no Intl/locale dependency, so it always
  * returns the identical string in both environments. See that module's own
  * doc comment for the full reasoning.
+ *
+ * Public Languages (checkpoint 1B.17A §8): configures which languages this
+ * map's PUBLIC TOURIST content is offered in — completely unrelated to the
+ * Admin UI's own display language (still English-only; see shared-types'
+ * `PublicContentLanguage` doc comment for the "two separate language
+ * concepts" explanation this checkpoint is careful never to conflate). This
+ * card does NOT let an operator translate any actual content (no per-field
+ * translation editor exists yet — that's checkpoint 1B.17B); it only
+ * configures the map-level `defaultLanguage`/`supportedLanguages` pair.
+ *
+ * `defaultLanguage`/`supportedLanguages` follow the exact same "always
+ * included in the payload" convention `theme` already established above —
+ * every map always has a real value for both (never "nothing configured
+ * yet"), so there's no optional-omission case to represent. Client-side UX
+ * guard (§8: "cannot deselect current default; default must always remain
+ * supported"): the checkbox for the CURRENTLY-selected default language is
+ * disabled (it can't be unchecked directly), and the "default" radio for a
+ * language that isn't currently checked is disabled too (a language must be
+ * supported before it can become the default) — an operator wanting to drop
+ * the current default must first pick a different already-supported
+ * language as the new default via the radio, which then frees the old
+ * default's checkbox. `mapLanguageConfigSchema`'s own server-side
+ * `.refine()` (packages/validation/src/language.ts) is the actual
+ * authority; this is UX-only, same as every other client-side validation on
+ * this form.
  */
 
 const MIN_ZOOM = 0;
@@ -145,6 +173,12 @@ function toValidHexOrUndefined(value: string): string | undefined {
   return HEX_COLOR_PATTERN.test(trimmed) ? trimmed : undefined;
 }
 
+/** checkpoint 1B.17A — keeps `supportedLanguages` in the registry's own deterministic declaration order regardless of the order checkboxes were clicked in, matching `supportedPublicContentLanguagesSchema`'s own ordering expectations. */
+function sortByRegistryOrder(codes: readonly PublicContentLanguage[]): readonly PublicContentLanguage[] {
+  const set = new Set(codes);
+  return PUBLIC_CONTENT_LANGUAGE_CODES.filter((code) => set.has(code));
+}
+
 export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormProps) {
   const router = useRouter();
 
@@ -169,6 +203,13 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
   const [logoUrl, setLogoUrl] = useState(initialMap.branding?.logoUrl ?? '');
   const [primaryColor, setPrimaryColor] = useState(initialMap.branding?.primaryColor ?? '');
   const [secondaryColor, setSecondaryColor] = useState(initialMap.branding?.secondaryColor ?? '');
+
+  // checkpoint 1B.17A — Public Languages (§8). `initialMap.defaultLanguage`/
+  // `.enabledLanguages` are ALWAYS present on every map document (see
+  // shared-types' `TouristMap` doc comment), so — unlike `branding` above —
+  // there's no "nothing configured yet" empty state to represent here.
+  const [defaultLanguage, setDefaultLanguage] = useState<PublicContentLanguage>(initialMap.defaultLanguage);
+  const [supportedLanguages, setSupportedLanguages] = useState<readonly PublicContentLanguage[]>(initialMap.enabledLanguages);
 
   const [themePreset, setThemePreset] = useState<MapThemePreset>(initialTheme.preset);
   const [visBusinessPois, setVisBusinessPois] = useState(initialTheme.visibility.businessPois);
@@ -323,6 +364,27 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setMarkerSize(defaults.markerStyle.size);
   }
 
+  /**
+   * checkpoint 1B.17A — toggles a language's SUPPORTED state. The `defaultLanguage`
+   * checkbox itself is rendered `disabled` for exactly this case (see the JSX
+   * below), so this guard against unchecking the current default is defense
+   * in depth, not the only thing preventing it.
+   */
+  function handleToggleSupportedLanguage(code: PublicContentLanguage, checked: boolean): void {
+    if (!checked && code === defaultLanguage) {
+      return;
+    }
+    setSupportedLanguages((current) => (checked ? sortByRegistryOrder([...current, code]) : current.filter((existing) => existing !== code)));
+  }
+
+  /** checkpoint 1B.17A — the radio for a language that isn't currently supported is rendered `disabled` (see the JSX below); this guard mirrors that. */
+  function handleSetDefaultLanguage(code: PublicContentLanguage): void {
+    if (!supportedLanguages.includes(code)) {
+      return;
+    }
+    setDefaultLanguage(code);
+  }
+
   function handleMapCenterChange(center: { lat: number; lng: number }): void {
     setCenterLat(String(center.lat));
     setCenterLng(String(center.lng));
@@ -347,6 +409,8 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setLogoUrl(initialMap.branding?.logoUrl ?? '');
     setPrimaryColor(initialMap.branding?.primaryColor ?? '');
     setSecondaryColor(initialMap.branding?.secondaryColor ?? '');
+    setDefaultLanguage(initialMap.defaultLanguage);
+    setSupportedLanguages(initialMap.enabledLanguages);
     setThemePreset(initialTheme.preset);
     setVisBusinessPois(initialTheme.visibility.businessPois);
     setVisTransit(initialTheme.visibility.transit);
@@ -412,8 +476,30 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       // `markerStyle` (only `colors` is ever partial), so there is no
       // "nothing to send yet" state the way an unset branding field has.
       theme: previewTheme,
+      // checkpoint 1B.17A — always included, same reasoning as `theme`
+      // above: every map always has a real `defaultLanguage`/
+      // `enabledLanguages` pair, never "nothing configured yet."
+      languages: { defaultLanguage, supportedLanguages },
     };
-  }, [name, provider, style, areaType, centerLat, centerLng, defaultZoom, north, south, east, west, logoUrl, primaryColor, secondaryColor, previewTheme]);
+  }, [
+    name,
+    provider,
+    style,
+    areaType,
+    centerLat,
+    centerLng,
+    defaultZoom,
+    north,
+    south,
+    east,
+    west,
+    logoUrl,
+    primaryColor,
+    secondaryColor,
+    previewTheme,
+    defaultLanguage,
+    supportedLanguages,
+  ]);
 
   // Checkpoint 1B.8 — "Unsaved Map Settings" tracking (§15: explicitly
   // permitted as LOCAL state, scoped only to this form). `payload` is
@@ -874,6 +960,56 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
               onChange={setSecondaryColor}
               disabled={controlsDisabled}
             />
+          </div>
+
+          <div className="card" data-testid="public-languages-card">
+            <div className="card-title">Public Languages</div>
+            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
+              Choose which languages this map&apos;s public tourist content is offered in. This does not change the
+              Admin language — only your public map. Translating content itself is not available yet.
+            </p>
+
+            <div className="field">
+              <span className="field-label" id="publicLanguagesLabel">
+                Supported languages / Default
+              </span>
+              <div role="group" aria-labelledby="publicLanguagesLabel">
+                {listPublicContentLanguages().map((entry) => {
+                  const isSupported = supportedLanguages.includes(entry.code);
+                  const isDefault = defaultLanguage === entry.code;
+                  return (
+                    <div key={entry.code} className="checkbox-field" data-testid={`public-language-row-${entry.code}`}>
+                      <input
+                        id={`publicLanguageSupported-${entry.code}`}
+                        type="checkbox"
+                        checked={isSupported}
+                        onChange={(event) => handleToggleSupportedLanguage(entry.code, event.target.checked)}
+                        disabled={controlsDisabled || isDefault}
+                        data-testid={`public-language-checkbox-${entry.code}`}
+                      />
+                      <label htmlFor={`publicLanguageSupported-${entry.code}`}>
+                        {entry.englishLabel} ({entry.nativeLabel})
+                      </label>
+                      <label style={{ marginLeft: 'var(--space-3)', display: 'inline-flex', alignItems: 'center', gap: '0.35em' }}>
+                        <input
+                          type="radio"
+                          name="defaultPublicLanguage"
+                          checked={isDefault}
+                          onChange={() => handleSetDefaultLanguage(entry.code)}
+                          disabled={controlsDisabled || !isSupported}
+                          data-testid={`public-language-default-${entry.code}`}
+                        />
+                        Default
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+              <span className="field-hint">
+                The default language is used whenever a visitor&apos;s requested language isn&apos;t available. To
+                remove the current default, first choose a different default from an already-supported language.
+              </span>
+            </div>
           </div>
 
           <div className="card">

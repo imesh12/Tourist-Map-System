@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CATEGORY_ICONS, CATEGORY_SOURCE_TYPES, RELEASED_PLATFORM_CATEGORY_IDS } from 'shared-types';
 import { categoryIdSchema, customerIdSchema, mapIdSchema } from './ids.js';
+import { localizedTextSchema } from './language.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -27,6 +28,18 @@ export const categorySourceTypeSchema = z.enum(CATEGORY_SOURCE_TYPES);
 export const categoryPlatformCategoryIdSchema = z.enum(RELEASED_PLATFORM_CATEGORY_IDS);
 
 /**
+ * checkpoint 1B.17A — a Category's translated fields, mirroring shared-types'
+ * `CategoryTranslations`. `name`'s translation bound matches `categoryNameSchema`'s
+ * own `NAME_MAX_LENGTH` exactly (§13: "preserve existing field length
+ * constraints").
+ */
+export const categoryTranslationsSchema = z
+  .object({
+    name: localizedTextSchema(NAME_MAX_LENGTH).optional(),
+  })
+  .strict();
+
+/**
  * Full stored document — defense-in-depth validation for reads, mirroring
  * `mapSchema`'s role. `sourceType`/`platformCategoryId` are optional —
  * Category CMS architecture checkpoint, see
@@ -45,6 +58,10 @@ export const categorySchema = z.object({
   order: categoryOrderSchema,
   sourceType: categorySourceTypeSchema.optional(),
   platformCategoryId: z.string().optional(),
+  // checkpoint 1B.17A — optional, backward compatible: every category
+  // document written before this checkpoint (and every category no editor
+  // has translated yet) has no `translations` field at all.
+  translations: categoryTranslationsSchema.optional(),
   createdAt: firestoreTimestampLikeSchema,
   updatedAt: firestoreTimestampLikeSchema,
 });

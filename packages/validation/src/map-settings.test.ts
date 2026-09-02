@@ -171,6 +171,59 @@ describe('mapSettingsUpdateSchema — checkpoint 1B.1', () => {
     });
   });
 
+  describe('languages — checkpoint 1B.17A §8 (Public Languages settings)', () => {
+    it('accepts a config with no languages field at all (untouched — Public Languages was not edited this save)', () => {
+      expect(mapSettingsUpdateSchema.safeParse(validUnboundedInput).success).toBe(true);
+    });
+
+    it('accepts a valid languages config where default is included in supported', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, languages: { defaultLanguage: 'ja', supportedLanguages: ['ja', 'en'] } });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a languages config whose default is not included in supported', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        languages: { defaultLanguage: 'ko', supportedLanguages: ['ja', 'en'] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a languages config with an unregistered supported language code', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        languages: { defaultLanguage: 'en', supportedLanguages: ['en', 'de'] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a languages config with duplicate supported languages', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        languages: { defaultLanguage: 'en', supportedLanguages: ['en', 'en'] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a languages config with an empty supportedLanguages array', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, languages: { defaultLanguage: 'en', supportedLanguages: [] } });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a languages config missing defaultLanguage', () => {
+      const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, languages: { supportedLanguages: ['en'] } });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an unknown field nested under languages', () => {
+      const result = mapSettingsUpdateSchema.safeParse({
+        ...validUnboundedInput,
+        languages: { defaultLanguage: 'en', supportedLanguages: ['en'], mapId: 'map_attackerControlled01' },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('security: ownership fields are never client-suppliable', () => {
     it('rejects an injected `mapId` field', () => {
       const result = mapSettingsUpdateSchema.safeParse({ ...validUnboundedInput, mapId: 'map_attackerControlled01' });

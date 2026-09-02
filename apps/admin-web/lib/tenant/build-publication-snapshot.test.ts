@@ -22,8 +22,10 @@ function map(overrides: Partial<MapParsed> = {}): MapParsed {
     customerId: 'cust_a0000000000000000000',
     name: 'Kyoto Tours Map',
     status: 'DRAFT',
-    defaultLanguage: 'EN',
-    enabledLanguages: ['EN'],
+    // checkpoint 1B.17A — `PublicContentLanguage` codes, not the retired
+    // `Language`/`LANGUAGES` enum's `'EN'`.
+    defaultLanguage: 'en',
+    enabledLanguages: ['en'],
     mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
     area: { type: 'UNBOUNDED' },
     createdAt: TIMESTAMP,
@@ -242,6 +244,45 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
     it('excludes a PAGE menu item whose referenced page is disabled', () => {
       const content = buildPublicationContent(map(), [], [], [pageMenuItem()], [page({ status: 'DISABLED' })]);
       expect(content.menu).toEqual([]);
+    });
+  });
+
+  describe('multilingual data foundation — checkpoint 1B.17A', () => {
+    it('captures the map\'s own defaultLanguage/enabledLanguages onto the publication content', () => {
+      const content = buildPublicationContent(map({ defaultLanguage: 'ja', enabledLanguages: ['ja', 'en'] }), [], [], []);
+      expect(content.defaultLanguage).toBe('ja');
+      expect(content.supportedLanguages).toEqual(['ja', 'en']);
+    });
+
+    it('defaults to the platform single-language config for a legacy-shaped map with only one supported language', () => {
+      const content = buildPublicationContent(map({ defaultLanguage: 'en', enabledLanguages: ['en'] }), [], [], []);
+      expect(content.defaultLanguage).toBe('en');
+      expect(content.supportedLanguages).toEqual(['en']);
+    });
+
+    it('passes a category\'s translations through unchanged, and omits the field entirely when absent', () => {
+      const translations = { name: { ja: 'レストラン', ko: '레스토랑' } };
+      const content = buildPublicationContent(map(), [category({ translations }), category({ categoryId: 'cat_no_translations0000', translations: undefined })], [], []);
+      expect(content.categories.find((c) => c.categoryId === 'cat_restaurant00000000000')?.translations).toEqual(translations);
+      expect(content.categories.find((c) => c.categoryId === 'cat_no_translations0000')).not.toHaveProperty('translations');
+    });
+
+    it('passes a POI\'s translations through unchanged', () => {
+      const translations = { name: { fr: 'Restaurant Sakura' }, description: { fr: 'Excellente cuisine' } };
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [poi({ translations })], []);
+      expect(content.pois[0]?.translations).toEqual(translations);
+    });
+
+    it('passes a Page\'s translations through unchanged', () => {
+      const translations = { title: { es: 'Guía de Wi-Fi' }, content: { es: 'Red: Invitado' } };
+      const content = buildPublicationContent(map(), [], [], [], [page({ translations })]);
+      expect(content.pages[0]?.translations).toEqual(translations);
+    });
+
+    it('passes a menu item\'s translations through the menu projection unchanged', () => {
+      const translations = { label: { ko: '미식가' } };
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [], [categoryMenuItem({ translations })]);
+      expect(content.menu[0]).toMatchObject({ translations });
     });
   });
 });

@@ -23,6 +23,7 @@ export * from './registration.js';
 export * from './login.js';
 export * from './customer.js';
 export * from './user.js';
+export * from './language.js';
 export * from './map.js';
 export * from './branding.js';
 export * from './map-theme.js';

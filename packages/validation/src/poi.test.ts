@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { poiCreateInputSchema, poiSchema, poiUpdateInputSchema } from './poi';
+import { poiCreateInputSchema, poiSchema, poiTranslationsSchema, poiUpdateInputSchema } from './poi';
 
 const validPoi = {
   poiId: 'poi_aB3dEf6gH9jKlMn0pQ',
@@ -37,6 +37,33 @@ describe('poiSchema', () => {
 
   it('rejects an unrecognized sourceType', () => {
     expect(poiSchema.safeParse({ ...validPoi, sourceType: 'MUNICIPAL_API' }).success).toBe(false);
+  });
+});
+
+describe('poiSchema — translations (checkpoint 1B.17A, scenario 19)', () => {
+  it('accepts a POI document with no translations field at all (backward compatibility)', () => {
+    expect(poiSchema.safeParse(validPoi).success).toBe(true);
+  });
+
+  it('accepts a POI document with a valid name/description translations bag', () => {
+    const result = poiSchema.safeParse({
+      ...validPoi,
+      translations: { name: { ja: '桜レストラン' }, description: { ja: '素晴らしい寿司' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a translations bag keyed by an unregistered language code', () => {
+    expect(poiSchema.safeParse({ ...validPoi, translations: { name: { de: 'Sakura' } } }).success).toBe(false);
+  });
+
+  it("rejects a translated description exceeding poiDescriptionSchema's own DESCRIPTION_MAX_LENGTH bound", () => {
+    const result = poiSchema.safeParse({ ...validPoi, translations: { description: { en: 'a'.repeat(2001) } } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown field on the translations object (strict mode)', () => {
+    expect(poiTranslationsSchema.safeParse({ name: { en: 'Sakura' }, label: { en: 'nope' } }).success).toBe(false);
   });
 });
 

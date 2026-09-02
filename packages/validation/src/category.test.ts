@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { categoryCreateInputSchema, categorySchema, categoryUpdateInputSchema } from './category';
+import { categoryCreateInputSchema, categorySchema, categoryTranslationsSchema, categoryUpdateInputSchema } from './category';
 
 const validCategory = {
   categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
@@ -132,6 +132,32 @@ describe('categoryCreateInputSchema — checkpoint 1B.2', () => {
     it('omitting platformCategoryId still creates a purely custom category', () => {
       expect(categoryCreateInputSchema.safeParse(validInput).success).toBe(true);
     });
+  });
+});
+
+describe('categorySchema — translations (checkpoint 1B.17A, scenario 18)', () => {
+  it('accepts a category document with no translations field at all (backward compatibility: every pre-1B.17A document)', () => {
+    expect(categorySchema.safeParse(validCategory).success).toBe(true);
+  });
+
+  it('accepts a category document with a valid translations bag', () => {
+    const result = categorySchema.safeParse({ ...validCategory, translations: { name: { ja: 'レストラン', en: 'Restaurants' } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a translations bag keyed by an unregistered language code', () => {
+    const result = categorySchema.safeParse({ ...validCategory, translations: { name: { de: 'Restaurants' } } });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a translated name exceeding the same NAME_MAX_LENGTH bound as the scalar categoryNameSchema", () => {
+    const result = categorySchema.safeParse({ ...validCategory, translations: { name: { en: 'a'.repeat(101) } } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown field on the translations object (strict mode)', () => {
+    const result = categoryTranslationsSchema.safeParse({ name: { en: 'Restaurants' }, description: { en: 'nope' } });
+    expect(result.success).toBe(false);
   });
 });
 

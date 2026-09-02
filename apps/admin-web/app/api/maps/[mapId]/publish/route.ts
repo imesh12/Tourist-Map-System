@@ -146,6 +146,12 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         publishedAt,
         publishedByUid,
         map: content.map,
+        // checkpoint 1B.17A — captured onto the published snapshot itself;
+        // see `PublicationContent.defaultLanguage`'s own doc comment
+        // (lib/tenant/build-publication-snapshot.ts) for why this is a copy
+        // taken at publish time, not a live reference to the map document.
+        defaultLanguage: content.defaultLanguage,
+        supportedLanguages: content.supportedLanguages,
         menu: content.menu,
         categories: content.categories,
         pois: content.pois,

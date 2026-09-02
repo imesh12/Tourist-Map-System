@@ -83,6 +83,20 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     version: snapshot.version,
     publishedAt: snapshot.publishedAt,
     map: snapshot.map,
+    // checkpoint 1B.17A — this route builds its response via an explicit
+    // field-by-field pick (see this file's own header comment), never a
+    // destructure-and-discard, which means every new field added to
+    // `MapPublicationSnapshot`/`mapPublicationSnapshotSchema` must ALSO be
+    // added here by hand — it is not automatically carried through just
+    // because the parsed `snapshot` object already has it (bug found:
+    // `defaultLanguage`/`supportedLanguages` were normalized correctly by
+    // `mapPublicationSnapshotSchema.safeParse()` above, on both a real
+    // multilingual publish and a legacy pre-1B.17A publication, but were
+    // never copied into this hand-built object, so every public response
+    // silently dropped them regardless of what the stored/parsed document
+    // actually held).
+    defaultLanguage: snapshot.defaultLanguage,
+    supportedLanguages: snapshot.supportedLanguages,
     menu: snapshot.menu,
     categories: snapshot.categories,
     pois: snapshot.pois,

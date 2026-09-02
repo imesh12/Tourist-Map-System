@@ -1,6 +1,13 @@
 import type { PageStatus } from './enums.js';
 import type { CustomerId, MapId, PageId } from './ids.js';
+import type { LocalizedText } from './language.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
+
+/** checkpoint 1B.17A — a Page's translated fields. See `CategoryTranslations`'s own doc comment (./category.js) for the general pattern. */
+export interface PageTranslations {
+  readonly title?: LocalizedText;
+  readonly content?: LocalizedText;
+}
 
 /**
  * `maps/{mapId}/pages/{pageId}` — checkpoint 1B.11, see
@@ -46,6 +53,8 @@ export interface Page {
   readonly mapId: MapId;
   readonly title: string;
   readonly content: string;
+  /** checkpoint 1B.17A — see `PageTranslations`'s own doc comment above. */
+  readonly translations?: PageTranslations;
   readonly status: PageStatus;
   readonly createdAt: FirestoreTimestampLike;
   readonly updatedAt: FirestoreTimestampLike;

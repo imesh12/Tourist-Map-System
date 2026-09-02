@@ -1,5 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
+import { DEFAULT_PUBLIC_CONTENT_LANGUAGE } from 'shared-types';
 import { mapCreateInputSchema } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
@@ -79,13 +80,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // `customerId` is stamped exclusively from the verified session's own
   // tenant identity — never from `parsed.data`, which has no such field to
   // begin with (`.strict()` would reject it anyway).
+  //
+  // checkpoint 1B.17A: `defaultLanguage`/`enabledLanguages` now hold
+  // `PublicContentLanguage` values (see shared-types' `TouristMap` doc
+  // comment for the field-repurposing rationale) — every new map still
+  // starts single-language, just using the new registry's own default code
+  // rather than the retired `Language`/`LANGUAGES` enum's `'EN'`.
   await firestore.doc(`maps/${mapId}`).set({
     mapId,
     customerId: result.identity.customer.customerId,
     name: parsed.data.name,
     status: 'DRAFT',
-    defaultLanguage: 'EN',
-    enabledLanguages: ['EN'],
+    defaultLanguage: DEFAULT_PUBLIC_CONTENT_LANGUAGE,
+    enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
     mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
     area: { type: 'UNBOUNDED' },
     createdAt: FieldValue.serverTimestamp(),

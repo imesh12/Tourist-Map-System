@@ -1,6 +1,6 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
-import type { CustomerId, MapId, Role } from 'shared-types';
+import { DEFAULT_PUBLIC_CONTENT_LANGUAGE, type CustomerId, type MapId, type Role } from 'shared-types';
 import type { RegistrationInput } from 'validation';
 
 /**
@@ -209,8 +209,11 @@ export async function provisionClient(input: RegistrationInput, deps: ProvisionC
         customerId,
         name: mapName,
         status: 'DRAFT',
-        defaultLanguage: 'EN',
-        enabledLanguages: ['EN'],
+        // checkpoint 1B.17A — `PublicContentLanguage` values, not the
+        // retired `Language`/`LANGUAGES` enum's `'EN'`; see shared-types'
+        // `TouristMap` doc comment for the field-repurposing rationale.
+        defaultLanguage: DEFAULT_PUBLIC_CONTENT_LANGUAGE,
+        enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
         mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
         area: { type: 'UNBOUNDED' },
         ...(mapDocAlreadyExists ? {} : { createdAt: FieldValue.serverTimestamp() }),

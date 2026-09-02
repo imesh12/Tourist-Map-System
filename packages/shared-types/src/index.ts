@@ -32,6 +32,7 @@ export * from './ids.js';
 export * from './enums.js';
 export * from './customer.js';
 export * from './user.js';
+export * from './language.js';
 export * from './map.js';
 export * from './map-theme-presets.js';
 export * from './publication.js';

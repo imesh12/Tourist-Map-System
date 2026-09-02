@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { LANGUAGES, MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
+import { MAP_AREA_TYPES, MAP_PROVIDER_NAMES, MAP_STATUSES, MAP_STYLES } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
 import { customerIdSchema, mapIdSchema, publicationIdSchema, uidSchema } from './ids.js';
+import { legacyPublicContentLanguageInputSchema, supportedPublicContentLanguagesSchema } from './language.js';
 import { mapThemeSchema } from './map-theme.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
@@ -116,13 +117,16 @@ export const mapSchema = z
     customerId: customerIdSchema,
     name: z.string().trim().min(1).max(200),
     status: z.enum(MAP_STATUSES),
-    defaultLanguage: z.enum(LANGUAGES),
-    enabledLanguages: z
-      .array(z.enum(LANGUAGES))
-      .min(1)
-      .refine((languages) => new Set(languages).size === languages.length, {
-        message: 'enabledLanguages must not contain duplicates',
-      }),
+    // checkpoint 1B.17A — repointed at the real `PublicContentLanguage`
+    // registry (packages/validation/src/language.ts), accepting either a
+    // current or a pre-1B.17A legacy `Language` code (every map document has
+    // always had these two fields populated, so the only compatibility
+    // concern is the value FORMAT — see `legacyPublicContentLanguageInputSchema`'s
+    // own doc comment). `enabledLanguages` remains this field's name — it IS
+    // the checkpoint's own "supportedLanguages" concept, kept under its
+    // already-established name (see shared-types' `TouristMap` doc comment).
+    defaultLanguage: legacyPublicContentLanguageInputSchema,
+    enabledLanguages: supportedPublicContentLanguagesSchema,
     mapProvider: mapProviderConfigSchema,
     area: mapAreaSchema,
     // Optional — absent until a Client Admin first saves branding

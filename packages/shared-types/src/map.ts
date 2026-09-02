@@ -1,6 +1,5 @@
 import type { CustomerId, MapId, PublicationId, Uid } from './ids.js';
 import type {
-  Language,
   MapAreaType,
   MapMarkerSize,
   MapMarkerStyle,
@@ -9,6 +8,7 @@ import type {
   MapStyle,
   MapThemePreset,
 } from './enums.js';
+import type { PublicContentLanguage } from './language.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 
 export interface MapProviderConfig {
@@ -149,14 +149,28 @@ export interface MapPublicationMeta {
  * `enabledLanguages` must always include `defaultLanguage` — see
  * packages/validation's `mapSchema`, which enforces this invariant at
  * runtime.
+ *
+ * `defaultLanguage`/`enabledLanguages` — checkpoint 1B.17A "Multilingual
+ * Data Foundation": this is a Phase-1A field (present, and required, on
+ * every map document this system has ever created) that predates any actual
+ * multilingual content model. 1B.17A repoints it at the real
+ * `PublicContentLanguage` registry (./language.js) rather than introducing a
+ * second, competing "which public languages does this map support" field —
+ * `enabledLanguages` IS this checkpoint's "supportedLanguages" concept, kept
+ * under its existing, already-established name. See `PublicContentLanguage`'s
+ * own doc comment for why this is a DIFFERENT concept from a future Admin UI
+ * locale, and `normalizeLegacyPublicContentLanguageCode()` for how a map
+ * document stored with the pre-1B.17A `Language` codes (`EN`/`JA`/`ZH_CN`/`KO`)
+ * keeps parsing safely.
  */
 export interface TouristMap {
   readonly mapId: MapId;
   readonly customerId: CustomerId;
   readonly name: string;
   readonly status: MapStatus;
-  readonly defaultLanguage: Language;
-  readonly enabledLanguages: readonly Language[];
+  readonly defaultLanguage: PublicContentLanguage;
+  /** The map's public-content languages — always includes `defaultLanguage`, never empty, never duplicated. See this interface's own doc comment above. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
   readonly mapProvider: MapProviderConfig;
   readonly area: MapAreaConfig;
   /** Optional — absent until a Client Admin first saves branding (checkpoint 1B.1). */

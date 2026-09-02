@@ -113,8 +113,12 @@ describe('provisionClient — checkpoint 1A.5', () => {
     expect(mapData.customerId).toBe(result.customerId);
     expect(mapData.name).toBe('JR West Tourist Map');
     expect(mapData.status).toBe('DRAFT');
-    expect(mapData.defaultLanguage).toBe('EN');
-    expect(mapData.enabledLanguages).toEqual(['EN']);
+    // checkpoint 1B.17A — `provisionClient()` now stamps the
+    // `PublicContentLanguage` registry's own default ('en'), not the retired
+    // `Language`/`LANGUAGES` enum's `'EN'`; see provision-client.ts's own
+    // updated doc comment.
+    expect(mapData.defaultLanguage).toBe('en');
+    expect(mapData.enabledLanguages).toEqual(['en']);
   });
 
   it('honors an explicit initialMapName instead of the derived default', async () => {

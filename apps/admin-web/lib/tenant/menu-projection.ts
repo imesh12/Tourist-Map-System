@@ -1,4 +1,4 @@
-import { getPublicFeatureRegistryEntry, type CategoryIcon } from 'shared-types';
+import { getPublicFeatureRegistryEntry, type CategoryIcon, type MenuItemTranslations } from 'shared-types';
 import type { CategoryParsed, MenuItemParsed, PageParsed } from 'validation';
 
 /** checkpoint 1B.11 — the effective icon a `PAGE` menu item without a client override falls back to. A Page has no `icon` field of its own (unlike a `Category`), so this is a fixed default rather than a per-document fallback. Exported so the admin Menu Builder UI can display the exact same default rather than hardcoding a second copy of this value. */
@@ -51,6 +51,8 @@ export interface PublicMenuProjectionCategoryItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly categoryId: string;
+  /** checkpoint 1B.17A — passed through from the source `MenuItem` document unchanged; see shared-types' `MenuItemTranslations` doc comment. Optional, backward compatible: absent for every menu item no editor has translated yet (1B.17B builds that editor). */
+  readonly translations?: MenuItemTranslations;
 }
 
 export interface PublicMenuProjectionFeatureItem {
@@ -58,6 +60,7 @@ export interface PublicMenuProjectionFeatureItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly featureKey: string;
+  readonly translations?: MenuItemTranslations;
 }
 
 /** checkpoint 1B.11 — mirrors `PublicMenuProjectionCategoryItem`'s shape for a `PAGE` menu item. */
@@ -66,6 +69,7 @@ export interface PublicMenuProjectionPageItem {
   readonly label: string;
   readonly icon: CategoryIcon;
   readonly pageId: string;
+  readonly translations?: MenuItemTranslations;
 }
 
 export type PublicMenuProjectionItem = PublicMenuProjectionCategoryItem | PublicMenuProjectionFeatureItem | PublicMenuProjectionPageItem;
@@ -99,6 +103,7 @@ export function buildPublicMenuProjection(
         label: item.label,
         icon: item.icon ?? category.icon,
         categoryId: item.categoryId,
+        ...(item.translations ? { translations: item.translations } : {}),
       });
       continue;
     }
@@ -114,6 +119,7 @@ export function buildPublicMenuProjection(
         label: item.label,
         icon: registryEntry.icon,
         featureKey: item.featureKey,
+        ...(item.translations ? { translations: item.translations } : {}),
       });
       continue;
     }
@@ -131,6 +137,7 @@ export function buildPublicMenuProjection(
       label: item.label,
       icon: item.icon ?? DEFAULT_PAGE_MENU_ICON,
       pageId: item.pageId,
+      ...(item.translations ? { translations: item.translations } : {}),
     });
   }
 

@@ -1,7 +1,13 @@
 import type { CategoryIcon, MenuItemStatus } from './enums.js';
 import type { CategoryId, CustomerId, MapId, MenuItemId, PageId } from './ids.js';
+import type { LocalizedText } from './language.js';
 import type { ReleasedFeatureKey } from './public-feature.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
+
+/** checkpoint 1B.17A — a MenuItem's translated fields. See `CategoryTranslations`'s own doc comment (./category.js) for the general pattern; every `MenuItem` variant shares this one translatable field (`label`). */
+export interface MenuItemTranslations {
+  readonly label?: LocalizedText;
+}
 
 /**
  * `maps/{mapId}/menuItems/{menuItemId}` — checkpoint 1B.5, see
@@ -52,6 +58,8 @@ interface MenuItemCommon {
   readonly customerId: CustomerId;
   readonly mapId: MapId;
   readonly label: string;
+  /** checkpoint 1B.17A — see `MenuItemTranslations`'s own doc comment above. */
+  readonly translations?: MenuItemTranslations;
   readonly order: number;
   readonly status: MenuItemStatus;
   readonly createdAt: FirestoreTimestampLike;

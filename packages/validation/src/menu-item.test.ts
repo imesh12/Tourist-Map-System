@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { menuItemCreateInputSchema, menuItemSchema, menuItemUpdateInputSchema } from './menu-item';
+import { menuItemCreateInputSchema, menuItemSchema, menuItemTranslationsSchema, menuItemUpdateInputSchema } from './menu-item';
 
 const validCategoryMenuItem = {
   menuItemId: 'menu_aB3dEf6gH9jKlMn0pQ',
@@ -109,6 +109,35 @@ describe('menuItemSchema', () => {
 
   it('rejects an unrecognized status', () => {
     expect(menuItemSchema.safeParse({ ...validCategoryMenuItem, status: 'ARCHIVED' }).success).toBe(false);
+  });
+});
+
+describe('menuItemSchema — translations (checkpoint 1B.17A, scenario 21)', () => {
+  it('accepts a CATEGORY menu item with no translations field at all (backward compatibility)', () => {
+    expect(menuItemSchema.safeParse(validCategoryMenuItem).success).toBe(true);
+  });
+
+  it('accepts a menu item with a valid label translations bag', () => {
+    const result = menuItemSchema.safeParse({ ...validCategoryMenuItem, translations: { label: { ja: 'グルメ' } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a translations bag keyed by an unregistered language code', () => {
+    expect(menuItemSchema.safeParse({ ...validCategoryMenuItem, translations: { label: { de: 'Gourmet' } } }).success).toBe(false);
+  });
+
+  it("rejects a translated label exceeding menuItemLabelSchema's own LABEL_MAX_LENGTH bound", () => {
+    const result = menuItemSchema.safeParse({ ...validCategoryMenuItem, translations: { label: { en: 'a'.repeat(61) } } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown field on the translations object (strict mode)', () => {
+    expect(menuItemTranslationsSchema.safeParse({ label: { en: 'Gourmet' }, name: { en: 'nope' } }).success).toBe(false);
+  });
+
+  it('accepts translations on a FEATURE and a PAGE menu item too (all three branches carry the field)', () => {
+    expect(menuItemSchema.safeParse({ ...validFeatureMenuItem, translations: { label: { ja: '検索' } } }).success).toBe(true);
+    expect(menuItemSchema.safeParse({ ...validPageMenuItem, translations: { label: { ja: 'シャトル' } } }).success).toBe(true);
   });
 });
 

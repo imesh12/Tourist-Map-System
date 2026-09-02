@@ -77,6 +77,26 @@ describe('fetchPublicMapSnapshot — checkpoint 1B.9', () => {
       // accepted and its `pages` normalized to an empty array rather than
       // being rejected outright.
       expect(result.snapshot.pages).toEqual([]);
+      // checkpoint 1B.17A: this fixture also predates the multilingual data
+      // foundation (no `defaultLanguage`/`supportedLanguages` fields at
+      // all) — tourist-web's public-map client still parses it successfully
+      // and normalizes both to the platform default, so a legacy publication
+      // continues rendering exactly as it always has (§11: "existing tourist
+      // behavior continues using resolved/default content").
+      expect(result.snapshot.defaultLanguage).toBe('en');
+      expect(result.snapshot.supportedLanguages).toEqual(['en']);
+    }
+  });
+
+  it('(1B.17A) parses a snapshot with an explicit multilingual language config', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(200, { ...validPublicSnapshot, defaultLanguage: 'ja', supportedLanguages: ['ja', 'en', 'ko'] }),
+    );
+    const result = await fetchPublicMapSnapshot('map_aB3dEf6gH9jKlMn0pQ');
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.snapshot.defaultLanguage).toBe('ja');
+      expect(result.snapshot.supportedLanguages).toEqual(['ja', 'en', 'ko']);
     }
   });
 
