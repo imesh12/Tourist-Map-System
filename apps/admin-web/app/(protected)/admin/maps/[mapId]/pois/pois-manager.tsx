@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { MapAreaBounds, MapProviderName } from 'shared-types';
+import type { MapAreaBounds, MapProviderName, PublicContentLanguage } from 'shared-types';
 import { poiCreateInputSchema, poiUpdateInputSchema, type CategoryParsed, type PoiParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import type { MapPreviewCenter } from '@/lib/map-preview/types';
@@ -39,6 +39,9 @@ interface PoisManagerProps {
   readonly mapCenter?: MapPreviewCenter;
   readonly mapBounds?: MapAreaBounds;
   readonly canEdit: boolean;
+  /** checkpoint 1B.17B §9 — see `CategoriesManagerProps`'s identical doc comment. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
 }
 
 type DrawerState = { readonly mode: 'create' } | { readonly mode: 'edit'; readonly poi: PoiParsed } | undefined;
@@ -65,7 +68,7 @@ async function parseSafeErrorMessage(response: Response, fallback: string): Prom
 }
 
 function emptyFormValues(defaultCategoryId: string): PoiFormValues {
-  return { name: '', categoryId: defaultCategoryId, address: '', description: '', latitude: '', longitude: '', status: 'ENABLED' };
+  return { name: '', categoryId: defaultCategoryId, address: '', description: '', latitude: '', longitude: '', status: 'ENABLED', translations: {} };
 }
 
 function poiToFormValues(poi: PoiParsed): PoiFormValues {
@@ -77,10 +80,22 @@ function poiToFormValues(poi: PoiParsed): PoiFormValues {
     latitude: String(poi.location.latitude),
     longitude: String(poi.location.longitude),
     status: poi.status,
+    translations: poi.translations ?? {},
   };
 }
 
-export function PoisManager({ mapId, mapName, initialPois, categories, mapProvider, mapCenter, mapBounds, canEdit }: PoisManagerProps) {
+export function PoisManager({
+  mapId,
+  mapName,
+  initialPois,
+  categories,
+  mapProvider,
+  mapCenter,
+  mapBounds,
+  canEdit,
+  enabledLanguages,
+  defaultLanguage,
+}: PoisManagerProps) {
   const [pois, setPois] = useState<readonly PoiParsed[]>(initialPois);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -172,6 +187,10 @@ export function PoisManager({ mapId, mapName, initialPois, categories, mapProvid
       ...(values.address.trim() ? { address: values.address.trim() } : {}),
       ...(values.description.trim() ? { description: values.description.trim() } : {}),
       status: values.status,
+      // checkpoint 1B.17B — omitted entirely when nothing was translated,
+      // same "nothing to send yet" convention `categories-manager.tsx`'s
+      // create payload already establishes.
+      ...(Object.keys(values.translations).length > 0 ? { translations: values.translations } : {}),
     };
   }
 
@@ -232,6 +251,12 @@ export function PoisManager({ mapId, mapName, initialPois, categories, mapProvid
             ...(values.address.trim() ? { address: values.address.trim() } : {}),
             ...(values.description.trim() ? { description: values.description.trim() } : {}),
             status: values.status,
+            // checkpoint 1B.17B — ALWAYS sent for an editable (non-imported)
+            // POI, even as `{}`, same full-replace/clear convention
+            // `categories-manager.tsx`'s edit payload already establishes.
+            // Never reached for a `GOOGLE_PLACES` POI at all — that branch's
+            // payload above is `{ status: values.status }` only.
+            translations: values.translations,
           };
     const parsed = poiUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -486,6 +511,8 @@ export function PoisManager({ mapId, mapName, initialPois, categories, mapProvid
             drawer.mode === 'edit' ? { lat: drawer.poi.location.latitude, lng: drawer.poi.location.longitude } : createInitialCenter
           }
           bounds={mapBounds}
+          enabledLanguages={enabledLanguages}
+          defaultLanguage={defaultLanguage}
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}

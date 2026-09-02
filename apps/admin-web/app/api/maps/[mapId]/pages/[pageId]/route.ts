@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { pageSchema, pageUpdateInputSchema } from 'validation';
+import { isTranslationsWithinSupportedLanguages, pageSchema, pageUpdateInputSchema } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
@@ -86,6 +86,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the page and try again.' }, { status: 400 });
     }
 
+    // checkpoint 1B.17B §10/§13 — see `categories/route.ts`'s own doc comment.
+    if (!isTranslationsWithinSupportedLanguages(parsed.data.translations, result.context.map.enabledLanguages)) {
+      return NextResponse.json(
+        { code: 'map/unsupported-language', message: 'One or more translations use a language this map does not support.' },
+        { status: 400 },
+      );
+    }
+
     const { ref: pageRef, existing } = await loadOwnedPage(resolvedMapId, pageId);
     if (!existing) {
       return NextResponse.json({ code: 'map/not-found', message: 'Page not found.' }, { status: 404 });
@@ -99,6 +107,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     if (parsed.data.title !== undefined) update.title = parsed.data.title;
     if (parsed.data.content !== undefined) update.content = parsed.data.content;
     if (parsed.data.status !== undefined) update.status = parsed.data.status;
+    // checkpoint 1B.17B §9/§10 — full-replace semantics, same convention
+    // `categories/[categoryId]/route.ts`'s own doc comment documents.
+    if (parsed.data.translations !== undefined) {
+      update.translations = Object.keys(parsed.data.translations).length > 0 ? parsed.data.translations : FieldValue.delete();
+    }
 
     await pageRef.update(update);
 

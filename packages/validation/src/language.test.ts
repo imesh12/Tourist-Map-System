@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectTranslationLanguageKeys,
+  isTranslationsWithinSupportedLanguages,
   legacyPublicContentLanguageInputSchema,
   localizedTextSchema,
   mapLanguageConfigSchema,
@@ -158,5 +160,35 @@ describe('localizedTextSchema() — checkpoint 1B.17A §4/§13 (scenarios 9–12
   it('rejects a malformed (non-object) input entirely', () => {
     expect(schema.safeParse('not-an-object').success).toBe(false);
     expect(schema.safeParse(['ja', 'en']).success).toBe(false);
+  });
+});
+
+describe('collectTranslationLanguageKeys / isTranslationsWithinSupportedLanguages — checkpoint 1B.17B §10/§13', () => {
+  it('collects every language key across every field of a translations object', () => {
+    const keys = collectTranslationLanguageKeys({ name: { ja: '東京', en: 'Tokyo' }, description: { fr: 'Paris' } });
+    expect(new Set(keys)).toEqual(new Set(['ja', 'en', 'fr']));
+  });
+
+  it('returns no keys for an absent or empty translations object', () => {
+    expect(collectTranslationLanguageKeys(undefined)).toEqual([]);
+    expect(collectTranslationLanguageKeys({})).toEqual([]);
+    expect(collectTranslationLanguageKeys({ name: undefined })).toEqual([]);
+  });
+
+  it('is true when every used language is within the map-enabled set', () => {
+    expect(isTranslationsWithinSupportedLanguages({ name: { en: 'Tokyo', ja: '東京' } }, ['en', 'ja'])).toBe(true);
+  });
+
+  it('is true for an absent translations object regardless of supported languages', () => {
+    expect(isTranslationsWithinSupportedLanguages(undefined, ['en'])).toBe(true);
+  });
+
+  it('is false when a registry-valid language is used but the MAP does not have it enabled — the worked example from §13', () => {
+    // map enabledLanguages = ['en', 'ja']; browser sends translations.name.fr → rejected.
+    expect(isTranslationsWithinSupportedLanguages({ name: { en: 'Tokyo', fr: 'Tour de Tokyo' } }, ['en', 'ja'])).toBe(false);
+  });
+
+  it('checks every translatable field, not just the first one', () => {
+    expect(isTranslationsWithinSupportedLanguages({ name: { en: 'Tokyo' }, description: { fr: 'Une tour' } }, ['en', 'ja'])).toBe(false);
   });
 });

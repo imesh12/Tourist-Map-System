@@ -47,6 +47,8 @@ export default async function PagesPage({ params }: PageParams) {
       mapName={result.context.map.name}
       initialPages={pages}
       canEdit={result.context.identity.role === 'CLIENT_ADMIN'}
+      enabledLanguages={result.context.map.enabledLanguages}
+      defaultLanguage={result.context.map.defaultLanguage}
     />
   );
 }

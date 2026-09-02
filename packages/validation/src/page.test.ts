@@ -58,6 +58,31 @@ describe('pageSchema — translations (checkpoint 1B.17A, scenario 20)', () => {
   });
 });
 
+describe('pageCreateInputSchema/pageUpdateInputSchema — translations (checkpoint 1B.17B §10)', () => {
+  it('create: accepts a valid translations bag for title and content', () => {
+    const result = pageCreateInputSchema.safeParse({
+      title: 'Wi-Fi Info',
+      content: 'Connect to GuestWiFi.',
+      translations: { title: { ja: 'Wi-Fi情報' }, content: { ja: 'GuestWiFiに接続してください。' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('create: rejects an unregistered language key', () => {
+    const result = pageCreateInputSchema.safeParse({ title: 'Wi-Fi Info', content: 'Connect.', translations: { title: { de: 'x' } } });
+    expect(result.success).toBe(false);
+  });
+
+  it('update: accepts an empty translations object — the "clear every translation" case', () => {
+    expect(pageUpdateInputSchema.safeParse({ translations: {} }).success).toBe(true);
+  });
+
+  it('update: rejects a translated content value exceeding the max length bound', () => {
+    const result = pageUpdateInputSchema.safeParse({ translations: { content: { en: 'a'.repeat(10_001) } } });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('pageCreateInputSchema', () => {
   it('accepts a minimal valid create input', () => {
     expect(pageCreateInputSchema.safeParse(validCreateInput).success).toBe(true);

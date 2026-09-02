@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { MapAreaBounds, MapProviderName } from 'shared-types';
+import type { MapAreaBounds, MapProviderName, PublicContentLanguage } from 'shared-types';
 import type { CategoryParsed } from 'validation';
+import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
 import { CATEGORY_ICON_META } from '../categories/category-icons';
 import { LocationPicker } from '@/lib/map-preview/location-picker';
 import type { MapPreviewCenter } from '@/lib/map-preview/types';
+
+/** Mirrors `poiNameSchema`/`poiDescriptionSchema`'s own bounds (packages/validation/src/poi.ts) — checkpoint 1B.17B §9: "preserve existing max lengths." */
+const POI_NAME_MAX_LENGTH = 150;
+const POI_DESCRIPTION_MAX_LENGTH = 2000;
 
 /**
  * The shared Create/Edit POI drawer — checkpoint 1B.3 §13. One form
@@ -36,6 +41,8 @@ export interface PoiFormValues {
   readonly latitude: string;
   readonly longitude: string;
   readonly status: 'ENABLED' | 'DISABLED';
+  /** checkpoint 1B.17B — `{ name?: LocalizedText; description?: LocalizedText }`, mirroring `PoiTranslations`. Meaningless (and never rendered/submitted) for a `readOnlyExceptStatus` (imported `GOOGLE_PLACES`) POI. */
+  readonly translations: TranslationsFieldsState;
 }
 
 interface PoiFormDrawerProps {
@@ -45,6 +52,9 @@ interface PoiFormDrawerProps {
   readonly mapProvider: MapProviderName;
   readonly initialCenter: MapPreviewCenter;
   readonly bounds?: MapAreaBounds;
+  /** checkpoint 1B.17B §9 — see `CategoryFormDrawer`'s identical prop doc comment. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
   readonly isSaving: boolean;
   readonly formError?: string;
   readonly fieldErrors: readonly string[];
@@ -76,6 +86,8 @@ export function PoiFormDrawer({
   mapProvider,
   initialCenter,
   bounds,
+  enabledLanguages,
+  defaultLanguage,
   isSaving,
   formError,
   fieldErrors,
@@ -91,6 +103,7 @@ export function PoiFormDrawer({
   const [latitude, setLatitude] = useState(initialValues.latitude);
   const [longitude, setLongitude] = useState(initialValues.longitude);
   const [status, setStatus] = useState<'ENABLED' | 'DISABLED'>(initialValues.status);
+  const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -107,7 +120,22 @@ export function PoiFormDrawer({
     if (isSaving) {
       return;
     }
-    onSubmit({ name, categoryId, address, description, latitude, longitude, status });
+    onSubmit({
+      name,
+      categoryId,
+      address,
+      description,
+      latitude,
+      longitude,
+      status,
+      // checkpoint 1B.17B §7 — never sent for an imported POI: the field
+      // itself is never edited/rendered in that case (see the Translations
+      // section's own `readOnlyExceptStatus` gate below), so
+      // `initialValues.translations` (whatever the entity already had, if
+      // anything) simply passes through unchanged rather than this drawer
+      // ever attempting to clear it.
+      translations: readOnlyExceptStatus ? initialValues.translations : translations,
+    });
   }
 
   // The picker's `value` always reflects whatever the text inputs currently
@@ -173,6 +201,7 @@ export function PoiFormDrawer({
                 type="text"
                 required
                 autoFocus={!readOnlyExceptStatus}
+                maxLength={POI_NAME_MAX_LENGTH}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 disabled={fieldsDisabled}
@@ -224,11 +253,27 @@ export function PoiFormDrawer({
                 id="poiDescription"
                 className="textarea"
                 rows={3}
+                maxLength={POI_DESCRIPTION_MAX_LENGTH}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 disabled={fieldsDisabled}
               />
             </div>
+
+            {readOnlyExceptStatus ? null : (
+              <TranslationEditor
+                idPrefix="poi"
+                fields={[
+                  { key: 'name', label: 'Name', maxLength: POI_NAME_MAX_LENGTH },
+                  { key: 'description', label: 'Description', maxLength: POI_DESCRIPTION_MAX_LENGTH, multiline: true },
+                ]}
+                enabledLanguages={enabledLanguages}
+                defaultLanguage={defaultLanguage}
+                value={translations}
+                onChange={setTranslations}
+                disabled={isSaving}
+              />
+            )}
 
             {readOnlyExceptStatus ? null : (
               <div className="field">

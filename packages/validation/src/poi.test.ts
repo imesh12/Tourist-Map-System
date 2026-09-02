@@ -67,6 +67,39 @@ describe('poiSchema — translations (checkpoint 1B.17A, scenario 19)', () => {
   });
 });
 
+describe('poiCreateInputSchema/poiUpdateInputSchema — translations (checkpoint 1B.17B §7/§10)', () => {
+  it('create: accepts a valid translations bag for name and description', () => {
+    const result = poiCreateInputSchema.safeParse({
+      name: 'Sakura Restaurant',
+      categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+      latitude: 35.6812,
+      longitude: 139.7671,
+      translations: { name: { ja: '桜レストラン' }, description: { ja: '美味しい' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('create: rejects an unregistered language key', () => {
+    const result = poiCreateInputSchema.safeParse({
+      name: 'Sakura Restaurant',
+      categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+      latitude: 35.6812,
+      longitude: 139.7671,
+      translations: { name: { de: 'x' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('update: accepts an empty translations object — the "clear every translation" case', () => {
+    expect(poiUpdateInputSchema.safeParse({ translations: {} }).success).toBe(true);
+  });
+
+  it('update: rejects a translated description exceeding the max length bound', () => {
+    const result = poiUpdateInputSchema.safeParse({ translations: { description: { en: 'a'.repeat(2001) } } });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('poiCreateInputSchema', () => {
   it('accepts a minimal valid create input', () => {
     expect(poiCreateInputSchema.safeParse(validCreateInput).success).toBe(true);

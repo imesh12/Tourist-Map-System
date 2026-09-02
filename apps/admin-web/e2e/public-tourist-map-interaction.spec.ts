@@ -99,7 +99,7 @@ async function createPoi(page: Page, mapId: string, options: CreatePoiOptions): 
     await page.getByLabel('Address').fill(options.address);
   }
   if (options.description !== undefined) {
-    await page.getByLabel('Description').fill(options.description);
+    await page.getByRole('textbox', { name: 'Description (optional)', exact: true }).fill(options.description);
   }
   await page.getByLabel('Latitude', { exact: true }).fill(String(options.latitude));
   await page.getByLabel('Longitude', { exact: true }).fill(String(options.longitude));

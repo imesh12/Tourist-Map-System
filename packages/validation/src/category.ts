@@ -91,6 +91,15 @@ export type CategoryParsed = z.infer<typeof categorySchema>;
  * arbitrary/unreleased ID. Omitting it (the default) creates a purely
  * custom category with no linked capability, exactly like every category
  * before checkpoint 1B.4 existed.
+ *
+ * `translations` — checkpoint 1B.17B §10. Optional, reuses
+ * `categoryTranslationsSchema` verbatim (never a parallel/looser copy). The
+ * route handler is additionally responsible for verifying every language key
+ * present is one of THIS map's own `enabledLanguages` (not just the global
+ * registry `categoryTranslationsSchema` itself already checks) — see
+ * `isTranslationsWithinSupportedLanguages()` (./language.ts), a check this
+ * schema alone cannot make since it has no access to which map a given
+ * request targets.
  */
 export const categoryCreateInputSchema = z
   .object({
@@ -99,6 +108,7 @@ export const categoryCreateInputSchema = z
     enabled: z.boolean().optional(),
     order: categoryOrderSchema.optional(),
     platformCategoryId: categoryPlatformCategoryIdSchema.optional(),
+    translations: categoryTranslationsSchema.optional(),
   })
   .strict();
 export type CategoryCreateInput = z.infer<typeof categoryCreateInputSchema>;
@@ -117,6 +127,17 @@ export type CategoryCreateInput = z.infer<typeof categoryCreateInputSchema>;
  * `null`). Omitting the field entirely leaves the existing link, if any,
  * untouched — the same "only touch what was sent" convention every other
  * optional field on this schema already follows.
+ *
+ * `translations` — checkpoint 1B.17B §10, same shape/reasoning as
+ * `categoryCreateInputSchema` above. When present, it is treated as the FULL
+ * desired translations state for this category (a complete replace, not a
+ * per-language patch — mirroring `theme`/`languages` on
+ * `mapSettingsUpdateSchema`'s own "always sent as one complete object"
+ * convention) — the route handler clears the stored field entirely when this
+ * resolves to an empty object, which is what makes "deleting text removes the
+ * key" (§9) work: the Admin translation editor always sends its current full
+ * local state, so a language cleared back to blank in the form is simply
+ * absent from this object on submit, not sent as `''`.
  */
 export const categoryUpdateInputSchema = z
   .object({
@@ -125,6 +146,7 @@ export const categoryUpdateInputSchema = z
     enabled: z.boolean().optional(),
     order: categoryOrderSchema.optional(),
     platformCategoryId: categoryPlatformCategoryIdSchema.nullable().optional(),
+    translations: categoryTranslationsSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });

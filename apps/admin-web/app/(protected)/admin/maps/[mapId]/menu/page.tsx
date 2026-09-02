@@ -62,6 +62,8 @@ export default async function MenuBuilderPage({ params }: PageParams) {
       categories={categories}
       pages={pages}
       canEdit={result.context.identity.role === 'CLIENT_ADMIN'}
+      enabledLanguages={map.enabledLanguages}
+      defaultLanguage={map.defaultLanguage}
     />
   );
 }

@@ -161,6 +161,38 @@ describe('categorySchema — translations (checkpoint 1B.17A, scenario 18)', () 
   });
 });
 
+describe('categoryCreateInputSchema — translations (checkpoint 1B.17B §10)', () => {
+  it('accepts a create input with a valid translations bag', () => {
+    const result = categoryCreateInputSchema.safeParse({ name: 'Restaurants', icon: 'FOOD', translations: { name: { ja: 'レストラン' } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a create input with translations entirely omitted (optional)', () => {
+    expect(categoryCreateInputSchema.safeParse({ name: 'Restaurants', icon: 'FOOD' }).success).toBe(true);
+  });
+
+  it('rejects a translations bag keyed by an unregistered language code', () => {
+    const result = categoryCreateInputSchema.safeParse({ name: 'Restaurants', icon: 'FOOD', translations: { name: { de: 'x' } } });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('categoryUpdateInputSchema — translations (checkpoint 1B.17B §9/§10)', () => {
+  it('accepts an update input with a valid translations bag', () => {
+    const result = categoryUpdateInputSchema.safeParse({ translations: { name: { ja: 'レストラン' } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty translations object — the "clear every translation" case', () => {
+    expect(categoryUpdateInputSchema.safeParse({ translations: {} }).success).toBe(true);
+  });
+
+  it('rejects a translated value exceeding the max length bound', () => {
+    const result = categoryUpdateInputSchema.safeParse({ translations: { name: { en: 'a'.repeat(101) } } });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('categoryUpdateInputSchema — checkpoint 1B.2', () => {
   it('accepts a partial update with only enabled (toggle)', () => {
     expect(categoryUpdateInputSchema.safeParse({ enabled: false }).success).toBe(true);

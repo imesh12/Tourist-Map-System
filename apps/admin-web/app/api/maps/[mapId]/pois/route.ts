@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { poiCreateInputSchema } from 'validation';
+import { isTranslationsWithinSupportedLanguages, poiCreateInputSchema } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
@@ -70,6 +70,14 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the POI and try again.' }, { status: 400 });
     }
 
+    // checkpoint 1B.17B §10/§13 — see `categories/route.ts`'s own doc comment.
+    if (!isTranslationsWithinSupportedLanguages(parsed.data.translations, result.context.map.enabledLanguages)) {
+      return NextResponse.json(
+        { code: 'map/unsupported-language', message: 'One or more translations use a language this map does not support.' },
+        { status: 400 },
+      );
+    }
+
     const firestore = getFirebaseAdminFirestore();
     const resolvedMapId = result.context.map.mapId;
 
@@ -105,6 +113,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       location,
       ...(parsed.data.address ? { address: parsed.data.address } : {}),
       ...(parsed.data.description ? { description: parsed.data.description } : {}),
+      ...(parsed.data.translations && Object.keys(parsed.data.translations).length > 0 ? { translations: parsed.data.translations } : {}),
       sourceType: 'CLIENT_CUSTOM',
       status: parsed.data.status ?? 'ENABLED',
       createdAt: FieldValue.serverTimestamp(),

@@ -141,6 +141,50 @@ describe('menuItemSchema — translations (checkpoint 1B.17A, scenario 21)', () 
   });
 });
 
+describe('menuItemCreateInputSchema/menuItemUpdateInputSchema — translations (checkpoint 1B.17B §10)', () => {
+  it('create: accepts a valid label translations bag on every branch (CATEGORY/FEATURE/PAGE)', () => {
+    expect(
+      menuItemCreateInputSchema.safeParse({
+        type: 'CATEGORY',
+        categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+        label: 'Gourmet',
+        translations: { label: { ja: 'グルメ' } },
+      }).success,
+    ).toBe(true);
+    expect(
+      menuItemCreateInputSchema.safeParse({ type: 'FEATURE', featureKey: 'SEARCH', label: 'Search', translations: { label: { ja: '検索' } } })
+        .success,
+    ).toBe(true);
+    expect(
+      menuItemCreateInputSchema.safeParse({
+        type: 'PAGE',
+        pageId: 'page_aB3dEf6gH9jKlMn0pQ',
+        label: 'Shuttle',
+        translations: { label: { ja: 'シャトル' } },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('create: rejects an unregistered language key', () => {
+    const result = menuItemCreateInputSchema.safeParse({
+      type: 'CATEGORY',
+      categoryId: 'cat_aB3dEf6gH9jKlMn0pQ',
+      label: 'Gourmet',
+      translations: { label: { de: 'x' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('update: accepts an empty translations object — the "clear every translation" case', () => {
+    expect(menuItemUpdateInputSchema.safeParse({ translations: {} }).success).toBe(true);
+  });
+
+  it('update: rejects a translated label exceeding the max length bound', () => {
+    const result = menuItemUpdateInputSchema.safeParse({ translations: { label: { en: 'a'.repeat(61) } } });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('menuItemCreateInputSchema', () => {
   it('accepts a minimal valid CATEGORY create input', () => {
     const result = menuItemCreateInputSchema.safeParse({ type: 'CATEGORY', categoryId: 'cat_aB3dEf6gH9jKlMn0pQ', label: 'Gourmet' });

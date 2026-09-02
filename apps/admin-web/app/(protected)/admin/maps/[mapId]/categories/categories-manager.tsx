@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { getPlatformCategoryRegistryEntry } from 'shared-types';
+import { getPlatformCategoryRegistryEntry, type PublicContentLanguage } from 'shared-types';
 import { categoryCreateInputSchema, categoryUpdateInputSchema, type CategoryParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { CategoryFormDrawer, type CategoryFormValues } from './category-form-drawer';
@@ -32,6 +32,9 @@ interface CategoriesManagerProps {
   readonly mapName: string;
   readonly initialCategories: readonly CategoryParsed[];
   readonly canEdit: boolean;
+  /** checkpoint 1B.17B — the map's own Public Languages config (1B.17A), threaded down from the server page for the Translations editor. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
 }
 
 type DrawerState = { readonly mode: 'create' } | { readonly mode: 'edit'; readonly category: CategoryParsed } | undefined;
@@ -46,7 +49,7 @@ async function parseSafeErrorMessage(response: Response, fallback: string): Prom
 }
 
 function emptyFormValues(): CategoryFormValues {
-  return { name: '', icon: 'OTHER', order: '', enabled: true, platformCategoryId: '' };
+  return { name: '', icon: 'OTHER', order: '', enabled: true, platformCategoryId: '', translations: {} };
 }
 
 function categoryToFormValues(category: CategoryParsed): CategoryFormValues {
@@ -56,10 +59,15 @@ function categoryToFormValues(category: CategoryParsed): CategoryFormValues {
     order: String(category.order),
     enabled: category.enabled,
     platformCategoryId: category.platformCategoryId ?? '',
+    // checkpoint 1B.17B — `category.translations` is `CategoryTranslations`
+    // (`{ name?: LocalizedText }`), structurally identical to
+    // `TranslationsFieldsState`; `?? {}` starts a never-translated category
+    // from an empty editor rather than `undefined`.
+    translations: category.translations ?? {},
   };
 }
 
-export function CategoriesManager({ mapId, mapName, initialCategories, canEdit }: CategoriesManagerProps) {
+export function CategoriesManager({ mapId, mapName, initialCategories, canEdit, enabledLanguages, defaultLanguage }: CategoriesManagerProps) {
   const [categories, setCategories] = useState<readonly CategoryParsed[]>(initialCategories);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -129,6 +137,9 @@ export function CategoriesManager({ mapId, mapName, initialCategories, canEdit }
       enabled: values.enabled,
       ...(values.order.trim() ? { order: Number(values.order.trim()) } : {}),
       ...(values.platformCategoryId ? { platformCategoryId: values.platformCategoryId } : {}),
+      // checkpoint 1B.17B — omitted entirely (not sent as `{}`) when nothing
+      // was translated: a create request has nothing to "clear."
+      ...(Object.keys(values.translations).length > 0 ? { translations: values.translations } : {}),
     };
     const parsed = categoryCreateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -170,6 +181,12 @@ export function CategoriesManager({ mapId, mapName, initialCategories, canEdit }
       // linking; omitting this field on a link-removal edit would leave the
       // previous link untouched instead of clearing it.
       platformCategoryId: values.platformCategoryId ? values.platformCategoryId : null,
+      // checkpoint 1B.17B — ALWAYS sent on edit, even as `{}`, so clearing
+      // every translated language actually removes the stored field (see
+      // `PATCH /api/maps/{mapId}/categories/{categoryId}`'s own doc comment)
+      // — the same "full-replace object" convention `platformCategoryId`'s
+      // link/unlink already establishes just above.
+      translations: values.translations,
     };
     const parsed = categoryUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -401,6 +418,8 @@ export function CategoriesManager({ mapId, mapName, initialCategories, canEdit }
           key={drawer.mode === 'edit' ? drawer.category.categoryId : 'create'}
           mode={drawer.mode}
           initialValues={drawer.mode === 'edit' ? categoryToFormValues(drawer.category) : emptyFormValues()}
+          enabledLanguages={enabledLanguages}
+          defaultLanguage={defaultLanguage}
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}

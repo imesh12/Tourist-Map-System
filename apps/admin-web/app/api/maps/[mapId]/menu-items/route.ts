@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { menuItemCreateInputSchema } from 'validation';
+import { isTranslationsWithinSupportedLanguages, menuItemCreateInputSchema } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { generateMenuItemId } from '@/lib/tenant/generate-menu-item-id';
@@ -65,6 +65,14 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   const parsed = menuItemCreateInputSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the menu item and try again.' }, { status: 400 });
+  }
+
+  // checkpoint 1B.17B §10/§13 — see `categories/route.ts`'s own doc comment.
+  if (!isTranslationsWithinSupportedLanguages(parsed.data.translations, result.context.map.enabledLanguages)) {
+    return NextResponse.json(
+      { code: 'map/unsupported-language', message: 'One or more translations use a language this map does not support.' },
+      { status: 400 },
+    );
   }
 
   const firestore = getFirebaseAdminFirestore();
@@ -135,6 +143,9 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           label: categoryInput.label,
           categoryId: categoryInput.categoryId,
           ...(categoryInput.icon ? { icon: categoryInput.icon } : {}),
+          ...(categoryInput.translations && Object.keys(categoryInput.translations).length > 0
+            ? { translations: categoryInput.translations }
+            : {}),
           order,
           status: desiredStatus,
           createdAt: FieldValue.serverTimestamp(),
@@ -200,6 +211,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           label: pageInput.label,
           pageId: pageInput.pageId,
           ...(pageInput.icon ? { icon: pageInput.icon } : {}),
+          ...(pageInput.translations && Object.keys(pageInput.translations).length > 0 ? { translations: pageInput.translations } : {}),
           order,
           status: desiredStatus,
           createdAt: FieldValue.serverTimestamp(),
@@ -245,6 +257,9 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         type: 'FEATURE',
         label: featureInput.label,
         featureKey: featureInput.featureKey,
+        ...(featureInput.translations && Object.keys(featureInput.translations).length > 0
+          ? { translations: featureInput.translations }
+          : {}),
         order,
         status: desiredStatus,
         createdAt: FieldValue.serverTimestamp(),

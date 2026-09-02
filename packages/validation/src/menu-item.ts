@@ -129,6 +129,12 @@ export type MenuItemParsed = z.infer<typeof menuItemSchema>;
  * enforcing the "at most once per map" uniqueness rule (§12) neither this
  * schema nor Zod can express.
  */
+// checkpoint 1B.17B §9/§10 — never auto-populated from the linked
+// category/page/feature (the `labelTouched` auto-fill-until-touched pattern
+// applies ONLY to the legacy `label` field and must not be extended here, per
+// the checkpoint's own explicit warning); the route handler additionally
+// enforces that every language key present is one of THIS map's
+// `enabledLanguages`, on every branch below.
 export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
   z
     .object({
@@ -138,6 +144,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
+      translations: menuItemTranslationsSchema.optional(),
     })
     .strict(),
   z
@@ -147,6 +154,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       label: menuItemLabelSchema,
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
+      translations: menuItemTranslationsSchema.optional(),
     })
     .strict(),
   /**
@@ -166,6 +174,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
+      translations: menuItemTranslationsSchema.optional(),
     })
     .strict(),
 ]);
@@ -199,6 +208,9 @@ export const menuItemUpdateInputSchema = z
     icon: menuItemIconSchema.nullable().optional(),
     order: menuItemOrderSchema.optional(),
     status: menuItemStatusSchema.optional(),
+    // checkpoint 1B.17B §10 — a FULL-replace object, same convention
+    // `categoryUpdateInputSchema.translations`'s own doc comment documents.
+    translations: menuItemTranslationsSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });

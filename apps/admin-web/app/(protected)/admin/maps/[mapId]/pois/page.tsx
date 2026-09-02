@@ -74,6 +74,8 @@ export default async function PoisPage({ params }: PageParams) {
       mapCenter={map.area.center}
       mapBounds={map.area.type === 'BOUNDED' ? map.area.bounds : undefined}
       canEdit={result.context.identity.role === 'CLIENT_ADMIN'}
+      enabledLanguages={map.enabledLanguages}
+      defaultLanguage={map.defaultLanguage}
     />
   );
 }

@@ -35,6 +35,8 @@ body {
 .tourist-map-branding {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.5rem 1rem;
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
@@ -46,6 +48,20 @@ body {
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.2;
+}
+
+/**
+ * checkpoint 1B.17B §12 — a small, unobtrusive control living beside the map
+ * name in the branding header, never its own separate chrome bar.
+ */
+.tourist-language-selector {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  color: inherit;
 }
 
 .tourist-map-body {

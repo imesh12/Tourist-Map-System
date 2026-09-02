@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { categoryCreateInputSchema } from 'validation';
+import { categoryCreateInputSchema, isTranslationsWithinSupportedLanguages } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { generateCategoryId } from '@/lib/tenant/generate-category-id';
@@ -67,6 +67,17 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the category and try again.' }, { status: 400 });
   }
 
+  // checkpoint 1B.17B §10/§13 — registry membership is already checked by
+  // `categoryTranslationsSchema` above; this additionally rejects a
+  // registry-valid language the MAP itself doesn't have enabled, which the
+  // schema alone cannot know.
+  if (!isTranslationsWithinSupportedLanguages(parsed.data.translations, result.context.map.enabledLanguages)) {
+    return NextResponse.json(
+      { code: 'map/unsupported-language', message: 'One or more translations use a language this map does not support.' },
+      { status: 400 },
+    );
+  }
+
   const firestore = getFirebaseAdminFirestore();
   const categoriesRef = firestore.collection(`maps/${result.context.map.mapId}/categories`);
 
@@ -92,6 +103,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     order,
     sourceType: 'CLIENT_CUSTOM',
     ...(parsed.data.platformCategoryId ? { platformCategoryId: parsed.data.platformCategoryId } : {}),
+    ...(parsed.data.translations && Object.keys(parsed.data.translations).length > 0 ? { translations: parsed.data.translations } : {}),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

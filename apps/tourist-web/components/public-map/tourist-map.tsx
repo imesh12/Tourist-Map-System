@@ -4,7 +4,7 @@
 import { importLibrary } from '@googlemaps/js-api-loader';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mapThemeToGoogleMapsStyles } from 'map-theme-adapter';
-import type { CategoryIcon, PublishedPoi } from 'shared-types';
+import { resolveLocalizedText, type CategoryIcon, type PublicContentLanguage, type PublishedPoi } from 'shared-types';
 import type { PublicMapSnapshotParsed } from 'validation';
 import { ensureGoogleMapsApiConfigured } from '@/lib/public-map/google-maps-loader';
 import { computeBoundsForPois } from '@/lib/public-map/map-camera-utils';
@@ -75,9 +75,11 @@ type MyLocationState = { readonly status: 'idle' } | { readonly status: 'success
 
 export interface TouristMapProps {
   readonly snapshot: PublicMapSnapshotParsed;
+  /** checkpoint 1B.17B §12/§14-§17 — the tourist's currently-selected public content language, owned by `TouristMapPageClient` (the shared parent of this component and the `LanguageSelector`). Every piece of translatable content below is resolved against this on every render — never against `snapshot.defaultLanguage` directly, and never by mutating `snapshot` itself. */
+  readonly language: PublicContentLanguage;
 }
 
-export function TouristMap({ snapshot }: TouristMapProps) {
+export function TouristMap({ snapshot, language }: TouristMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
   const markerLayerRef = useRef<PoiMarkerLayer | undefined>(undefined);
@@ -93,20 +95,104 @@ export function TouristMap({ snapshot }: TouristMapProps) {
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const { mapProvider, area, theme } = snapshot.map;
-  const { pois, categories, menu, pages } = snapshot;
+  const { pois, categories, menu, pages, defaultLanguage } = snapshot;
   const isDiagnosticsMode = process.env.NODE_ENV !== 'production';
   const canLoadLiveMap = Boolean(apiKey) && mapProvider.provider === 'GOOGLE_MAPS';
 
-  const categoryById = useMemo(() => new Map(categories.map((category) => [category.categoryId, category] as const)), [categories]);
-  const categoryIconById = useMemo<ReadonlyMap<string, CategoryIcon>>(
-    () => new Map(categories.map((category) => [category.categoryId, category.icon] as const)),
-    [categories],
+  // checkpoint 1B.17B §14-§17 — the ONE place this component resolves
+  // translatable content, via the shared `resolveLocalizedText()` fallback
+  // (requested → map default → legacy scalar → deterministic available →
+  // `''`, shared-types/src/language.ts) — never re-implemented ad hoc, and
+  // never mutating `snapshot` itself: each `useMemo` derives a fresh,
+  // display-only projection, recomputed only when `language` (or the source
+  // data) actually changes. Every downstream consumer below (markers,
+  // search, the detail card, the Page overlay, the bottom menu) reads ONLY
+  // these localized projections, never `snapshot.categories`/`.pois`/`.pages`/
+  // `.menu` directly — this is also what makes search operate on the
+  // DISPLAYED localized text (§17), not just the legacy scalar.
+  const localizedCategories = useMemo(
+    () =>
+      categories.map((category) => ({
+        ...category,
+        name: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: category.translations?.name,
+          legacyValue: category.name,
+        }),
+      })),
+    [categories, language, defaultLanguage],
   );
-  const visiblePois = useMemo(() => filterPoisByCategory(pois, selectedCategoryId), [pois, selectedCategoryId]);
+
+  const localizedPois = useMemo(
+    () =>
+      pois.map((poi) => ({
+        ...poi,
+        name: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: poi.translations?.name,
+          legacyValue: poi.name,
+        }),
+        description:
+          resolveLocalizedText({
+            requestedLanguage: language,
+            defaultLanguage,
+            translations: poi.translations?.description,
+            legacyValue: poi.description,
+          }) || undefined,
+      })),
+    [pois, language, defaultLanguage],
+  );
+
+  const localizedPages = useMemo(
+    () =>
+      pages.map((page) => ({
+        ...page,
+        title: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: page.translations?.title,
+          legacyValue: page.title,
+        }),
+        content: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: page.translations?.content,
+          legacyValue: page.content,
+        }),
+      })),
+    [pages, language, defaultLanguage],
+  );
+
+  const localizedMenu = useMemo(
+    () =>
+      menu.map((item) => ({
+        ...item,
+        label: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: item.translations?.label,
+          legacyValue: item.label,
+        }),
+      })),
+    [menu, language, defaultLanguage],
+  );
+
+  const categoryById = useMemo(
+    () => new Map(localizedCategories.map((category) => [category.categoryId, category] as const)),
+    [localizedCategories],
+  );
+  const categoryIconById = useMemo<ReadonlyMap<string, CategoryIcon>>(
+    () => new Map(localizedCategories.map((category) => [category.categoryId, category.icon] as const)),
+    [localizedCategories],
+  );
+  const visiblePois = useMemo(() => filterPoisByCategory(localizedPois, selectedCategoryId), [localizedPois, selectedCategoryId]);
   const selectedPoi: PublishedPoi | undefined = selectedPoiId ? visiblePois.find((poi) => poi.poiId === selectedPoiId) : undefined;
-  // checkpoint 1B.11 §12: resolved from the already-loaded `snapshot.pages`
-  // — never an independent fetch when a PAGE menu item is clicked.
-  const selectedPage = selectedPageId ? pages.find((page) => page.pageId === selectedPageId) : undefined;
+  // checkpoint 1B.11 §12: resolved from the already-loaded, already-localized
+  // `localizedPages` — never an independent fetch when a PAGE menu item is
+  // clicked.
+  const selectedPage = selectedPageId ? localizedPages.find((page) => page.pageId === selectedPageId) : undefined;
 
   // §6: "If the currently selected POI is hidden by a category change: close
   // the selected POI detail rather than leaving stale content visible."
@@ -336,9 +422,11 @@ export function TouristMap({ snapshot }: TouristMapProps) {
           {myLocationErrorMessage(myLocation.reason)}
         </p>
       ) : null}
-      {searchOpen ? <PublicSearch pois={pois} categories={categories} onSelect={handleSelectSearchResult} onClose={handleCloseSearch} /> : null}
+      {searchOpen ? (
+        <PublicSearch pois={localizedPois} categories={localizedCategories} onSelect={handleSelectSearchResult} onClose={handleCloseSearch} />
+      ) : null}
       <PublicBottomMenu
-        menu={menu}
+        menu={localizedMenu}
         selectedCategoryId={selectedCategoryId}
         onSelectCategory={handleSelectCategory}
         onOpenSearch={handleOpenSearch}

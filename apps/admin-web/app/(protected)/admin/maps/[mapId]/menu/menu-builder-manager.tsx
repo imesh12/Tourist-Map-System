@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { getPublicFeatureRegistryEntry, listReleasedFeatures } from 'shared-types';
+import { getPublicFeatureRegistryEntry, listReleasedFeatures, type PublicContentLanguage } from 'shared-types';
 import { menuItemCreateInputSchema, menuItemUpdateInputSchema, type CategoryParsed, type MenuItemParsed, type PageParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { DEFAULT_PAGE_MENU_ICON } from '@/lib/tenant/menu-projection';
@@ -34,6 +34,9 @@ interface MenuBuilderManagerProps {
   readonly categories: readonly CategoryParsed[];
   readonly pages: readonly PageParsed[];
   readonly canEdit: boolean;
+  /** checkpoint 1B.17B §9 — see `CategoriesManagerProps`'s identical doc comment. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
 }
 
 type DrawerState = { readonly mode: 'create' } | { readonly mode: 'edit'; readonly menuItem: MenuItemParsed } | undefined;
@@ -56,6 +59,7 @@ function emptyFormValues(defaultCategoryId: string, defaultFeatureKey: string, d
     label: '',
     icon: '',
     status: 'ENABLED',
+    translations: {},
   };
 }
 
@@ -71,10 +75,11 @@ function menuItemToFormValues(menuItem: MenuItemParsed): MenuItemFormValues {
     // shared-types), so it belongs on this same branch.
     icon: menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? (menuItem.icon ?? '') : '',
     status: menuItem.status,
+    translations: menuItem.translations ?? {},
   };
 }
 
-export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categories, pages, canEdit }: MenuBuilderManagerProps) {
+export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categories, pages, canEdit, enabledLanguages, defaultLanguage }: MenuBuilderManagerProps) {
   const [menuItems, setMenuItems] = useState<readonly MenuItemParsed[]>(initialMenuItems);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -172,6 +177,10 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     setFormError(undefined);
     setFieldErrors([]);
 
+    // checkpoint 1B.17B — omitted entirely on every branch when nothing was
+    // translated, same "nothing to send yet" convention every other create
+    // payload in this checkpoint already establishes.
+    const translationsField = Object.keys(values.translations).length > 0 ? { translations: values.translations } : {};
     const payload =
       values.type === 'CATEGORY'
         ? {
@@ -180,6 +189,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
             label: values.label,
             ...(values.icon ? { icon: values.icon } : {}),
             status: values.status,
+            ...translationsField,
           }
         : values.type === 'PAGE'
           ? {
@@ -188,8 +198,9 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
               label: values.label,
               ...(values.icon ? { icon: values.icon } : {}),
               status: values.status,
+              ...translationsField,
             }
-          : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status };
+          : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status, ...translationsField };
 
     const parsed = menuItemCreateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -229,6 +240,10 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
       // route rejects `icon` on a FEATURE item's target, so this form never
       // sends it for one.
       ...(menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? { icon: values.icon ? values.icon : null } : {}),
+      // checkpoint 1B.17B — ALWAYS sent on edit, even as `{}` (full-replace/
+      // clear semantics — see `PATCH /api/maps/{mapId}/menu-items/{menuItemId}`'s
+      // own doc comment).
+      translations: values.translations,
     };
     const parsed = menuItemUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -515,6 +530,8 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
           selectableCategories={selectableCategories}
           selectableFeatures={selectableFeatures}
           selectablePages={selectablePages}
+          enabledLanguages={enabledLanguages}
+          defaultLanguage={defaultLanguage}
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}

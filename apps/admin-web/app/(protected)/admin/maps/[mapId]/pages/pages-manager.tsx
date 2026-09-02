@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { PublicContentLanguage } from 'shared-types';
 import { pageCreateInputSchema, pageUpdateInputSchema, type PageParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { DeletePageDialog } from './delete-page-dialog';
@@ -36,6 +37,9 @@ interface PagesManagerProps {
   readonly mapName: string;
   readonly initialPages: readonly PageParsed[];
   readonly canEdit: boolean;
+  /** checkpoint 1B.17B §9 — see `CategoriesManagerProps`'s identical doc comment. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
 }
 
 type DrawerState = { readonly mode: 'create' } | { readonly mode: 'edit'; readonly page: PageParsed } | undefined;
@@ -55,14 +59,14 @@ async function parseSafeErrorBody(response: Response, fallback: string): Promise
 }
 
 function emptyFormValues(): PageFormValues {
-  return { title: '', content: '', status: 'ENABLED' };
+  return { title: '', content: '', status: 'ENABLED', translations: {} };
 }
 
 function pageToFormValues(page: PageParsed): PageFormValues {
-  return { title: page.title, content: page.content, status: page.status };
+  return { title: page.title, content: page.content, status: page.status, translations: page.translations ?? {} };
 }
 
-export function PagesManager({ mapId, mapName, initialPages, canEdit }: PagesManagerProps) {
+export function PagesManager({ mapId, mapName, initialPages, canEdit, enabledLanguages, defaultLanguage }: PagesManagerProps) {
   const [pages, setPages] = useState<readonly PageParsed[]>(initialPages);
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -128,7 +132,13 @@ export function PagesManager({ mapId, mapName, initialPages, canEdit }: PagesMan
     setFormError(undefined);
     setFieldErrors([]);
 
-    const parsed = pageCreateInputSchema.safeParse({ title: values.title, content: values.content, status: values.status });
+    const parsed = pageCreateInputSchema.safeParse({
+      title: values.title,
+      content: values.content,
+      status: values.status,
+      // checkpoint 1B.17B — omitted entirely when nothing was translated.
+      ...(Object.keys(values.translations).length > 0 ? { translations: values.translations } : {}),
+    });
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
       return;
@@ -158,7 +168,15 @@ export function PagesManager({ mapId, mapName, initialPages, canEdit }: PagesMan
     setFormError(undefined);
     setFieldErrors([]);
 
-    const parsed = pageUpdateInputSchema.safeParse({ title: values.title, content: values.content, status: values.status });
+    const parsed = pageUpdateInputSchema.safeParse({
+      title: values.title,
+      content: values.content,
+      status: values.status,
+      // checkpoint 1B.17B — ALWAYS sent on edit, even as `{}` (full-replace/
+      // clear semantics — see `PATCH /api/maps/{mapId}/pages/{pageId}`'s own
+      // doc comment).
+      translations: values.translations,
+    });
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
       return;
@@ -363,6 +381,8 @@ export function PagesManager({ mapId, mapName, initialPages, canEdit }: PagesMan
           key={drawer.mode === 'edit' ? drawer.page.pageId : 'create'}
           mode={drawer.mode}
           initialValues={drawer.mode === 'edit' ? pageToFormValues(drawer.page) : emptyFormValues()}
+          enabledLanguages={enabledLanguages}
+          defaultLanguage={defaultLanguage}
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}

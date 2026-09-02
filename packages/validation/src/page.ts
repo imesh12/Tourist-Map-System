@@ -65,6 +65,10 @@ export const pageCreateInputSchema = z
     title: pageTitleSchema,
     content: pageContentSchema,
     status: pageStatusSchema.optional(),
+    // checkpoint 1B.17B §10 — see `pageTranslationsSchema`'s own doc comment
+    // above. The route handler additionally enforces that every language key
+    // present is one of THIS map's `enabledLanguages`.
+    translations: pageTranslationsSchema.optional(),
   })
   .strict();
 export type PageCreateInput = z.infer<typeof pageCreateInputSchema>;
@@ -81,6 +85,9 @@ export const pageUpdateInputSchema = z
     title: pageTitleSchema.optional(),
     content: pageContentSchema.optional(),
     status: pageStatusSchema.optional(),
+    // checkpoint 1B.17B §10 — a FULL-replace object, same convention
+    // `categoryUpdateInputSchema.translations`'s own doc comment documents.
+    translations: pageTranslationsSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });

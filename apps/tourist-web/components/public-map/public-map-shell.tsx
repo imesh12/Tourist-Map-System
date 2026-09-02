@@ -23,13 +23,16 @@ import type { ReactNode } from 'react';
 export interface PublicMapShellProps {
   readonly mapName: string;
   readonly children: ReactNode;
+  /** checkpoint 1B.17B §12 — an optional slot rendered beside the map name in the branding header; used for the `LanguageSelector`, kept generic (not a hardcoded language-selector prop) so this shell doesn't need to know what it renders. */
+  readonly headerEnd?: ReactNode;
 }
 
-export function PublicMapShell({ mapName, children }: PublicMapShellProps) {
+export function PublicMapShell({ mapName, children, headerEnd }: PublicMapShellProps) {
   return (
     <div className="tourist-map-shell">
       <header className="tourist-map-branding" data-testid="tourist-map-branding">
         <h1 className="tourist-map-branding-name">{mapName}</h1>
+        {headerEnd}
       </header>
       <main className="tourist-map-body" aria-label={`Map of ${mapName}`}>
         {children}

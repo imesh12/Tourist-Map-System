@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PUBLIC_CONTENT_LANGUAGE_CODES, normalizeLegacyPublicContentLanguageCode } from 'shared-types';
+import { PUBLIC_CONTENT_LANGUAGE_CODES, normalizeLegacyPublicContentLanguageCode, type LocalizedText, type PublicContentLanguage } from 'shared-types';
 
 /**
  * checkpoint 1B.17A "Multilingual Data Foundation" — validation for the
@@ -116,3 +116,56 @@ export function localizedTextSchema(maxLength: number) {
   return z.record(publicContentLanguageSchema, z.string().trim().min(1).max(maxLength));
 }
 export type LocalizedTextParsed = z.infer<ReturnType<typeof localizedTextSchema>>;
+
+/**
+ * checkpoint 1B.17B §10 — the server-side "map-enabled-language" enforcement
+ * helper, shared by every create/update route that accepts a `translations`
+ * field (Category/POI/Page/MenuItem). §13 of the checkpoint requires this
+ * check specifically: a translation language key can be perfectly valid
+ * against the GLOBAL registry (`publicContentLanguageSchema` already
+ * guarantees that at parse time — an unrecognized key is rejected before this
+ * helper ever runs) yet still be disabled on the THIS map (`TouristMap.enabledLanguages`)
+ * — e.g. a map with `enabledLanguages: ['en', 'ja']` receiving a
+ * `translations.name.fr` write must reject it, even though `'fr'` is a
+ * perfectly real registry language. This is a distinct, later check from the
+ * registry-membership one `localizedTextSchema()` already performs, and it
+ * must not rely solely on the Admin UI only ever offering enabled languages —
+ * a direct API call bypassing the UI must be rejected the same way.
+ *
+ * Takes any of the four `*Translations` shapes (`CategoryTranslations`/
+ * `PoiTranslations`/`PageTranslations`/`MenuItemTranslations`) structurally —
+ * each is just a small object of optional `LocalizedText` fields, so a single
+ * generic implementation covers all four without per-entity duplication (§26:
+ * "avoid duplicated language logic").
+ */
+export function collectTranslationLanguageKeys(
+  translations: Readonly<Record<string, LocalizedText | undefined>> | undefined,
+): readonly PublicContentLanguage[] {
+  if (!translations) {
+    return [];
+  }
+  const keys = new Set<PublicContentLanguage>();
+  for (const fieldValue of Object.values(translations)) {
+    if (!fieldValue) {
+      continue;
+    }
+    for (const code of Object.keys(fieldValue) as PublicContentLanguage[]) {
+      keys.add(code);
+    }
+  }
+  return [...keys];
+}
+
+/**
+ * True iff every language key present anywhere in `translations` is one of
+ * the map's own `supportedLanguages` (i.e. `TouristMap.enabledLanguages` —
+ * the caller passes that in, this helper has no Firestore access of its
+ * own). An absent/empty `translations` is trivially within bounds.
+ */
+export function isTranslationsWithinSupportedLanguages(
+  translations: Readonly<Record<string, LocalizedText | undefined>> | undefined,
+  supportedLanguages: readonly PublicContentLanguage[],
+): boolean {
+  const supported = new Set(supportedLanguages);
+  return collectTranslationLanguageKeys(translations).every((code) => supported.has(code));
+}

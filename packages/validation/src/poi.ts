@@ -97,6 +97,11 @@ export const poiCreateInputSchema = z
     address: poiAddressSchema.optional(),
     description: poiDescriptionSchema.optional(),
     status: poiStatusSchema.optional(),
+    // checkpoint 1B.17B §10 — see `poiTranslationsSchema`'s own doc comment
+    // above. The route handler additionally enforces that every language key
+    // present is one of THIS map's `enabledLanguages`
+    // (`isTranslationsWithinSupportedLanguages()`, ./language.ts).
+    translations: poiTranslationsSchema.optional(),
   })
   .strict();
 export type PoiCreateInput = z.infer<typeof poiCreateInputSchema>;
@@ -128,6 +133,15 @@ export const poiUpdateInputSchema = z
     address: poiAddressSchema.optional(),
     description: poiDescriptionSchema.optional(),
     status: poiStatusSchema.optional(),
+    // checkpoint 1B.17B §7/§10 — a FULL-replace object, same convention
+    // `categoryUpdateInputSchema.translations`'s own doc comment documents.
+    // For a `GOOGLE_PLACES`-sourced POI, the route handler's existing
+    // "only `status` may be sent" immutability check (this file's sibling
+    // route, `pois/[poiId]/route.ts`) already rejects ANY request that
+    // includes this key at all — translations editing for an imported POI
+    // stays fully unavailable this checkpoint, exactly like every other
+    // content field, with no separate carve-out needed.
+    translations: poiTranslationsSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' })

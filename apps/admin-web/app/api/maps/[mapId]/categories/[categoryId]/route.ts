@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { categorySchema, categoryUpdateInputSchema } from 'validation';
+import { categorySchema, categoryUpdateInputSchema, isTranslationsWithinSupportedLanguages } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
@@ -54,6 +54,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     return NextResponse.json({ code: 'map/invalid-input', message: 'Please check the category and try again.' }, { status: 400 });
   }
 
+  // checkpoint 1B.17B §10/§13 — see `categories/route.ts`'s own doc comment.
+  if (!isTranslationsWithinSupportedLanguages(parsed.data.translations, result.context.map.enabledLanguages)) {
+    return NextResponse.json(
+      { code: 'map/unsupported-language', message: 'One or more translations use a language this map does not support.' },
+      { status: 400 },
+    );
+  }
+
   const firestore = getFirebaseAdminFirestore();
   const categoryRef = firestore.doc(`maps/${result.context.map.mapId}/categories/${categoryId}`);
   const snapshot = await categoryRef.get();
@@ -79,6 +87,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
   if (parsed.data.order !== undefined) update.order = parsed.data.order;
   if (parsed.data.platformCategoryId !== undefined) {
     update.platformCategoryId = parsed.data.platformCategoryId === null ? FieldValue.delete() : parsed.data.platformCategoryId;
+  }
+  // checkpoint 1B.17B §9/§10 — `translations`, when present, is treated as a
+  // FULL replace of the stored field (see `categoryUpdateInputSchema.translations`'s
+  // own doc comment): an empty object (every language cleared from every
+  // translatable field) deletes the stored field entirely, exactly mirroring
+  // `platformCategoryId: null`'s existing "explicit unlink" convention above.
+  if (parsed.data.translations !== undefined) {
+    update.translations = Object.keys(parsed.data.translations).length > 0 ? parsed.data.translations : FieldValue.delete();
   }
 
   await categoryRef.update(update);

@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { CategoryIcon } from 'shared-types';
+import type { CategoryIcon, PublicContentLanguage } from 'shared-types';
 import { listActivePlatformCategories } from 'shared-types';
+import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
 import { ALL_CATEGORY_ICONS, categoryIconOptionLabel } from './category-icons';
+
+/** Mirrors `categoryNameSchema`'s own `NAME_MAX_LENGTH` (packages/validation/src/category.ts) — checkpoint 1B.17B §9: "preserve existing max lengths." */
+const CATEGORY_NAME_MAX_LENGTH = 100;
 
 /**
  * "Custom category" — the `<select>` option value for "no platform link"
@@ -36,11 +40,16 @@ export interface CategoryFormValues {
   readonly enabled: boolean;
   /** `''` (`CUSTOM_CATEGORY_OPTION_VALUE`) = no platform link (a purely custom category); otherwise one of `listActivePlatformCategories()`'s `platformCategoryId` values — checkpoint 1B.4. */
   readonly platformCategoryId: string;
+  /** checkpoint 1B.17B — `{ name?: LocalizedText }`, mirroring `CategoryTranslations`. Always present as a plain object (never `undefined`) so this drawer's local state has one consistent shape; an entity with no translations yet simply starts from `{}`. */
+  readonly translations: TranslationsFieldsState;
 }
 
 interface CategoryFormDrawerProps {
   readonly mode: 'create' | 'edit';
   readonly initialValues: CategoryFormValues;
+  /** checkpoint 1B.17B §9 — the map's own `enabledLanguages`/`defaultLanguage` (1B.17A), threaded down from the server page through `categories-manager.tsx`. The Translations section renders ONLY these languages. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
   readonly isSaving: boolean;
   readonly formError?: string;
   readonly fieldErrors: readonly string[];
@@ -48,12 +57,23 @@ interface CategoryFormDrawerProps {
   readonly onSubmit: (values: CategoryFormValues) => void;
 }
 
-export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, fieldErrors, onCancel, onSubmit }: CategoryFormDrawerProps) {
+export function CategoryFormDrawer({
+  mode,
+  initialValues,
+  enabledLanguages,
+  defaultLanguage,
+  isSaving,
+  formError,
+  fieldErrors,
+  onCancel,
+  onSubmit,
+}: CategoryFormDrawerProps) {
   const [name, setName] = useState(initialValues.name);
   const [icon, setIcon] = useState<CategoryIcon>(initialValues.icon);
   const [order, setOrder] = useState(initialValues.order);
   const [enabled, setEnabled] = useState(initialValues.enabled);
   const [platformCategoryId, setPlatformCategoryId] = useState(initialValues.platformCategoryId);
+  const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
 
   const activePlatformCategories = listActivePlatformCategories();
   const linkedCapability = activePlatformCategories.find((entry) => entry.platformCategoryId === platformCategoryId);
@@ -73,7 +93,7 @@ export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, f
     if (isSaving) {
       return;
     }
-    onSubmit({ name, icon, order, enabled, platformCategoryId });
+    onSubmit({ name, icon, order, enabled, platformCategoryId, translations });
   }
 
   return (
@@ -119,11 +139,22 @@ export function CategoryFormDrawer({ mode, initialValues, isSaving, formError, f
                 type="text"
                 required
                 autoFocus
+                maxLength={CATEGORY_NAME_MAX_LENGTH}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 disabled={isSaving}
               />
             </div>
+
+            <TranslationEditor
+              idPrefix="category"
+              fields={[{ key: 'name', label: 'Name', maxLength: CATEGORY_NAME_MAX_LENGTH }]}
+              enabledLanguages={enabledLanguages}
+              defaultLanguage={defaultLanguage}
+              value={translations}
+              onChange={setTranslations}
+              disabled={isSaving}
+            />
 
             <div className="field">
               <label className="field-label" htmlFor="categoryIcon">

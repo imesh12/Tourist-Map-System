@@ -1,8 +1,9 @@
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { MapMessageState } from '@/components/public-map/map-message-state';
-import { PublicMapShell } from '@/components/public-map/public-map-shell';
-import { TouristMap } from '@/components/public-map/tourist-map';
+import { TouristMapPageClient } from '@/components/public-map/tourist-map-page-client';
 import { fetchPublicMapSnapshot } from '@/lib/public-map/public-map-client';
+import { parseAcceptLanguageHeader, resolveInitialLanguage } from '@/lib/public-map/language-selection';
 
 /**
  * `GET /maps/{mapId}` — checkpoint 1B.9 §1/§10/§11. The first real public,
@@ -54,10 +55,21 @@ import { fetchPublicMapSnapshot } from '@/lib/public-map/public-map-client';
 
 interface PageParams {
   readonly params: Promise<{ readonly mapId: string }>;
+  /**
+   * checkpoint 1B.17B §12 — the `?lang=` query param, read by Next.js's own
+   * async `searchParams` prop (same async-prop shape `params` already has on
+   * this route). A value with more than one entry for `lang` (a malformed/
+   * duplicated query string) collapses to `undefined` here — `resolveInitialLanguage()`
+   * treats that exactly like "no `?lang` at all," never throwing.
+   */
+  readonly searchParams: Promise<{ readonly lang?: string | readonly string[] }>;
 }
 
-export default async function PublicMapPage({ params }: PageParams) {
+export default async function PublicMapPage({ params, searchParams }: PageParams) {
   const { mapId } = await params;
+  const { lang } = await searchParams;
+  const langParam = typeof lang === 'string' ? lang : undefined;
+
   const result = await fetchPublicMapSnapshot(mapId);
 
   if (result.status === 'not-found') {
@@ -69,9 +81,24 @@ export default async function PublicMapPage({ params }: PageParams) {
   }
 
   const { snapshot } = result;
-  return (
-    <PublicMapShell mapName={snapshot.map.name}>
-      <TouristMap snapshot={snapshot} />
-    </PublicMapShell>
-  );
+
+  // checkpoint 1B.17B §12 — resolved server-side so the very first paint
+  // already reflects the full precedence order (explicit `?lang=` → browser
+  // preference → publication default), with no post-hydration flash. The
+  // request's own `Accept-Language` header stands in for "the visitor's
+  // browser preferred language" — a real signal every browser already sends
+  // on every request, and reading it here keeps the actual matching logic in
+  // one pure, unit-tested module (`lib/public-map/language-selection.ts`)
+  // rather than duplicating it behind a client-only `navigator.languages`
+  // check.
+  const headersList = await headers();
+  const browserLanguages = parseAcceptLanguageHeader(headersList.get('accept-language'));
+  const initialLanguage = resolveInitialLanguage({
+    langParam,
+    browserLanguages,
+    supportedLanguages: snapshot.supportedLanguages,
+    defaultLanguage: snapshot.defaultLanguage,
+  });
+
+  return <TouristMapPageClient snapshot={snapshot} initialLanguage={initialLanguage} />;
 }

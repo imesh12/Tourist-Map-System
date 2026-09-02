@@ -50,6 +50,8 @@ export default async function CategoriesPage({ params }: PageParams) {
       mapName={result.context.map.name}
       initialCategories={categories}
       canEdit={result.context.identity.role === 'CLIENT_ADMIN'}
+      enabledLanguages={result.context.map.enabledLanguages}
+      defaultLanguage={result.context.map.defaultLanguage}
     />
   );
 }

@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { CategoryIcon } from 'shared-types';
+import type { CategoryIcon, PublicContentLanguage } from 'shared-types';
 import type { CategoryParsed, PageParsed } from 'validation';
 import { getPublicFeatureRegistryEntry, type PublicFeatureRegistryEntry } from 'shared-types';
+import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
 import { DEFAULT_PAGE_MENU_ICON } from '@/lib/tenant/menu-projection';
 import { ALL_CATEGORY_ICONS, categoryIconOptionLabel, CATEGORY_ICON_META } from '../categories/category-icons';
+
+/** Mirrors `menuItemLabelSchema`'s own `LABEL_MAX_LENGTH` (packages/validation/src/menu-item.ts) — checkpoint 1B.17B §9: "preserve existing max lengths." */
+const MENU_ITEM_LABEL_MAX_LENGTH = 60;
 
 /**
  * The shared Add/Edit Menu Item drawer — checkpoint 1B.5 §9/§10. One form
@@ -35,11 +39,16 @@ export interface MenuItemFormValues {
   /** `''` = inherited/default icon; otherwise a controlled `CategoryIcon` override. Only ever sent when `type === 'CATEGORY'` or `type === 'PAGE'`. */
   readonly icon: string;
   readonly status: 'ENABLED' | 'DISABLED';
+  /** checkpoint 1B.17B — `{ label?: LocalizedText }`, mirroring `MenuItemTranslations`. Never auto-populated from the linked category/page/feature — only the legacy `label` field's own auto-fill-until-touched behavior exists (see `handleCategoryChange`/`handleFeatureChange`/`handlePageChange` below), and this must not be extended to translations (§9). */
+  readonly translations: TranslationsFieldsState;
 }
 
 interface MenuItemFormDrawerProps {
   readonly mode: 'create' | 'edit';
   readonly initialValues: MenuItemFormValues;
+  /** checkpoint 1B.17B §9 — see `CategoryFormDrawer`'s identical prop doc comment. */
+  readonly enabledLanguages: readonly PublicContentLanguage[];
+  readonly defaultLanguage: PublicContentLanguage;
   /** Every tenant category — used to resolve the linked category's name/icon for display (both create-mode option labels and edit-mode read-only display). */
   readonly categories: readonly CategoryParsed[];
   /** Every tenant page — used to resolve the linked page's title for display, mirroring `categories` above. */
@@ -65,6 +74,8 @@ export function MenuItemFormDrawer({
   selectableCategories,
   selectableFeatures,
   selectablePages,
+  enabledLanguages,
+  defaultLanguage,
   isSaving,
   formError,
   fieldErrors,
@@ -79,6 +90,7 @@ export function MenuItemFormDrawer({
   const [labelTouched, setLabelTouched] = useState(mode === 'edit');
   const [icon, setIcon] = useState(initialValues.icon);
   const [status, setStatus] = useState<'ENABLED' | 'DISABLED'>(initialValues.status);
+  const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -140,6 +152,7 @@ export function MenuItemFormDrawer({
       label,
       icon: type === 'CATEGORY' || type === 'PAGE' ? icon : '',
       status,
+      translations,
     });
   }
 
@@ -280,6 +293,7 @@ export function MenuItemFormDrawer({
                       type="text"
                       required
                       autoFocus
+                      maxLength={MENU_ITEM_LABEL_MAX_LENGTH}
                       value={label}
                       onChange={(event) => {
                         setLabelTouched(true);
@@ -355,6 +369,7 @@ export function MenuItemFormDrawer({
                       type="text"
                       required
                       autoFocus
+                      maxLength={MENU_ITEM_LABEL_MAX_LENGTH}
                       value={label}
                       onChange={(event) => {
                         setLabelTouched(true);
@@ -437,6 +452,18 @@ export function MenuItemFormDrawer({
                 </div>
               </>
             )}
+
+            {(mode === 'edit' || (type === 'CATEGORY' && !noCategoriesAvailable) || (type === 'PAGE' && !noPagesAvailable) || (type === 'FEATURE' && !noFeaturesAvailable)) ? (
+              <TranslationEditor
+                idPrefix="menu-item"
+                fields={[{ key: 'label', label: 'Public label', maxLength: MENU_ITEM_LABEL_MAX_LENGTH }]}
+                enabledLanguages={enabledLanguages}
+                defaultLanguage={defaultLanguage}
+                value={translations}
+                onChange={setTranslations}
+                disabled={isSaving}
+              />
+            ) : null}
 
             <div className="field">
               <span className="field-label" id="menuItemStatusLabel">
