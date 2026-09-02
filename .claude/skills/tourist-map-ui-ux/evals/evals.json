@@ -1,0 +1,47 @@
+{
+  "skill_name": "tourist-map-ui-ux",
+  "evals": [
+    {
+      "id": 1,
+      "name": "favorites-panel",
+      "prompt": "Add a favorites feature to the tourist map: a small heart-shaped toggle button on the POI detail card that saves/removes that POI from a favorites list (kept in local component state for now, no backend needed), and a new floating panel opened from the bottom menu that lists the saved favorites and lets you jump back to a POI's detail. Implement it in apps/tourist-web.",
+      "expected_output": "New floating panel and toggle button implemented as real code changes in apps/tourist-web, reusing the app's existing floating-overlay/pill visual language (radius, shadow, color, 44px targets) instead of inventing a new style; the new panel is placed correctly in the established z-index/layering stack; the heart toggle uses aria-pressed (genuine toggle state) with a focus-visible ring matching existing controls; the new panel follows the 'CSS adapts, markup doesn't fork' responsive convention (one markup tree, breakpoint override) rather than a separate mobile component.",
+      "files": [],
+      "expectations": [
+        "New CSS for the favorites panel/button uses an existing radius token (999px pill, 12px card, or 16px 16px 0 0 mobile sheet) rather than an arbitrary new radius value",
+        "The new floating panel's elevation uses an existing shadow token (0 4px 16px rgba(0,0,0,0.2) or 0 1px 4px rgba(0,0,0,0.15))",
+        "The heart toggle button has a 44px (or larger) min-width/min-height tap target even if visually smaller",
+        "The heart toggle button carries aria-pressed reflecting saved/not-saved state",
+        "Any new responsive behavior for the favorites panel is added inside the existing 640px overlay breakpoint rather than introducing a new breakpoint",
+        "New interactive controls participate in the shared focus-visible outline styling rather than defining a one-off focus style",
+        "The new panel is positioned as an absolutely-positioned overlay inside the existing map body, not a new full-page route"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "poi-extra-fields",
+      "prompt": "Update the POI detail card in apps/tourist-web so it also shows opening hours and a contact phone number, similar to what you'd see in a Google Maps info window.",
+      "expected_output": "The agent checks whether opening hours / phone actually exist on the PublishedPoi snapshot type (shared-types) before rendering them. Since neither field exists on that type today, the correct outcome is NOT hardcoding/inventing fake data for them — either the fields are added properly end-to-end (snapshot type + publish pipeline + component) if that's in scope, or the agent explains the fields aren't available in the current published snapshot and stops short of faking them, rather than rendering placeholder/hardcoded values.",
+      "files": [],
+      "expectations": [
+        "The summary/output shows the agent actually looked at the PublishedPoi type in shared-types before deciding what to do",
+        "The diff does not render a hardcoded/fake opening-hours or phone-number string as if it were real POI data",
+        "The diff does not add a disabled/non-functional button implying a capability (e.g. 'Call', 'Hours') that isn't backed by real data",
+        "If the agent chose not to implement the fields, it explains why (fields absent from the published snapshot type) rather than silently doing nothing or silently faking it"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "search-mobile-fix",
+      "prompt": "A few tourists said the search overlay is annoying on their phones — the close button feels too small to tap accurately and it's hard to tell it's focused. Fix the search overlay's mobile usability in apps/tourist-web.",
+      "expected_output": "The close button already has a 44x44px hit target and a shared focus-visible outline in the current code (apps/tourist-web/app/globals.css) — the correct fix identifies what's actually still wrong (e.g. visual affordance, spacing, or a genuine mobile-only issue) rather than re-deriving the touch-target/focus-ring rules from scratch or duplicating them as new one-off CSS instead of reusing/extending the existing shared rules.",
+      "files": [],
+      "expectations": [
+        "The summary/output shows the agent recognized the close button already has a 44px target rather than re-adding one from scratch",
+        "The summary/output shows the agent recognized the shared focus-visible outline already exists rather than writing a duplicate one-off focus rule",
+        "The diff does not introduce a new, separate CSS rule that duplicates logic already centralized in the shared focus-visible selector list",
+        "The fix targets something plausibly still wrong (e.g. visual size/affordance of the glyph, hit-area spacing near other controls, or an actual mobile-only regression) rather than a no-op restatement of existing CSS"
+      ]
+    }
+  ]
+}
