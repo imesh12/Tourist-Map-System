@@ -137,12 +137,51 @@ import { MapPreviewInfo } from '@/lib/map-preview/map-preview-info';
  * `.refine()` (packages/validation/src/language.ts) is the actual
  * authority; this is UX-only, same as every other client-side validation on
  * this form.
+ *
+ * Map Appearance redesign: the old separate "Map Display" (provider/style)
+ * and "Theme" (preset/visibility/colors/marker) cards are merged into one
+ * "Map Appearance" card, reordered to sit right after Public Languages so
+ * the left column reads as the intended flow: pick a language, then Preset,
+ * Provider, Map style, Marker style/size, glancing at the live preview to
+ * the right the whole time. No control was removed or relabeled (every
+ * id/htmlFor/data-testid a test locates by is unchanged) - only grouped and
+ * reordered, and the eleven MapTheme.visibility checkboxes plus the four
+ * color fields now sit inside a "Customize map information" native
+ * details/summary disclosure, COLLAPSED by default - a client who just
+ * wants TOURISM and Save never sees them. Native <details> semantics (not
+ * custom JS) mean the collapsed controls are still fully reachable by
+ * keyboard and assistive technology once expanded - see .disclosure
+ * (globals.css) for the pure-CSS arrow indicator (no inaccessible
+ * show/hide trick). e2e/map-theme.spec.ts opens this disclosure
+ * (`getByText('Customize map information').click()`) before touching any
+ * field it now contains. LIVE_PREVIEW_MAP_PROVIDERS (below) is the one behavior
+ * change: the Provider select in this card now offers only providers
+ * lib/map-preview/map-preview.tsx actually renders live, not the full
+ * MAP_PROVIDER_NAMES enum - see that constant's own doc comment.
  */
 
 const MIN_ZOOM = 0;
 const MAX_ZOOM = 22;
 const DEFAULT_SLIDER_ZOOM = 10;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Admin UX direction (Map Appearance redesign) — the Provider select in the
+ * primary, non-advanced control row must never offer a choice with no real
+ * live preview behind it. `MAP_PROVIDER_NAMES` (shared-types) still lists
+ * every schema-valid provider (`MAPBOX` is a real, saveable value — see
+ * `lib/map-preview/map-preview.tsx`'s own doc comment for why it isn't
+ * implemented yet), but only `GOOGLE_MAPS` actually renders an interactive
+ * `MapPreview` today; anything else falls back to a static summary notice.
+ * This list is what the redesigned Provider dropdown offers instead of the
+ * full enum — kept as a separate constant (not a filter inline at the call
+ * site) so the ONE place this checkpoint's "don't fake it" rule lives is
+ * findable by name. Whatever the map's OWN already-saved `provider` value
+ * is stays selectable even if it falls outside this list (see the dropdown
+ * itself), so an existing MAPBOX map is never silently hidden from its own
+ * field.
+ */
+const LIVE_PREVIEW_MAP_PROVIDERS: readonly MapProviderName[] = ['GOOGLE_MAPS'];
 
 interface MapSettingsFormProps {
   readonly mapId: string;
@@ -219,6 +258,14 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
   const [visParks, setVisParks] = useState(initialTheme.visibility.parks);
   const [visRoadLabels, setVisRoadLabels] = useState(initialTheme.visibility.roadLabels);
   const [visTransitLabels, setVisTransitLabels] = useState(initialTheme.visibility.transitLabels);
+  // checkpoint 1B.16 — optional on `MapTheme`; a theme saved before 1B.16
+  // omits them and the historical behaviour is "shown", so seed a missing
+  // value to `true` for the checkbox. `landmarkPois` seeds from its own
+  // value or, when absent, from `businessPois` (its historical grouping).
+  const [visRoads, setVisRoads] = useState(initialTheme.visibility.roads ?? true);
+  const [visBuildings, setVisBuildings] = useState(initialTheme.visibility.buildings ?? true);
+  const [visPlaceLabels, setVisPlaceLabels] = useState(initialTheme.visibility.placeLabels ?? true);
+  const [visLandmarkPois, setVisLandmarkPois] = useState(initialTheme.visibility.landmarkPois ?? initialTheme.visibility.businessPois);
   const [themeBackground, setThemeBackground] = useState(initialTheme.colors?.background ?? '');
   const [themeRoad, setThemeRoad] = useState(initialTheme.colors?.road ?? '');
   const [themeWater, setThemeWater] = useState(initialTheme.colors?.water ?? '');
@@ -318,6 +365,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
         parks: visParks,
         roadLabels: visRoadLabels,
         transitLabels: visTransitLabels,
+        roads: visRoads,
+        buildings: visBuildings,
+        placeLabels: visPlaceLabels,
+        landmarkPois: visLandmarkPois,
       },
       ...(Object.keys(colors).length > 0 ? { colors } : {}),
       markerStyle: { style: markerStyle, size: markerSize },
@@ -331,6 +382,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     visParks,
     visRoadLabels,
     visTransitLabels,
+    visRoads,
+    visBuildings,
+    visPlaceLabels,
+    visLandmarkPois,
     themeBackground,
     themeRoad,
     themeWater,
@@ -356,6 +411,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setVisParks(defaults.visibility.parks);
     setVisRoadLabels(defaults.visibility.roadLabels);
     setVisTransitLabels(defaults.visibility.transitLabels);
+    setVisRoads(defaults.visibility.roads ?? true);
+    setVisBuildings(defaults.visibility.buildings ?? true);
+    setVisPlaceLabels(defaults.visibility.placeLabels ?? true);
+    setVisLandmarkPois(defaults.visibility.landmarkPois ?? defaults.visibility.businessPois);
     setThemeBackground(defaults.colors?.background ?? '');
     setThemeRoad(defaults.colors?.road ?? '');
     setThemeWater(defaults.colors?.water ?? '');
@@ -419,6 +478,10 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setVisParks(initialTheme.visibility.parks);
     setVisRoadLabels(initialTheme.visibility.roadLabels);
     setVisTransitLabels(initialTheme.visibility.transitLabels);
+    setVisRoads(initialTheme.visibility.roads ?? true);
+    setVisBuildings(initialTheme.visibility.buildings ?? true);
+    setVisPlaceLabels(initialTheme.visibility.placeLabels ?? true);
+    setVisLandmarkPois(initialTheme.visibility.landmarkPois ?? initialTheme.visibility.businessPois);
     setThemeBackground(initialTheme.colors?.background ?? '');
     setThemeRoad(initialTheme.colors?.road ?? '');
     setThemeWater(initialTheme.colors?.water ?? '');
@@ -744,46 +807,308 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
             </div>
           </div>
 
+          <div className="card" data-testid="public-languages-card">
+            <div className="card-title">Public Languages</div>
+            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
+              Choose which languages this map&apos;s public tourist content is offered in. This does not change the
+              Admin language — only your public map. Translating content itself is not available yet.
+            </p>
+
+            <div className="field">
+              <span className="field-label" id="publicLanguagesLabel">
+                Supported languages / Default
+              </span>
+              <div role="group" aria-labelledby="publicLanguagesLabel">
+                {listPublicContentLanguages().map((entry) => {
+                  const isSupported = supportedLanguages.includes(entry.code);
+                  const isDefault = defaultLanguage === entry.code;
+                  return (
+                    <div key={entry.code} className="checkbox-field" data-testid={`public-language-row-${entry.code}`}>
+                      <input
+                        id={`publicLanguageSupported-${entry.code}`}
+                        type="checkbox"
+                        checked={isSupported}
+                        onChange={(event) => handleToggleSupportedLanguage(entry.code, event.target.checked)}
+                        disabled={controlsDisabled || isDefault}
+                        data-testid={`public-language-checkbox-${entry.code}`}
+                      />
+                      <label htmlFor={`publicLanguageSupported-${entry.code}`}>
+                        {entry.englishLabel} ({entry.nativeLabel})
+                      </label>
+                      <label style={{ marginLeft: 'var(--space-3)', display: 'inline-flex', alignItems: 'center', gap: '0.35em' }}>
+                        <input
+                          type="radio"
+                          name="defaultPublicLanguage"
+                          checked={isDefault}
+                          onChange={() => handleSetDefaultLanguage(entry.code)}
+                          disabled={controlsDisabled || !isSupported}
+                          data-testid={`public-language-default-${entry.code}`}
+                        />
+                        Default
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+              <span className="field-hint">
+                The default language is used whenever a visitor&apos;s requested language isn&apos;t available. To
+                remove the current default, first choose a different default from an already-supported language.
+              </span>
+            </div>
+          </div>
+
           <div className="card">
-            <div className="card-title">Map Display</div>
+            <div className="card-title">Map Appearance</div>
+            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
+              See changes in the live preview to the right as you go — Save is still required to keep them. Most
+              maps only need a preset: pick TOURISM and you&apos;re done.
+            </p>
+
             <div className="field">
-              <label className="field-label" htmlFor="mapProvider">
-                Provider
+              <label className="field-label" htmlFor="themePreset">
+                Preset
               </label>
               <select
-                id="mapProvider"
-                name="mapProvider"
+                id="themePreset"
+                name="themePreset"
                 className="select"
-                value={provider}
-                onChange={(event) => setProvider(event.target.value as MapProviderName)}
+                value={themePreset}
+                onChange={(event) => handleThemePresetChange(event.target.value as MapThemePreset)}
                 disabled={controlsDisabled}
               >
-                {MAP_PROVIDER_NAMES.map((value) => (
+                {MAP_THEME_PRESETS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
                 ))}
               </select>
+              <span className="field-hint">Picking a preset fills in everything below — you can still adjust any of it afterward.</span>
             </div>
+
+            <div className="field-row">
+              <div className="field">
+                <label className="field-label" htmlFor="mapProvider">
+                  Provider
+                </label>
+                <select
+                  id="mapProvider"
+                  name="mapProvider"
+                  className="select"
+                  value={provider}
+                  onChange={(event) => setProvider(event.target.value as MapProviderName)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_PROVIDER_NAMES.filter((value) => value === provider || LIVE_PREVIEW_MAP_PROVIDERS.includes(value)).map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="mapStyle">
+                  Style
+                </label>
+                <select
+                  id="mapStyle"
+                  name="mapStyle"
+                  className="select"
+                  value={style}
+                  onChange={(event) => setStyle(event.target.value as MapStyle)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_STYLES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="markerStyle">
+                  Marker style
+                </label>
+                <select
+                  id="markerStyle"
+                  name="markerStyle"
+                  className="select"
+                  value={markerStyle}
+                  onChange={(event) => setMarkerStyle(event.target.value as MapMarkerStyle)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_MARKER_STYLES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="markerSize">
+                  Marker size
+                </label>
+                <select
+                  id="markerSize"
+                  name="markerSize"
+                  className="select"
+                  value={markerSize}
+                  onChange={(event) => setMarkerSize(event.target.value as MapMarkerSize)}
+                  disabled={controlsDisabled}
+                >
+                  {MAP_MARKER_SIZES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <details className="disclosure">
+              <summary className="disclosure-summary">Customize map information</summary>
+              <p className="field-hint" style={{ margin: 'var(--space-3) 0 var(--space-4)' }}>
+                Fine-grained base-map layers most clients never need to touch — hide provider clutter like default
+                business pins, or tune exactly which labels show.
+              </p>
+
+            {/* checkpoint 1B.16 — "Map Information": the contextual base-map
+                layers a client turns on/off. All are `MapTheme.visibility`
+                fields (no second display-settings model); the four 1B.16
+                fields are optional on the type but the form always persists
+                an explicit boolean once the map is saved. */}
             <div className="field">
-              <label className="field-label" htmlFor="mapStyle">
-                Style
-              </label>
-              <select
-                id="mapStyle"
-                name="mapStyle"
-                className="select"
-                value={style}
-                onChange={(event) => setStyle(event.target.value as MapStyle)}
-                disabled={controlsDisabled}
-              >
-                {MAP_STYLES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+              <span className="field-label" id="themeMapInfoLabel">
+                Map Information
+              </span>
+              <div role="group" aria-labelledby="themeMapInfoLabel">
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisRoads"
+                    type="checkbox"
+                    checked={visRoads}
+                    onChange={(event) => setVisRoads(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisRoads">Roads</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisRoadLabels"
+                    type="checkbox"
+                    checked={visRoadLabels}
+                    onChange={(event) => setVisRoadLabels(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisRoadLabels">Road names</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisTransit"
+                    type="checkbox"
+                    checked={visTransit}
+                    onChange={(event) => setVisTransit(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisTransit">Railway / Transit</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisTransitLabels"
+                    type="checkbox"
+                    checked={visTransitLabels}
+                    onChange={(event) => setVisTransitLabels(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisTransitLabels">Transit labels</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisParks"
+                    type="checkbox"
+                    checked={visParks}
+                    onChange={(event) => setVisParks(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisParks">Parks &amp; nature</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisBuildings"
+                    type="checkbox"
+                    checked={visBuildings}
+                    onChange={(event) => setVisBuildings(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisBuildings">Buildings</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisPlaceLabels"
+                    type="checkbox"
+                    checked={visPlaceLabels}
+                    onChange={(event) => setVisPlaceLabels(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisPlaceLabels">Area / place names</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisLandmarkPois"
+                    type="checkbox"
+                    checked={visLandmarkPois}
+                    onChange={(event) => setVisLandmarkPois(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisLandmarkPois">Tourist landmarks</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisBusinessPois"
+                    type="checkbox"
+                    checked={visBusinessPois}
+                    onChange={(event) => setVisBusinessPois(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisBusinessPois">Businesses</label>
+                </div>
+              </div>
             </div>
+
+            <div className="field">
+              <span className="field-label" id="themeMorePoisLabel">
+                Additional POIs
+              </span>
+              <div role="group" aria-labelledby="themeMorePoisLabel">
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisSchools"
+                    type="checkbox"
+                    checked={visSchools}
+                    onChange={(event) => setVisSchools(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisSchools">Schools</label>
+                </div>
+                <div className="checkbox-field">
+                  <input
+                    id="themeVisHospitals"
+                    type="checkbox"
+                    checked={visHospitals}
+                    onChange={(event) => setVisHospitals(event.target.checked)}
+                    disabled={controlsDisabled}
+                  />
+                  <label htmlFor="themeVisHospitals">Hospitals</label>
+                </div>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <ColorField id="themeBackground" label="Background" value={themeBackground} onChange={setThemeBackground} disabled={controlsDisabled} />
+              <ColorField id="themeRoad" label="Road colour" value={themeRoad} onChange={setThemeRoad} disabled={controlsDisabled} />
+              <ColorField id="themeWater" label="Water" value={themeWater} onChange={setThemeWater} disabled={controlsDisabled} />
+              <ColorField id="themeLabel" label="Labels" value={themeLabel} onChange={setThemeLabel} disabled={controlsDisabled} />
+            </div>
+            </details>
           </div>
 
           <div className="card">
@@ -960,211 +1285,6 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
               onChange={setSecondaryColor}
               disabled={controlsDisabled}
             />
-          </div>
-
-          <div className="card" data-testid="public-languages-card">
-            <div className="card-title">Public Languages</div>
-            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
-              Choose which languages this map&apos;s public tourist content is offered in. This does not change the
-              Admin language — only your public map. Translating content itself is not available yet.
-            </p>
-
-            <div className="field">
-              <span className="field-label" id="publicLanguagesLabel">
-                Supported languages / Default
-              </span>
-              <div role="group" aria-labelledby="publicLanguagesLabel">
-                {listPublicContentLanguages().map((entry) => {
-                  const isSupported = supportedLanguages.includes(entry.code);
-                  const isDefault = defaultLanguage === entry.code;
-                  return (
-                    <div key={entry.code} className="checkbox-field" data-testid={`public-language-row-${entry.code}`}>
-                      <input
-                        id={`publicLanguageSupported-${entry.code}`}
-                        type="checkbox"
-                        checked={isSupported}
-                        onChange={(event) => handleToggleSupportedLanguage(entry.code, event.target.checked)}
-                        disabled={controlsDisabled || isDefault}
-                        data-testid={`public-language-checkbox-${entry.code}`}
-                      />
-                      <label htmlFor={`publicLanguageSupported-${entry.code}`}>
-                        {entry.englishLabel} ({entry.nativeLabel})
-                      </label>
-                      <label style={{ marginLeft: 'var(--space-3)', display: 'inline-flex', alignItems: 'center', gap: '0.35em' }}>
-                        <input
-                          type="radio"
-                          name="defaultPublicLanguage"
-                          checked={isDefault}
-                          onChange={() => handleSetDefaultLanguage(entry.code)}
-                          disabled={controlsDisabled || !isSupported}
-                          data-testid={`public-language-default-${entry.code}`}
-                        />
-                        Default
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-              <span className="field-hint">
-                The default language is used whenever a visitor&apos;s requested language isn&apos;t available. To
-                remove the current default, first choose a different default from an already-supported language.
-              </span>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-title">Theme</div>
-            <p className="field-hint" style={{ marginBottom: 'var(--space-4)' }}>
-              Controls how the base map itself is displayed — not your categories or places, which are always shown.
-              Changes appear in the preview immediately; Save is still required to keep them.
-            </p>
-
-            <div className="field">
-              <label className="field-label" htmlFor="themePreset">
-                Preset
-              </label>
-              <select
-                id="themePreset"
-                name="themePreset"
-                className="select"
-                value={themePreset}
-                onChange={(event) => handleThemePresetChange(event.target.value as MapThemePreset)}
-                disabled={controlsDisabled}
-              >
-                {MAP_THEME_PRESETS.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-              <span className="field-hint">Picking a preset fills in the fields below — you can still adjust any of them afterward.</span>
-            </div>
-
-            <div className="field">
-              <span className="field-label" id="themeVisibilityLabel">
-                Visibility
-              </span>
-              <div role="group" aria-labelledby="themeVisibilityLabel">
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisBusinessPois"
-                    type="checkbox"
-                    checked={visBusinessPois}
-                    onChange={(event) => setVisBusinessPois(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisBusinessPois">Business POIs</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisTransit"
-                    type="checkbox"
-                    checked={visTransit}
-                    onChange={(event) => setVisTransit(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisTransit">Transit</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisSchools"
-                    type="checkbox"
-                    checked={visSchools}
-                    onChange={(event) => setVisSchools(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisSchools">Schools</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisHospitals"
-                    type="checkbox"
-                    checked={visHospitals}
-                    onChange={(event) => setVisHospitals(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisHospitals">Hospitals</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisParks"
-                    type="checkbox"
-                    checked={visParks}
-                    onChange={(event) => setVisParks(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisParks">Parks</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisRoadLabels"
-                    type="checkbox"
-                    checked={visRoadLabels}
-                    onChange={(event) => setVisRoadLabels(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisRoadLabels">Road labels</label>
-                </div>
-                <div className="checkbox-field">
-                  <input
-                    id="themeVisTransitLabels"
-                    type="checkbox"
-                    checked={visTransitLabels}
-                    onChange={(event) => setVisTransitLabels(event.target.checked)}
-                    disabled={controlsDisabled}
-                  />
-                  <label htmlFor="themeVisTransitLabels">Transit labels</label>
-                </div>
-              </div>
-            </div>
-
-            <div className="field-row">
-              <ColorField id="themeBackground" label="Background" value={themeBackground} onChange={setThemeBackground} disabled={controlsDisabled} />
-              <ColorField id="themeRoad" label="Roads" value={themeRoad} onChange={setThemeRoad} disabled={controlsDisabled} />
-              <ColorField id="themeWater" label="Water" value={themeWater} onChange={setThemeWater} disabled={controlsDisabled} />
-              <ColorField id="themeLabel" label="Labels" value={themeLabel} onChange={setThemeLabel} disabled={controlsDisabled} />
-            </div>
-
-            <div className="field-row">
-              <div className="field">
-                <label className="field-label" htmlFor="markerStyle">
-                  Marker style
-                </label>
-                <select
-                  id="markerStyle"
-                  name="markerStyle"
-                  className="select"
-                  value={markerStyle}
-                  onChange={(event) => setMarkerStyle(event.target.value as MapMarkerStyle)}
-                  disabled={controlsDisabled}
-                >
-                  {MAP_MARKER_STYLES.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label className="field-label" htmlFor="markerSize">
-                  Marker size
-                </label>
-                <select
-                  id="markerSize"
-                  name="markerSize"
-                  className="select"
-                  value={markerSize}
-                  onChange={(event) => setMarkerSize(event.target.value as MapMarkerSize)}
-                  disabled={controlsDisabled}
-                >
-                  {MAP_MARKER_SIZES.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
           </div>
         </div>
 

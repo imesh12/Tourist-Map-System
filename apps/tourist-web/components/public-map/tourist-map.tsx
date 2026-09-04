@@ -14,7 +14,7 @@ import { createPoiMarkerLayer, type PoiMarkerLayer } from '@/lib/public-map/poi-
 import { filterPoisByCategory } from '@/lib/public-map/public-poi-filter';
 import { PageOverlay } from './page-overlay';
 import { PoiDetailCard } from './poi-detail-card';
-import { PublicBottomMenu } from './public-bottom-menu';
+import { PublicMapDock } from './public-map-dock';
 import { PublicSearch } from './public-search';
 
 /**
@@ -77,9 +77,11 @@ export interface TouristMapProps {
   readonly snapshot: PublicMapSnapshotParsed;
   /** checkpoint 1B.17B §12/§14-§17 — the tourist's currently-selected public content language, owned by `TouristMapPageClient` (the shared parent of this component and the `LanguageSelector`). Every piece of translatable content below is resolved against this on every render — never against `snapshot.defaultLanguage` directly, and never by mutating `snapshot` itself. */
   readonly language: PublicContentLanguage;
+  /** checkpoint 1B.16 §7 — language changes are still owned by `TouristMapPageClient` (URL `?lang=` sync + state); this component only forwards the selection from the `LanguageSelector` it now renders inside the floating `PublicMapDock`. */
+  readonly onLanguageChange: (language: PublicContentLanguage) => void;
 }
 
-export function TouristMap({ snapshot, language }: TouristMapProps) {
+export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
   const markerLayerRef = useRef<PoiMarkerLayer | undefined>(undefined);
@@ -92,11 +94,29 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [myLocation, setMyLocation] = useState<MyLocationState>({ status: 'idle' });
+  // checkpoint 1B.16 §8 — the My Location status is a TRANSIENT toast: this
+  // counter bumps on each request (so a repeat request replays the entrance)
+  // and an effect clears it a few seconds later. `myLocation` itself stays
+  // the source of truth for the map marker and the diagnostics readout —
+  // only the on-screen toast is time-limited.
+  const [locationToast, setLocationToast] = useState<number | null>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const { mapProvider, area, theme } = snapshot.map;
-  const { pois, categories, menu, pages, defaultLanguage } = snapshot;
+  const { mapProvider, area, theme, name: mapName, branding } = snapshot.map;
+  const { pois, categories, menu, pages, defaultLanguage, supportedLanguages } = snapshot;
+  // checkpoint 1B.16 §8 — the diagnostics readout below is a dev/E2E-only
+  // DOM contract (it is how the hermetic, no-Google-key E2E asserts POI
+  // filtering / publication-safety — see this file's top doc comment and
+  // `apps/admin-web/e2e/public-tourist-map-interaction.spec.ts`). It never
+  // renders in a production build. But it must NOT sit visibly on top of
+  // the map during ordinary local `next dev` either — that read like debug
+  // chrome leaking into the product. So the element still renders whenever
+  // `NODE_ENV !== 'production'` (tests query it by `data-testid` /
+  // `toHaveText`, which do not require visibility), but it is visually
+  // hidden unless a developer explicitly opts the panel back in with
+  // `NEXT_PUBLIC_TOURIST_MAP_DIAGNOSTICS=1`.
   const isDiagnosticsMode = process.env.NODE_ENV !== 'production';
+  const showDiagnosticsPanel = process.env.NEXT_PUBLIC_TOURIST_MAP_DIAGNOSTICS === '1';
   const canLoadLiveMap = Boolean(apiKey) && mapProvider.provider === 'GOOGLE_MAPS';
 
   // checkpoint 1B.17B §14-§17 — the ONE place this component resolves
@@ -250,6 +270,7 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
   const handleClosePage = useCallback(() => setSelectedPageId(null), []);
 
   const handleRequestMyLocation = useCallback(() => {
+    setLocationToast((n) => (n ?? 0) + 1);
     requestMyLocation({
       onSuccess: (position) => {
         setMyLocation({ status: 'success' });
@@ -258,7 +279,7 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
           mapRef.current.panTo(point);
           mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? USER_LOCATION_ZOOM, USER_LOCATION_ZOOM));
 
-          const spec = buildMarkerIcon({ shape: 'dot', pixelSize: 18, color: '#1a73e8', glyph: '', selected: true });
+          const spec = buildMarkerIcon({ pattern: 'circle', pixelSize: 18, color: '#1a73e8', glyph: '', selected: true });
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = new google.maps.Marker({
               map: mapRef.current,
@@ -275,6 +296,17 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
       onError: (reason) => setMyLocation({ status: 'error', reason }),
     });
   }, []);
+
+  // §8 — auto-dismiss the transient My Location toast a few seconds after it
+  // appears (or re-appears). Never touches `myLocation`, so the diagnostics
+  // `userLocation` field and the map marker are unaffected.
+  useEffect(() => {
+    if (locationToast === null) {
+      return;
+    }
+    const timer = window.setTimeout(() => setLocationToast(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [locationToast]);
 
   // The Google Maps SDK load — unchanged from checkpoint 1B.9 apart from
   // also creating the POI marker layer once the map exists.
@@ -295,7 +327,30 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
           center: area.center ?? DEFAULT_CENTER,
           zoom: area.defaultZoom ?? DEFAULT_ZOOM,
           mapTypeId: mapStyleToMapTypeId(mapProvider.style),
+          // checkpoint 1B.16 — the SAME shared, provider-neutral adapter the
+          // Admin live preview uses (`google-maps-preview.tsx`). There is no
+          // longer a tourist-web-only styling layer: the clean tourism look
+          // comes entirely from the published `MapTheme` (the `TOURISM`
+          // preset by default), so Admin Preview and the published Tourist
+          // Map render identically for the same theme.
           styles: [...mapThemeToGoogleMapsStyles(theme)],
+          // checkpoint 1B.16 §6 — a tourist-facing map, not a mapping tool.
+          // The published theme already dictates the base map look, so the
+          // Map/Satellite type switch is removed (no requirement or E2E
+          // depends on it); Street View's pegman is likewise not a tourist
+          // interaction (blueprint §15 "unnecessary map controls"). The
+          // zoom and fullscreen controls stay — they are genuinely useful
+          // for browsing — and Google's own attribution/logo is never
+          // affected by any of these flags.
+          mapTypeControl: false,
+          streetViewControl: false,
+          zoomControl: true,
+          fullscreenControl: true,
+          // checkpoint 1B.16 — make OUR published POIs the only interactive
+          // POI layer: Google's own generic POI icons stop opening their
+          // info windows on tap (they still render, calmed by the tourism
+          // canvas style). Not a CSS hack, not an attribution change.
+          clickableIcons: false,
         });
 
         if (area.type === 'BOUNDED' && area.bounds) {
@@ -340,7 +395,7 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
     markerLayerRef.current.sync({
       pois: visiblePois,
       categoryIconById,
-      shape: visual.shape,
+      pattern: visual.pattern,
       pixelSize: visual.pixelSize,
       selectedPoiId,
       onSelect: handleSelectPoi,
@@ -410,31 +465,44 @@ export function TouristMap({ snapshot, language }: TouristMapProps) {
           {pois.length === 0 ? 'No places have been published yet.' : 'No places in this category yet.'}
         </p>
       ) : null}
-      {selectedPoi ? <PoiDetailCard poi={selectedPoi} category={categoryById.get(selectedPoi.categoryId)} onClose={handleCloseDetail} /> : null}
+      {selectedPoi ? (
+        <PoiDetailCard key={selectedPoi.poiId} poi={selectedPoi} category={categoryById.get(selectedPoi.categoryId)} onClose={handleCloseDetail} />
+      ) : null}
       {selectedPage ? <PageOverlay page={selectedPage} onClose={handleClosePage} /> : null}
-      {myLocation.status === 'success' ? (
-        <p data-testid="my-location-status" className="my-location-banner" role="status">
+      {myLocation.status === 'success' && locationToast !== null ? (
+        <p key={locationToast} data-testid="my-location-status" className="my-location-banner" role="status">
+          <span className="my-location-banner-dot" aria-hidden="true" />
           Showing your current location.
         </p>
       ) : null}
-      {myLocation.status === 'error' ? (
-        <p data-testid="my-location-message" className="my-location-banner" role="status">
+      {myLocation.status === 'error' && locationToast !== null ? (
+        <p key={locationToast} data-testid="my-location-message" className="my-location-banner my-location-banner--error" role="status">
           {myLocationErrorMessage(myLocation.reason)}
         </p>
       ) : null}
       {searchOpen ? (
         <PublicSearch pois={localizedPois} categories={localizedCategories} onSelect={handleSelectSearchResult} onClose={handleCloseSearch} />
       ) : null}
-      <PublicBottomMenu
+      <PublicMapDock
+        mapName={mapName}
+        branding={branding}
         menu={localizedMenu}
         selectedCategoryId={selectedCategoryId}
         onSelectCategory={handleSelectCategory}
         onOpenSearch={handleOpenSearch}
         onRequestMyLocation={handleRequestMyLocation}
         onOpenPage={handleOpenPage}
+        supportedLanguages={supportedLanguages}
+        currentLanguage={language}
+        onLanguageChange={onLanguageChange}
       />
       {isDiagnosticsMode ? (
-        <dl data-testid="tourist-map-diagnostics" className="tourist-map-diagnostics" aria-hidden="true">
+        <dl
+          data-testid="tourist-map-diagnostics"
+          className="tourist-map-diagnostics"
+          data-visible={showDiagnosticsPanel ? 'true' : undefined}
+          aria-hidden="true"
+        >
           <dt>preset</dt>
           <dd data-testid="tourist-map-diag-preset">{theme.preset}</dd>
           <dt>areaType</dt>

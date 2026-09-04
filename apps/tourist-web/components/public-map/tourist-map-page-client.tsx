@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties } from 'react';
 import type { PublicContentLanguage } from 'shared-types';
 import type { PublicMapSnapshotParsed } from 'validation';
-import { LanguageSelector } from './language-selector';
+import { resolveBrandingVars } from '@/lib/public-map/branding';
 import { PublicMapShell } from './public-map-shell';
 import { TouristMap } from './tourist-map';
 
@@ -52,14 +52,17 @@ export function TouristMapPageClient({ snapshot, initialLanguage }: TouristMapPa
     }
   }, []);
 
+  // checkpoint 1B.16 §4 — the immutable publication snapshot's own branding
+  // (never the live draft), turned into `--brand-*` custom properties once
+  // and inherited by every floating overlay via the shell's map body.
+  const brandingStyle = useMemo(
+    () => ({ ...resolveBrandingVars(snapshot.map.branding) }) as CSSProperties,
+    [snapshot.map.branding],
+  );
+
   return (
-    <PublicMapShell
-      mapName={snapshot.map.name}
-      headerEnd={
-        <LanguageSelector supportedLanguages={snapshot.supportedLanguages} currentLanguage={language} onChange={handleLanguageChange} />
-      }
-    >
-      <TouristMap snapshot={snapshot} language={language} />
+    <PublicMapShell mapName={snapshot.map.name} brandingStyle={brandingStyle}>
+      <TouristMap snapshot={snapshot} language={language} onLanguageChange={handleLanguageChange} />
     </PublicMapShell>
   );
 }

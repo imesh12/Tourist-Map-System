@@ -36,7 +36,7 @@ describe('mapThemeSchema — checkpoint 1B.7', () => {
     expect(result.success).toBe(true);
   });
 
-  it.each(['STANDARD', 'TOURIST_CLEAN', 'LIGHT', 'MINIMAL'])('accepts preset %s', (preset) => {
+  it.each(['STANDARD', 'TOURISM', 'TOURIST_CLEAN', 'LIGHT', 'MINIMAL'])('accepts preset %s', (preset) => {
     expect(mapThemeSchema.safeParse({ ...validTheme, preset }).success).toBe(true);
   });
 
@@ -67,6 +67,31 @@ describe('mapThemeSchema — checkpoint 1B.7', () => {
   it('rejects a non-boolean visibility flag', () => {
     const result = mapThemeSchema.safeParse({ ...validTheme, visibility: { ...validTheme.visibility, parks: 'yes' } });
     expect(result.success).toBe(false);
+  });
+
+  describe('checkpoint 1B.16 optional visibility fields', () => {
+    it('accepts a theme with the four new fields set', () => {
+      const result = mapThemeSchema.safeParse({
+        ...validTheme,
+        visibility: { ...validTheme.visibility, roads: true, buildings: false, placeLabels: false, landmarkPois: true },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a pre-1B.16 theme that omits all four (backward compatibility)', () => {
+      // `validTheme.visibility` already has only the seven original flags.
+      expect(mapThemeVisibilitySchema.safeParse(validTheme.visibility).success).toBe(true);
+    });
+
+    it.each(['roads', 'buildings', 'placeLabels', 'landmarkPois'])('rejects a non-boolean %s', (field) => {
+      const result = mapThemeSchema.safeParse({ ...validTheme, visibility: { ...validTheme.visibility, [field]: 'yes' } });
+      expect(result.success).toBe(false);
+    });
+
+    it('still rejects a genuinely unknown visibility key (strict mode intact)', () => {
+      const result = mapThemeSchema.safeParse({ ...validTheme, visibility: { ...validTheme.visibility, roadz: true } });
+      expect(result.success).toBe(false);
+    });
   });
 
   it.each(['#fff', 'blue', 'rgb(0,0,0)', 'javascript:alert(1)'])('rejects an invalid color value: %s', (color) => {

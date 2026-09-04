@@ -190,6 +190,43 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
     expect(content.map).not.toHaveProperty('branding');
   });
 
+  it('the resolved default theme is now the TOURISM preset (checkpoint 1B.16 clean base map)', () => {
+    const content = buildPublicationContent(map({ theme: undefined }), [], [], []);
+    expect(content.map.theme.preset).toBe('TOURISM');
+    expect(content.map.theme.visibility).toMatchObject({
+      roads: true,
+      transit: true,
+      parks: true,
+      roadLabels: false,
+      buildings: false,
+      placeLabels: false,
+      businessPois: false,
+      landmarkPois: false,
+    });
+  });
+
+  it('freezes a pre-1B.16 theme (no roads/buildings/placeLabels/landmarkPois) EXACTLY as stored — publication compatibility', () => {
+    const legacyTheme = {
+      preset: 'STANDARD' as const,
+      visibility: {
+        businessPois: true,
+        transit: true,
+        schools: true,
+        hospitals: true,
+        parks: true,
+        roadLabels: true,
+        transitLabels: true,
+      },
+      markerStyle: { style: 'PIN' as const, size: 'MEDIUM' as const },
+    };
+    const content = buildPublicationContent(map({ theme: legacyTheme }), [], [], []);
+    // Byte-for-byte: no new optional field is injected, so an existing
+    // immutable publication built the same way keeps its exact meaning.
+    expect(content.map.theme).toEqual(legacyTheme);
+    expect(content.map.theme.visibility).not.toHaveProperty('roads');
+    expect(content.map.theme.visibility).not.toHaveProperty('landmarkPois');
+  });
+
   it('includes branding when the draft map has it set', () => {
     const content = buildPublicationContent(map({ branding: { primaryColor: '#112233', secondaryColor: '#445566' } }), [], [], []);
     expect(content.map.branding).toEqual({ primaryColor: '#112233', secondaryColor: '#445566' });

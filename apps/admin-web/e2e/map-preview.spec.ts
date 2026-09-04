@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { clearEmulatorUsers } from './helpers/emulator-auth';
-import { provisionTestTenant } from './helpers/tenant-fixture';
+import { getE2eFirestore, provisionTestTenant } from './helpers/tenant-fixture';
 
 /**
  * Checkpoint 1B.1-D `/admin/maps/{mapId}/settings` map-preview integration
@@ -116,7 +116,26 @@ test.describe('1B.1-D map preview', () => {
     await expect(page.getByTestId('map-preview-bounds')).toContainText('No bounds (Unbounded area)');
   });
 
-  test('selecting MAPBOX falls back to the "not yet implemented" preview, not a crash', async ({ page }) => {
+  // E2E regression repair (post-checkpoint-1B.16) — the previous version of
+  // this test asserted the OLD contract ("MAPBOX is a selectable Provider
+  // option that falls back to a non-crashing summary"). Checkpoint 1B.16's
+  // approved Admin Map Appearance restructure deliberately narrowed the
+  // Provider `<select>` to only the providers with a real live-preview
+  // implementation (`LIVE_PREVIEW_MAP_PROVIDERS`, `map-settings-form.tsx`)
+  // — today just GOOGLE_MAPS, since `lib/map-preview/map-preview.tsx` has
+  // no real MAPBOX adapter. That is an intentional product decision, not a
+  // bug, so MAPBOX must NOT be restored to the selector merely to satisfy
+  // this test — instead these two tests assert the CURRENT contract: (a) a
+  // new tenant's Provider selector offers only GOOGLE_MAPS and the page
+  // stays fully functional, and (b) a map whose provider was already
+  // MAPBOX before this checkpoint (a real, previously-saveable value) is
+  // still shown, not silently discarded or swapped to GOOGLE_MAPS — the
+  // form's own defensive `value === provider || LIVE_PREVIEW_MAP_PROVIDERS
+  // .includes(value)` filter (`map-settings-form.tsx`) exists exactly for
+  // this backward-compatibility case.
+  test('the Provider selector offers only GOOGLE_MAPS for a new map, and the page stays fully functional', async ({
+    page,
+  }) => {
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1b1d-mapbox@example.com',
       password: 'correct-horse-battery-staple',
@@ -127,7 +146,39 @@ test.describe('1B.1-D map preview', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
-    await page.getByLabel('Provider').selectOption('MAPBOX');
+    const providerSelect = page.getByLabel('Provider');
+    await expect(providerSelect).toHaveValue('GOOGLE_MAPS');
+    const optionValues = await providerSelect.locator('option').allTextContents();
+    expect(optionValues).toEqual(['GOOGLE_MAPS']); // MAPBOX is not offered — no live preview exists for it.
+
+    // The Map Appearance page remains otherwise functional: the fallback
+    // preview (no API key in this hermetic suite, see file header comment)
+    // still renders, and the rest of the form is still usable.
+    await expect(page.getByTestId('map-preview-summary')).toBeVisible();
+    await expect(page.getByLabel('Style', { exact: true })).toBeEnabled();
+  });
+
+  test('a map with an already-stored MAPBOX provider still displays it, not silently discarded', async ({ page }) => {
+    const tenant = await provisionTestTenant({
+      email: 'checkpoint-1b1d-mapbox-legacy@example.com',
+      password: 'correct-horse-battery-staple',
+      companyName: 'Ishigaki Reef Co',
+      displayName: 'Ishi Ishigaki',
+    });
+
+    // Simulates a map saved before this checkpoint's provider restriction
+    // existed — a real, previously-valid stored value, seeded directly
+    // (never through the now-narrowed UI, which could no longer produce it).
+    const firestore = await getE2eFirestore();
+    await firestore.doc(`maps/${tenant.mapId}`).update({ 'mapProvider.provider': 'MAPBOX' });
+
+    await login(page, tenant);
+    await page.goto(`/admin/maps/${tenant.mapId}/settings`);
+
+    const providerSelect = page.getByLabel('Provider');
+    await expect(providerSelect).toHaveValue('MAPBOX');
+    // Still not a newly-selectable option for anyone starting from GOOGLE_MAPS.
+    await expect(providerSelect.locator('option', { hasText: 'MAPBOX' })).toHaveCount(1);
     await expect(page.getByTestId('map-preview-summary')).toContainText('MAPBOX is not yet implemented');
   });
 

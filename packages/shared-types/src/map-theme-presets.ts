@@ -10,14 +10,23 @@ import type { MapTheme } from './map.js';
  * `visibility`/`colors`/`markerStyle` the instant a Client Admin picks a
  * different preset, before any Save) and the read-side fallback for a map
  * document with no `theme` field at all (`DEFAULT_MAP_THEME` below) resolve
- * from this exact table, so "what STANDARD/TOURIST_CLEAN/LIGHT/MINIMAL mean"
- * is defined in exactly one place.
+ * from this exact table, so "what each preset means" is defined in exactly
+ * one place.
  *
  * Selecting a preset only ever POPULATES these values into the editable
  * `MapTheme` fields — see `MapThemePreset`'s own doc comment (./enums.js)
  * for why there is no `CUSTOM` value and no "this theme is now dirty"
  * tracking: a Client Admin may still hand-edit any individual field
  * afterward while the preset name stays exactly as selected.
+ *
+ * checkpoint 1B.16 — every preset now carries the four optional visibility
+ * fields (`roads`/`buildings`/`placeLabels`/`landmarkPois`) EXPLICITLY, so
+ * this table is a complete spec of each preset. For the pre-existing
+ * presets the values are chosen to reproduce their historical effective
+ * behaviour (old selection == new selection): `landmarkPois: false` on the
+ * presets that already had `businessPois: false` (which used to also hide
+ * landmarks via the old grouping), and roads/buildings/placeLabels left ON
+ * where they historically were. `TOURISM` is the new clean default.
  */
 export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme>> = {
   STANDARD: {
@@ -30,6 +39,35 @@ export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme
       parks: true,
       roadLabels: true,
       transitLabels: true,
+      roads: true,
+      buildings: true,
+      placeLabels: true,
+      landmarkPois: true,
+    },
+    markerStyle: { style: 'PIN', size: 'MEDIUM' },
+  },
+  TOURISM: {
+    preset: 'TOURISM',
+    visibility: {
+      // Kept: the clean geographic canvas.
+      roads: true,
+      transit: true,
+      parks: true,
+      // Off by default: everything that competes with our published content.
+      roadLabels: false,
+      transitLabels: false,
+      buildings: false,
+      placeLabels: false,
+      businessPois: false,
+      landmarkPois: false,
+      schools: false,
+      hospitals: false,
+    },
+    colors: {
+      background: '#F4F2EC',
+      road: '#FFFFFF',
+      water: '#CFE1EC',
+      label: '#5B6472',
     },
     markerStyle: { style: 'PIN', size: 'MEDIUM' },
   },
@@ -43,6 +81,10 @@ export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme
       parks: true,
       roadLabels: true,
       transitLabels: true,
+      roads: true,
+      buildings: true,
+      placeLabels: true,
+      landmarkPois: false,
     },
     colors: {
       background: '#F7F8F5',
@@ -62,6 +104,10 @@ export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme
       parks: true,
       roadLabels: true,
       transitLabels: false,
+      roads: true,
+      buildings: true,
+      placeLabels: true,
+      landmarkPois: false,
     },
     colors: {
       background: '#FAFAF9',
@@ -81,6 +127,10 @@ export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme
       parks: false,
       roadLabels: false,
       transitLabels: false,
+      roads: true,
+      buildings: true,
+      placeLabels: true,
+      landmarkPois: false,
     },
     colors: {
       background: '#F5F5F4',
@@ -92,13 +142,24 @@ export const MAP_THEME_PRESET_DEFAULTS: Readonly<Record<MapThemePreset, MapTheme
   },
 };
 
-/** The preset a brand-new map effectively has when no `theme` has ever been saved — the closest thing to "provider defaults." */
-export const DEFAULT_MAP_THEME_PRESET: MapThemePreset = 'STANDARD';
+/**
+ * The preset a brand-new map is created with (persisted explicitly at
+ * creation — `apps/admin-web/app/api/maps/route.ts` /
+ * `firebase/functions/src/provisioning/provision-client.ts`) and the
+ * read-side fallback for any older map document with no `theme` field.
+ * checkpoint 1B.16 — moved from `STANDARD` to `TOURISM`: a new Tourist Map
+ * should look like a clean destination canvas out of the box, not raw
+ * provider Google Maps.
+ */
+export const DEFAULT_MAP_THEME_PRESET: MapThemePreset = 'TOURISM';
 
 /**
  * The theme substituted at the point of use for any map document with no
- * `theme` field at all (every map created before checkpoint 1B.7) — see
- * `MapTheme`'s own doc comment (./map.js) for why this is a read-side
- * fallback rather than a Firestore migration.
+ * `theme` field at all (every map created before checkpoint 1B.7, and — for
+ * a brief window — before 1B.16 persisted it at creation). See `MapTheme`'s
+ * own doc comment (./map.js) for why this is a read-side fallback rather
+ * than a Firestore migration. Existing immutable publications are NOT
+ * affected: each froze its own fully-resolved `MapTheme` by value at
+ * publish time, so changing this constant never changes a stored snapshot.
  */
 export const DEFAULT_MAP_THEME: MapTheme = MAP_THEME_PRESET_DEFAULTS[DEFAULT_MAP_THEME_PRESET];

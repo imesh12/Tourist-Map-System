@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { DEFAULT_PUBLIC_CONTENT_LANGUAGE } from 'shared-types';
+import { DEFAULT_MAP_THEME, DEFAULT_PUBLIC_CONTENT_LANGUAGE } from 'shared-types';
 import { mapCreateInputSchema } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
@@ -95,6 +95,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
     mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
     area: { type: 'UNBOUNDED' },
+    // checkpoint 1B.16 — persist the clean default theme explicitly at
+    // creation (the `TOURISM` preset). A new map is a clean destination
+    // canvas out of the box, and its stored theme, the Map Settings form,
+    // and its first publication all agree from the start.
+    theme: DEFAULT_MAP_THEME,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

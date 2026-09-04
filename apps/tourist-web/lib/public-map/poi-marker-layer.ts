@@ -1,7 +1,7 @@
 /// <reference types="google.maps" />
 import type { CategoryIcon, PublishedPoi } from 'shared-types';
 import { categoryIconMeta } from './category-icon-meta';
-import { buildMarkerIcon, type MarkerShape } from './marker-style-adapter';
+import { buildMarkerIcon, type MarkerPattern } from './marker-style-adapter';
 
 /**
  * Checkpoint 1B.10 §4/§12/§14 — the one place a real `google.maps.Marker` is
@@ -39,7 +39,7 @@ export interface PoiMarkerLayer {
 export interface SyncOptions {
   readonly pois: readonly PublishedPoi[];
   readonly categoryIconById: ReadonlyMap<string, CategoryIcon>;
-  readonly shape: MarkerShape;
+  readonly pattern: MarkerPattern;
   readonly pixelSize: number;
   readonly selectedPoiId: string | null;
   readonly onSelect: (poiId: string) => void;
@@ -65,10 +65,13 @@ export function createPoiMarkerLayer(map: google.maps.Map): PoiMarkerLayer {
       const isSelected = options.selectedPoiId === poi.poiId;
       const icon = categoryIconMeta(options.categoryIconById.get(poi.categoryId) ?? 'OTHER');
       const spec = buildMarkerIcon({
-        shape: options.shape,
+        pattern: options.pattern,
         pixelSize: isSelected ? Math.round(options.pixelSize * SELECTED_SCALE) : options.pixelSize,
         color: icon.color,
+        // checkpoint 1B.16 §5 — a platform-independent vector glyph; `glyph`
+        // stays as the emoji fallback for any older caller/path.
         glyph: icon.emoji,
+        glyphPath: icon.markerGlyphPath,
         selected: isSelected,
       });
 
@@ -81,7 +84,10 @@ export function createPoiMarkerLayer(map: google.maps.Map): PoiMarkerLayer {
           scaledSize: new google.maps.Size(spec.width, spec.height),
           anchor: new google.maps.Point(spec.anchorX, spec.anchorY),
         },
-        zIndex: isSelected ? 1000 : undefined,
+        // Our published POIs are the strongest POI layer: always above
+        // Google's own (non-interactive, `clickableIcons: false`) POI icons,
+        // and the selected one above its siblings.
+        zIndex: isSelected ? 2000 : 10,
       });
       marker.addListener('click', () => options.onSelect(poi.poiId));
       markers.push(marker);

@@ -106,10 +106,26 @@ export function mapThemeToGoogleMapsStyles(theme: MapTheme): readonly GoogleMapS
   // administrative clutter." `poi` (the umbrella feature type) is
   // deliberately never turned off wholesale — that would also hide
   // `poi.park`, which has its own independent `visibility.parks` flag.
+
+  // checkpoint 1B.16 — provider POIs are split into "businesses" (+ civic)
+  // and "tourist landmarks" so a client can keep one and drop the other.
+  // `poi.government` stays grouped with businesses as non-landmark civic
+  // context. `poi.sports_complex` is deliberately NOT individually toggled
+  // — it is rare and its "landmark vs venue" classification is ambiguous;
+  // this is a documented limitation of the Google legacy feature-type set,
+  // not an invented semantic.
   if (!visibility.businessPois) {
     styles.push(visibilityOff('poi.business'));
-    styles.push(visibilityOff('poi.attraction'));
     styles.push(visibilityOff('poi.government'));
+  }
+  // `landmarkPois` is OPTIONAL (added 1B.16). When ABSENT — every theme and
+  // every frozen publication created before 1B.16 — landmark visibility
+  // FOLLOWS `businessPois`, exactly reproducing the historical grouping
+  // where `businessPois: false` also hid `poi.attraction` /
+  // `poi.place_of_worship`. An explicit value takes over.
+  const landmarkPoisVisible = visibility.landmarkPois ?? visibility.businessPois;
+  if (!landmarkPoisVisible) {
+    styles.push(visibilityOff('poi.attraction'));
     styles.push(visibilityOff('poi.place_of_worship'));
   }
   if (!visibility.schools) {
@@ -120,6 +136,27 @@ export function mapThemeToGoogleMapsStyles(theme: MapTheme): readonly GoogleMapS
   }
   if (!visibility.parks) {
     styles.push(visibilityOff('poi.park'));
+  }
+  // checkpoint 1B.16 — three provider-neutral geography/label layers. Each
+  // is OPTIONAL; `undefined` (pre-1B.16 data) leaves the layer shown, i.e.
+  // no style entry is emitted, i.e. identical output to before.
+  if (visibility.roads === false) {
+    // Road GEOMETRY itself — `roadLabels` still controls the names.
+    styles.push(visibilityOff('road', 'geometry'));
+  }
+  if (visibility.buildings === false) {
+    // Google legacy styling's building / constructed-area feature type;
+    // there is no finer per-building-label type, so this is geometry only.
+    styles.push(visibilityOff('landscape.man_made', 'geometry'));
+  }
+  if (visibility.placeLabels === false) {
+    // Administrative place / area / locality / neighbourhood text, plus the
+    // land-parcel subdivisions. `administrative.country` labels are kept so
+    // a low-zoom view still has orientation context.
+    styles.push(visibilityOff('administrative.neighborhood', 'labels'));
+    styles.push(visibilityOff('administrative.locality', 'labels'));
+    styles.push(visibilityOff('administrative.province', 'labels'));
+    styles.push(visibilityOff('administrative.land_parcel'));
   }
   // §5 "Preserve: roads, rail / stations, major geography, parks where
   // useful, water, street labels where configured, transit labels where

@@ -1,6 +1,6 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
-import { DEFAULT_PUBLIC_CONTENT_LANGUAGE, type CustomerId, type MapId, type Role } from 'shared-types';
+import { DEFAULT_MAP_THEME, DEFAULT_PUBLIC_CONTENT_LANGUAGE, type CustomerId, type MapId, type Role } from 'shared-types';
 import type { RegistrationInput } from 'validation';
 
 /**
@@ -216,7 +216,12 @@ export async function provisionClient(input: RegistrationInput, deps: ProvisionC
         enabledLanguages: [DEFAULT_PUBLIC_CONTENT_LANGUAGE],
         mapProvider: { provider: 'GOOGLE_MAPS', style: 'ROAD' },
         area: { type: 'UNBOUNDED' },
-        ...(mapDocAlreadyExists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+        // checkpoint 1B.16 — a tenant's first map is created with the clean
+        // default theme (`TOURISM` preset) already persisted, same as
+        // `POST /api/maps` does. Only on a genuinely new doc: a re-provision
+        // must never clobber a Client Admin's saved theme (same guard the
+        // `createdAt` write already uses).
+        ...(mapDocAlreadyExists ? {} : { theme: DEFAULT_MAP_THEME, createdAt: FieldValue.serverTimestamp() }),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },

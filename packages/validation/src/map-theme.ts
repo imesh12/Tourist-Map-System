@@ -27,7 +27,15 @@ export const mapThemePresetSchema = z.enum(MAP_THEME_PRESETS);
 export const mapMarkerStyleSchema = z.enum(MAP_MARKER_STYLES);
 export const mapMarkerSizeSchema = z.enum(MAP_MARKER_SIZES);
 
-/** `MapTheme.visibility` — every flag required (not optional): a saved theme always has an explicit, complete visibility decision for every provider content category, never a partially-specified one. */
+/**
+ * `MapTheme.visibility`. The seven original flags are required — a saved
+ * theme always has an explicit decision for each. The four checkpoint-1B.16
+ * fields (`roads`/`buildings`/`placeLabels`/`landmarkPois`) are OPTIONAL:
+ * every theme and every frozen publication stored before 1B.16 omits them
+ * and must keep parsing, with `undefined` meaning "historical/permissive
+ * behaviour" (see `MapThemeVisibility`'s own doc comment, shared-types).
+ * `.strict()` still rejects any genuinely unknown key.
+ */
 export const mapThemeVisibilitySchema = z
   .object({
     businessPois: z.boolean(),
@@ -37,6 +45,10 @@ export const mapThemeVisibilitySchema = z
     parks: z.boolean(),
     roadLabels: z.boolean(),
     transitLabels: z.boolean(),
+    roads: z.boolean().optional(),
+    buildings: z.boolean().optional(),
+    placeLabels: z.boolean().optional(),
+    landmarkPois: z.boolean().optional(),
   })
   .strict();
 

@@ -45,8 +45,22 @@ export function PageOverlay({ page, onClose }: PageOverlayProps) {
     closeButtonRef.current?.focus();
   }, [page.pageId]);
 
+  // checkpoint 1B.16 §5 — Escape closes the panel, matching `PoiDetailCard`
+  // (the map behind stays usable, so `aria-modal` is still `false`).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div data-testid="page-overlay" className="page-overlay" role="dialog" aria-modal="false" aria-labelledby={headingId}>
+      {/* Decorative grab affordance — only visible in the mobile bottom-sheet layout. */}
+      <span className="page-overlay-handle" aria-hidden="true" />
       <button
         ref={closeButtonRef}
         type="button"
@@ -55,14 +69,22 @@ export function PageOverlay({ page, onClose }: PageOverlayProps) {
         aria-label="Close page"
         onClick={onClose}
       >
-        ×
+        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z" />
+        </svg>
       </button>
-      <h2 id={headingId} data-testid="page-overlay-title" className="page-overlay-title">
-        {page.title}
-      </h2>
-      <p data-testid="page-overlay-content" className="page-overlay-content">
-        {page.content}
-      </p>
+      <div className="poi-detail-body">
+        <div className="poi-detail-header">
+          <h2 id={headingId} data-testid="page-overlay-title" className="page-overlay-title">
+            {page.title}
+          </h2>
+        </div>
+        <div className="poi-detail-section">
+          <p data-testid="page-overlay-content" className="page-overlay-content">
+            {page.content}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

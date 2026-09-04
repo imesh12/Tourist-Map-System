@@ -32,17 +32,24 @@ interface MapPreviewInfoProps {
 }
 
 const HIDDEN_LABELS: ReadonlyArray<readonly [key: keyof MapTheme['visibility'], label: string]> = [
-  ['businessPois', 'Business POIs'],
-  ['transit', 'Transit'],
+  ['roads', 'Roads'],
+  ['roadLabels', 'Road names'],
+  ['transit', 'Railway / Transit'],
+  ['transitLabels', 'Transit labels'],
+  ['parks', 'Parks & nature'],
+  ['buildings', 'Buildings'],
+  ['placeLabels', 'Area / place names'],
+  ['landmarkPois', 'Tourist landmarks'],
+  ['businessPois', 'Businesses'],
   ['schools', 'Schools'],
   ['hospitals', 'Hospitals'],
-  ['parks', 'Parks'],
-  ['roadLabels', 'Road labels'],
-  ['transitLabels', 'Transit labels'],
 ];
 
 function summarizeHidden(theme: MapTheme): string {
-  const hidden = HIDDEN_LABELS.filter(([key]) => !theme.visibility[key]).map(([, label]) => label);
+  // Only an EXPLICIT `false` counts as "hidden". The checkpoint-1B.16
+  // optional fields (`roads`/`buildings`/`placeLabels`/`landmarkPois`) are
+  // `undefined` on every pre-1B.16 theme and must read as shown, not hidden.
+  const hidden = HIDDEN_LABELS.filter(([key]) => theme.visibility[key] === false).map(([, label]) => label);
   return hidden.length > 0 ? hidden.join(', ') : 'None';
 }
 

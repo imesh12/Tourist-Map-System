@@ -119,6 +119,10 @@ describe('provisionClient — checkpoint 1A.5', () => {
     // updated doc comment.
     expect(mapData.defaultLanguage).toBe('en');
     expect(mapData.enabledLanguages).toEqual(['en']);
+    // checkpoint 1B.16 — a tenant's first map is created with the clean
+    // default theme (the `TOURISM` preset) already persisted.
+    expect(mapData.theme.preset).toBe('TOURISM');
+    expect(mapData.theme.visibility).toMatchObject({ businessPois: false, roadLabels: false, buildings: false, placeLabels: false, roads: true });
   });
 
   it('honors an explicit initialMapName instead of the derived default', async () => {

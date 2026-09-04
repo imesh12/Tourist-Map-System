@@ -72,10 +72,17 @@ export type MapAreaType = (typeof MAP_AREA_TYPES)[number];
  * selects a bundle of `MapTheme.visibility`/`colors`/`markerStyle` defaults:
  *
  * - `STANDARD` — closest to the provider's own defaults (all default POI
- *   categories visible).
- * - `TOURIST_CLEAN` — this checkpoint's main goal: suppresses default
- *   business/school/hospital clutter while keeping roads, transit,
- *   geography, and OUR OWN categories/POIs visually dominant.
+ *   categories visible). Unchanged since 1B.7; the "raw provider" option.
+ * - `TOURISM` — checkpoint 1B.16, and the DEFAULT for new maps
+ *   (`DEFAULT_MAP_THEME_PRESET`, ./map-theme-presets.js): an intentionally
+ *   very clean destination canvas — geography/roads/transit/parks kept, but
+ *   road names, place/area labels, buildings, and every generic provider POI
+ *   class (businesses, landmarks, schools, hospitals) OFF by default, so the
+ *   tenant's own published POIs and content are the only busy layer. The
+ *   client re-enables whichever contextual layers they want in Map Settings.
+ * - `TOURIST_CLEAN` — a lighter touch than `TOURISM`: suppresses default
+ *   business/landmark/school/hospital clutter while keeping roads + their
+ *   names, transit + its labels, place labels, buildings, and geography.
  * - `LIGHT` — a light, neutral palette variant.
  * - `MINIMAL` — the strongest suppression of provider POIs/labels.
  *
@@ -89,7 +96,7 @@ export type MapAreaType = (typeof MAP_AREA_TYPES)[number];
  * wrong — see that doc's own "Preset Behavior" section for the full
  * reasoning.
  */
-export const MAP_THEME_PRESETS = ['STANDARD', 'TOURIST_CLEAN', 'LIGHT', 'MINIMAL'] as const;
+export const MAP_THEME_PRESETS = ['STANDARD', 'TOURISM', 'TOURIST_CLEAN', 'LIGHT', 'MINIMAL'] as const;
 export type MapThemePreset = (typeof MAP_THEME_PRESETS)[number];
 
 /**

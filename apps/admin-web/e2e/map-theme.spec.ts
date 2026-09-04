@@ -32,12 +32,29 @@ async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'pass
   await expect(page).toHaveURL(/\/admin$/);
 }
 
+/**
+ * Admin UX direction (Map Appearance redesign) — the eleven
+ * `MapTheme.visibility` checkboxes and four color fields now live inside a
+ * native `<details>` "Customize map information" disclosure, COLLAPSED by
+ * default (the approved client workflow is preset/provider/style/marker +
+ * Save; most clients never need these). `Preset`/`Provider`/`Map
+ * style`/`Marker style`/`Marker size` are unaffected — they stay in the
+ * always-visible primary row above the disclosure. Every test below that
+ * reads or sets one of the moved fields must open the disclosure first;
+ * this is the one shared place that does it, clicking the `<summary>` by
+ * its exact visible text rather than relying on any particular ARIA role
+ * mapping for `<summary>`.
+ */
+async function openMapInformationDisclosure(page: Page): Promise<void> {
+  await page.getByText('Customize map information', { exact: true }).click();
+}
+
 test.describe('1B.7 map theme', () => {
   test.beforeEach(async () => {
     await clearEmulatorUsers();
   });
 
-  test('the Theme section renders with a Standard preset default for a brand-new (no-theme) map (A, K)', async ({ page }) => {
+  test('the Theme section renders with the TOURISM preset default for a brand-new (no-theme) map (A, K)', async ({ page }) => {
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1b7-renders@example.com',
       password: 'correct-horse-battery-staple',
@@ -48,35 +65,73 @@ test.describe('1B.7 map theme', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
-    // A: the Theme card and every one of its controls render.
-    await expect(page.getByText('Theme', { exact: true })).toBeVisible();
+    // A: the Map Appearance card and every one of its controls render —
+    // including the checkpoint-1B.16 "Map Information" / "Additional POIs"
+    // grouping, once its "Customize map information" disclosure is opened
+    // (collapsed by default — the Map Appearance UX redesign).
+    await expect(page.getByText('Map Appearance', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Preset')).toBeVisible();
-    await expect(page.getByLabel('Business POIs')).toBeVisible();
-    await expect(page.getByLabel('Transit', { exact: true })).toBeVisible();
+    await openMapInformationDisclosure(page);
+    await expect(page.getByLabel('Roads', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Road names')).toBeVisible();
+    await expect(page.getByLabel('Railway / Transit')).toBeVisible();
+    await expect(page.getByLabel('Transit labels')).toBeVisible();
+    await expect(page.getByLabel('Parks & nature')).toBeVisible();
+    await expect(page.getByLabel('Buildings')).toBeVisible();
+    await expect(page.getByLabel('Area / place names')).toBeVisible();
+    await expect(page.getByLabel('Tourist landmarks')).toBeVisible();
+    await expect(page.getByLabel('Businesses')).toBeVisible();
     await expect(page.getByLabel('Schools')).toBeVisible();
     await expect(page.getByLabel('Hospitals')).toBeVisible();
-    await expect(page.getByLabel('Parks')).toBeVisible();
-    await expect(page.getByLabel('Road labels')).toBeVisible();
-    await expect(page.getByLabel('Transit labels')).toBeVisible();
-    // Checkpoint 1B.8 — each color field now also renders a same-labeled
-    // `<input type="color">` picker (see ColorField, components/color-field.tsx)
-    // whose own accessible name is `"<label> picker"`; every bare-label
-    // lookup below must be `{ exact: true }` to keep resolving to the hex
-    // text field specifically, not both controls ambiguously.
+    // Checkpoint 1B.8 — each color field also renders a same-labeled
+    // `<input type="color">` picker whose accessible name is `"<label>
+    // picker"`; bare-label lookups need `{ exact: true }`. The road COLOUR
+    // field was renamed "Road colour" in 1B.16 so it never collides with the
+    // new "Roads" visibility checkbox.
     await expect(page.getByLabel('Background', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Roads', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Road colour', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Water', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Labels', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Marker style')).toBeVisible();
     await expect(page.getByLabel('Marker size')).toBeVisible();
 
     // K: this tenant's map was seeded with no `theme` field at all (see
-    // tenant-fixture.ts) — the read-side `DEFAULT_MAP_THEME` fallback (the
-    // STANDARD preset) must still load safely rather than crashing or
-    // showing an empty/undefined state.
-    await expect(page.getByLabel('Preset')).toHaveValue('STANDARD');
-    await expect(page.getByLabel('Business POIs')).toBeChecked();
-    await expect(page.getByLabel('Background', { exact: true })).toHaveValue('');
+    // tenant-fixture.ts) — the read-side `DEFAULT_MAP_THEME` fallback, now
+    // the TOURISM preset (checkpoint 1B.16), must load safely.
+    await expect(page.getByLabel('Preset')).toHaveValue('TOURISM');
+    await expect(page.getByLabel('Businesses')).not.toBeChecked();
+    await expect(page.getByLabel('Road names')).not.toBeChecked();
+    await expect(page.getByLabel('Roads', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('Parks & nature')).toBeChecked();
+    await expect(page.getByLabel('Background', { exact: true })).toHaveValue('#F4F2EC');
+  });
+
+  test('a map created via POST /api/maps persists the TOURISM default theme in Firestore (checkpoint 1B.16)', async ({ page }) => {
+    const tenant = await provisionTestTenant({
+      email: 'checkpoint-1b16-new-map-theme@example.com',
+      password: 'correct-horse-battery-staple',
+      companyName: 'Hakodate Night View Co',
+      displayName: 'Haku Hakodate',
+    });
+
+    await login(page, tenant);
+
+    const created = await page.evaluate(async () => {
+      const response = await fetch('/api/maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Hakodate — clean default map' }),
+      });
+      return { status: response.status, body: (await response.json()) as { mapId?: string } };
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.mapId).toBeTruthy();
+
+    const firestore = await getE2eFirestore();
+    const snap = await firestore.doc(`maps/${created.body.mapId}`).get();
+    const theme = snap.data()?.theme as { preset?: string; visibility?: Record<string, boolean> } | undefined;
+    expect(theme?.preset).toBe('TOURISM');
+    expect(theme?.visibility).toMatchObject({ businessPois: false, roadLabels: false, buildings: false, placeLabels: false, roads: true, parks: true });
   });
 
   test('the Tourist Clean preset is selectable and populates the expected visibility/colors (B)', async ({ page }) => {
@@ -92,11 +147,14 @@ test.describe('1B.7 map theme', () => {
 
     await page.getByLabel('Preset').selectOption('TOURIST_CLEAN');
     await expect(page.getByLabel('Preset')).toHaveValue('TOURIST_CLEAN');
-    await expect(page.getByLabel('Business POIs')).not.toBeChecked();
+    await openMapInformationDisclosure(page);
+    await expect(page.getByLabel('Businesses')).not.toBeChecked();
+    await expect(page.getByLabel('Tourist landmarks')).not.toBeChecked();
     await expect(page.getByLabel('Schools')).not.toBeChecked();
     await expect(page.getByLabel('Hospitals')).not.toBeChecked();
-    await expect(page.getByLabel('Parks')).toBeChecked();
-    await expect(page.getByLabel('Transit', { exact: true })).toBeChecked();
+    await expect(page.getByLabel('Parks & nature')).toBeChecked();
+    await expect(page.getByLabel('Railway / Transit')).toBeChecked();
+    await expect(page.getByLabel('Road names')).toBeChecked();
     await expect(page.getByLabel('Background', { exact: true })).toHaveValue('#F7F8F5');
     await expect(page.getByLabel('Water', { exact: true })).toHaveValue('#DDEBF4');
   });
@@ -112,13 +170,16 @@ test.describe('1B.7 map theme', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
-    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Preset STANDARD');
-    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Hidden: None');
+    // The no-theme fallback is now the TOURISM preset, which hides a lot by
+    // default — so the "Hidden" summary is populated from the start.
+    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Preset TOURISM');
+    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Businesses');
+    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Road names');
 
     await page.getByLabel('Preset').selectOption('MINIMAL');
 
     await expect(page.getByTestId('map-preview-current-theme')).toContainText('Preset MINIMAL');
-    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Business POIs');
+    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Businesses');
     await expect(page.getByTestId('map-preview-current-theme')).toContainText('Schools');
 
     // Not saved yet.
@@ -136,9 +197,11 @@ test.describe('1B.7 map theme', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
-    await expect(page.getByTestId('map-preview-current-theme')).not.toContainText('Parks');
-    await page.getByLabel('Parks').uncheck();
-    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Parks');
+    // TOURISM keeps parks ON, so it is not in the "Hidden" summary yet.
+    await expect(page.getByTestId('map-preview-current-theme')).not.toContainText('Parks & nature');
+    await openMapInformationDisclosure(page);
+    await page.getByLabel('Parks & nature').uncheck();
+    await expect(page.getByTestId('map-preview-current-theme')).toContainText('Parks & nature');
 
     await expect(page.getByText('Map settings saved.')).toHaveCount(0);
   });
@@ -154,6 +217,7 @@ test.describe('1B.7 map theme', () => {
     await login(page, tenant);
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
+    await openMapInformationDisclosure(page);
     await page.getByLabel('Water', { exact: true }).fill('#123456');
     // Checkpoint 1B.8 — the visual `<input type="color">` picker beside the
     // hex field is synced from the exact same state; this is the same live,
@@ -175,27 +239,34 @@ test.describe('1B.7 map theme', () => {
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
 
     await page.getByLabel('Preset').selectOption('TOURIST_CLEAN');
+    await openMapInformationDisclosure(page);
     await page.getByLabel('Hospitals').check(); // hand-edit after the preset — preset name must stay TOURIST_CLEAN (§9).
+    await page.getByLabel('Tourist landmarks').check(); // 1B.16 custom toggle: keep landmarks even under TOURIST_CLEAN.
     await page.getByLabel('Marker style').selectOption('DOT');
     await page.getByLabel('Marker size').selectOption('LARGE');
 
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
-    // F: real Firestore read — the theme actually landed on `maps/{mapId}`.
+    // F: real Firestore read — the theme actually landed on `maps/{mapId}`,
+    // including the hand-edited 1B.16 `landmarkPois` toggle.
     const firestore = await getE2eFirestore();
     const mapSnap = await firestore.doc(`maps/${tenant.mapId}`).get();
     expect(mapSnap.data()?.theme).toMatchObject({
       preset: 'TOURIST_CLEAN',
-      visibility: expect.objectContaining({ hospitals: true, businessPois: false }),
+      visibility: expect.objectContaining({ hospitals: true, businessPois: false, landmarkPois: true }),
       markerStyle: { style: 'DOT', size: 'LARGE' },
     });
 
-    // G: reload — Firestore is the source of truth, not React state.
+    // G: reload — Firestore is the source of truth, not React state. The
+    // disclosure itself is plain uncontrolled DOM state, so a reload also
+    // resets it to collapsed — open it again before reading its fields.
     await page.reload();
     await expect(page.getByLabel('Preset')).toHaveValue('TOURIST_CLEAN');
+    await openMapInformationDisclosure(page);
     await expect(page.getByLabel('Hospitals')).toBeChecked();
-    await expect(page.getByLabel('Business POIs')).not.toBeChecked();
+    await expect(page.getByLabel('Tourist landmarks')).toBeChecked();
+    await expect(page.getByLabel('Businesses')).not.toBeChecked();
     await expect(page.getByLabel('Marker style')).toHaveValue('DOT');
     await expect(page.getByLabel('Marker size')).toHaveValue('LARGE');
   });
@@ -215,15 +286,16 @@ test.describe('1B.7 map theme', () => {
     // reduced POIs.
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
     await page.getByLabel('Preset').selectOption('TOURIST_CLEAN');
+    await openMapInformationDisclosure(page);
     await page.getByLabel('Water', { exact: true }).fill('#0000FF');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
-    // Map B: left at its own STANDARD default, then explicitly saved with a
+    // Map B: left at its own default (TOURISM), then explicitly saved with a
     // different, unrelated preset — proving A's save never touched it in
     // either direction.
     await page.goto(`/admin/maps/${mapB.mapId}/settings`);
-    await expect(page.getByLabel('Preset')).toHaveValue('STANDARD');
+    await expect(page.getByLabel('Preset')).toHaveValue('TOURISM');
     await page.getByLabel('Preset').selectOption('LIGHT');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Map settings saved.')).toBeVisible();
@@ -371,16 +443,18 @@ test.describe('1B.7 map theme', () => {
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Map settings saved.')).toBeVisible();
 
-    // Map B was never touched — still its own STANDARD default, not A's
+    // Map B was never touched — still its own default (TOURISM), not A's
     // just-saved MINIMAL, when navigated to directly.
     await page.goto(`/admin/maps/${mapB.mapId}/settings`);
-    await expect(page.getByLabel('Preset')).toHaveValue('STANDARD');
-    await expect(page.getByLabel('Business POIs')).toBeChecked();
+    await expect(page.getByLabel('Preset')).toHaveValue('TOURISM');
+    await openMapInformationDisclosure(page);
+    await expect(page.getByLabel('Businesses')).not.toBeChecked();
 
     // Navigating back to Map A still shows A's own saved MINIMAL, not
     // whatever was briefly on-screen for B.
     await page.goto(`/admin/maps/${tenant.mapId}/settings`);
     await expect(page.getByLabel('Preset')).toHaveValue('MINIMAL');
-    await expect(page.getByLabel('Business POIs')).not.toBeChecked();
+    await openMapInformationDisclosure(page);
+    await expect(page.getByLabel('Businesses')).not.toBeChecked();
   });
 });

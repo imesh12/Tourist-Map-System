@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MapTheme } from 'shared-types';
+import { MAP_THEME_PRESET_DEFAULTS } from 'shared-types';
 import { mapThemeToGoogleMapsStyles } from './google-theme-adapter';
 
 /**
@@ -150,5 +151,96 @@ describe('mapThemeToGoogleMapsStyles — checkpoint 1B.7', () => {
     const styles = mapThemeToGoogleMapsStyles(theme);
     const colorStylers = styles.filter((style) => style.stylers.some((styler) => 'color' in styler));
     expect(colorStylers.length).toBe(1);
+  });
+});
+
+describe('mapThemeToGoogleMapsStyles — checkpoint 1B.16 clean-base-map fields', () => {
+  it('STANDARD (all seven flags on, new fields absent) still produces NO styles — unchanged', () => {
+    expect(mapThemeToGoogleMapsStyles(standardTheme)).toHaveLength(0);
+  });
+
+  it('an old theme that omits roads/buildings/placeLabels/landmarkPois behaves exactly as before (permissive)', () => {
+    // Same fixture the pre-1B.16 tests used — the split POI logic must not
+    // change its output for a `businessPois: true` theme.
+    const styles = mapThemeToGoogleMapsStyles(standardTheme);
+    expect(hasStyle(styles, 'road', 'geometry')).toBe(false);
+    expect(hasStyle(styles, 'landscape.man_made', 'geometry')).toBe(false);
+    expect(hasStyle(styles, 'administrative.land_parcel')).toBe(false);
+    expect(hasStyle(styles, 'poi.attraction')).toBe(false);
+  });
+
+  it('roads:false hides road geometry (and only geometry — labels stay under roadLabels)', () => {
+    const styles = mapThemeToGoogleMapsStyles({ ...standardTheme, visibility: { ...standardTheme.visibility, roads: false } });
+    expect(hasStyle(styles, 'road', 'geometry')).toBe(true);
+    expect(hasStyle(styles, 'road', 'labels')).toBe(false);
+  });
+
+  it('buildings:false hides landscape.man_made geometry', () => {
+    const styles = mapThemeToGoogleMapsStyles({ ...standardTheme, visibility: { ...standardTheme.visibility, buildings: false } });
+    expect(hasStyle(styles, 'landscape.man_made', 'geometry')).toBe(true);
+  });
+
+  it('placeLabels:false hides locality/neighborhood/province labels + land parcels, keeps country', () => {
+    const styles = mapThemeToGoogleMapsStyles({ ...standardTheme, visibility: { ...standardTheme.visibility, placeLabels: false } });
+    expect(hasStyle(styles, 'administrative.locality', 'labels')).toBe(true);
+    expect(hasStyle(styles, 'administrative.neighborhood', 'labels')).toBe(true);
+    expect(hasStyle(styles, 'administrative.province', 'labels')).toBe(true);
+    expect(hasStyle(styles, 'administrative.land_parcel')).toBe(true);
+    expect(hasStyle(styles, 'administrative.country', 'labels')).toBe(false);
+  });
+
+  it('businessPois:false now hides ONLY business + government — not landmarks (which follow businessPois when landmarkPois is absent)', () => {
+    const styles = mapThemeToGoogleMapsStyles({ ...standardTheme, visibility: { ...standardTheme.visibility, businessPois: false } });
+    expect(hasStyle(styles, 'poi.business')).toBe(true);
+    expect(hasStyle(styles, 'poi.government')).toBe(true);
+    // landmarkPois undefined → follows businessPois (=false) → landmarks hidden (historical grouping preserved)
+    expect(hasStyle(styles, 'poi.attraction')).toBe(true);
+    expect(hasStyle(styles, 'poi.place_of_worship')).toBe(true);
+  });
+
+  it('landmarkPois can be kept ON while businesses are OFF (the whole point of the split)', () => {
+    const styles = mapThemeToGoogleMapsStyles({
+      ...standardTheme,
+      visibility: { ...standardTheme.visibility, businessPois: false, landmarkPois: true },
+    });
+    expect(hasStyle(styles, 'poi.business')).toBe(true);
+    expect(hasStyle(styles, 'poi.attraction')).toBe(false);
+    expect(hasStyle(styles, 'poi.place_of_worship')).toBe(false);
+  });
+
+  it('landmarkPois:false hides landmarks even when businesses are ON', () => {
+    const styles = mapThemeToGoogleMapsStyles({
+      ...standardTheme,
+      visibility: { ...standardTheme.visibility, businessPois: true, landmarkPois: false },
+    });
+    expect(hasStyle(styles, 'poi.business')).toBe(false);
+    expect(hasStyle(styles, 'poi.attraction')).toBe(true);
+  });
+
+  it('the TOURISM preset produces a genuinely clean map: roads geometry ON, everything noisy OFF', () => {
+    const styles = mapThemeToGoogleMapsStyles(MAP_THEME_PRESET_DEFAULTS.TOURISM);
+    const isHidden = (featureType?: string, elementType?: string): boolean =>
+      styles.some(
+        (s) =>
+          s.featureType === featureType &&
+          s.elementType === elementType &&
+          s.stylers.some((st) => st.visibility === 'off'),
+      );
+    // kept (no visibility-off entry emitted)
+    expect(isHidden('road', 'geometry')).toBe(false); // roads:true
+    expect(isHidden('poi.park')).toBe(false); // parks:true
+    expect(isHidden('transit')).toBe(false); // transit:true
+    // off
+    expect(isHidden('road', 'labels')).toBe(true); // roadLabels:false
+    expect(isHidden('transit', 'labels')).toBe(true); // transitLabels:false
+    expect(isHidden('landscape.man_made', 'geometry')).toBe(true); // buildings:false
+    expect(isHidden('administrative.locality', 'labels')).toBe(true); // placeLabels:false
+    expect(isHidden('poi.business')).toBe(true); // businessPois:false
+    expect(isHidden('poi.attraction')).toBe(true); // landmarkPois:false
+    expect(isHidden('poi.school')).toBe(true);
+    expect(isHidden('poi.medical')).toBe(true);
+    // calm palette
+    const colorStylers = styles.filter((s) => s.stylers.some((st) => 'color' in st));
+    expect(colorStylers.length).toBe(4);
   });
 });

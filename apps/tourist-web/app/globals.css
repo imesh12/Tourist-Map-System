@@ -1,5 +1,28 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+
+  /* checkpoint 1B.16 §4 — tenant branding fallbacks. `TouristMapPageClient`
+     overrides these on `.tourist-map-body` with the publication snapshot's
+     own `branding` values (`lib/public-map/branding.ts`); an unbranded map
+     keeps exactly the look it had before (the dark neutral this app already
+     used for the selected pill). The focus-ring color below is deliberately
+     NOT a brand variable — it stays constant for accessibility. */
+  --brand-primary: #111827;
+  --brand-secondary: #5b6472;
+  --brand-on-primary: #ffffff;
+
+  /* The one accent colour (§ tourist-map-ui-ux "Visual language"): the
+     focus ring, the default/sightseeing marker, and the only colour used
+     for a plain text affordance like "Read more". Never a second accent. */
+  --accent: #2f6fed;
+  --focus-ring: #2f6fed;
+  --ink: #111827;
+  --ink-soft: rgba(17, 24, 39, 0.62);
+  --hairline: rgba(17, 24, 39, 0.08);
+  --surface: #ffffff;
+  --surface-glass: rgba(255, 255, 255, 0.94);
+  --shadow-card: 0 8px 30px rgba(17, 24, 39, 0.16);
+  --shadow-pill: 0 1px 4px rgba(17, 24, 39, 0.15);
 }
 
 * {
@@ -16,59 +39,30 @@ body {
 
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--ink);
 }
 
 /**
- * Checkpoint 1B.9 §6/§14/§15 — the near-full-viewport public map shell.
- * A small `header` branding row, one large `main` body region the map
- * canvas fills, and a thin attribution footer. Deliberately minimal/subtle
- * chrome (no admin-style cards, shadows, or padding-heavy panels) — this is
- * a foundation for tourists, not an admin dashboard.
+ * Checkpoint 1B.9 §6, restructured by checkpoint 1B.16 — a full-viewport,
+ * map-first surface. The map body fills the entire viewport; every piece of
+ * chrome (branding dock, search, POI/page detail, language selector,
+ * attribution) FLOATS over it. There is no static header/footer band.
  */
 .tourist-map-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
   width: 100%;
-}
-
-.tourist-map-branding {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  z-index: 1;
-}
-
-.tourist-map-branding-name {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-/**
- * checkpoint 1B.17B §12 — a small, unobtrusive control living beside the map
- * name in the branding header, never its own separate chrome bar.
- */
-.tourist-language-selector {
-  flex-shrink: 0;
-  font-size: 0.85rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  background: #fff;
-  color: inherit;
 }
 
 .tourist-map-body {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* A neutral map-tone ground so the brief moment before the tiles paint —
+     and the small strip the mobile dock reserves (see the canvas inset in
+     the responsive block) — never flashes stark white. */
+  background: #e8eaed;
 }
 
 .tourist-map-canvas {
@@ -78,29 +72,186 @@ body {
   height: 100%;
 }
 
+/**
+ * Checkpoint 1B.16 §1/§3/§4 — the floating navigation dock, as a strict
+ * three-zone model:
+ *
+ *   [ FIXED BRAND ] | [ SCROLLABLE MENU VIEWPORT ] | [ FIXED LANGUAGE ]
+ *
+ * Brand and language are `flex: 0 0 auto` — they never shrink and never
+ * scroll. The middle `.public-map-dock-menu-viewport` is the ONLY elastic
+ * part: `flex: 1 1 auto; min-width: 0; overflow: hidden` clips it, and the
+ * `.public-bottom-menu` strip inside it scrolls horizontally. This is what
+ * keeps a long published menu from ever squeezing the brand or pushing the
+ * language selector out of the dock, no matter how many items an admin
+ * publishes. The dock itself shrinks to its content up to a capped width so
+ * it stays compact and floating, never spanning the viewport.
+ */
+.public-map-dock {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  width: auto;
+  max-width: min(880px, calc(100% - 1.5rem));
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--hairline);
+  border-radius: 22px;
+  box-shadow: var(--shadow-card);
+  animation: dock-rise 220ms ease-out;
+}
+
+/* The middle zone: clips the scrolling menu strip so its width can flex down
+   to zero without affecting the fixed brand / language zones. */
+.public-map-dock-menu-viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* §2/§4 — the tenant identity block: given real width and its own padding so
+   it never looks squeezed between navigation controls. */
+.public-map-dock-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 240px;
+  padding: 0.15rem 0.35rem 0.15rem 0.2rem;
+}
+
+.public-map-dock-logo {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  background: var(--brand-primary);
+}
+
+.public-map-dock-logo--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-on-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.public-map-dock-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tourist-map-branding-name {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* §4 — kept deliberately quiet beneath the tenant name. */
 .tourist-map-attribution {
-  padding: 0.25rem 1rem;
-  font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.6);
-  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* §1 — hairline separators between the dock's logical sections. */
+.public-map-dock-divider {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1px;
+  height: 38px;
+  background: var(--hairline);
+}
+
+/* §5/§7 — the trailing utilities cluster (currently just the language
+   selector); grouped so it reads as platform controls, distinct from the
+   tourism categories in the scrolling strip. */
+.public-map-dock-utilities {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0 0.15rem;
 }
 
 /**
- * §18 — a small, test-mode-only diagnostics readout, deliberately unobtrusive
- * (bottom-left corner, small text) since it only ever renders when
- * `NODE_ENV !== 'production'`.
+ * checkpoint 1B.16 §4/§7 — the language selector, integrated into the dock's
+ * utilities cluster (same native `<select>`, unchanged behavior).
+ */
+.tourist-language-selector {
+  flex: 0 0 auto;
+  align-self: center;
+  min-height: 44px;
+  max-width: 96px;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/**
+ * §8/§18 — the test-mode-only diagnostics readout. Rendered whenever
+ * `NODE_ENV !== 'production'` (never in a production build) because the
+ * hermetic E2E suite reads it by `data-testid` to prove POI
+ * filtering/publication-safety without a live Google Maps key. It is
+ * `aria-hidden` AND, by default, visually hidden — a clipped 1px box that
+ * stays in the accessibility/DOM tree for `toHaveText` assertions but never
+ * paints debug text over the tourist map. A developer who wants the live
+ * panel back opts in with `NEXT_PUBLIC_TOURIST_MAP_DIAGNOSTICS=1`
+ * (`[data-visible='true']`).
  */
 .tourist-map-diagnostics {
   position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tourist-map-diagnostics[data-visible='true'] {
   bottom: 0.5rem;
   left: 0.5rem;
-  margin: 0;
+  z-index: 1;
+  width: auto;
+  height: auto;
   padding: 0.5rem;
   font-size: 0.7rem;
   line-height: 1.4;
   background: rgba(255, 255, 255, 0.85);
   border-radius: 4px;
   max-width: 90%;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
@@ -116,13 +267,12 @@ body {
 
 /**
  * The "map can't render right now" inline fallback (missing key, unsupported
- * provider, or a client-side load error) — sits inside `.tourist-map-body`,
- * centered, matching the message-state page's look without being a full
- * separate page.
+ * provider, or a client-side load error) — centered over the map body.
  */
 .tourist-map-unavailable {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -131,210 +281,465 @@ body {
 }
 
 /**
- * Checkpoint 1B.10 — the interactive layer's floating UI. All of it lives
- * inside `.tourist-map-body` (already `position: relative` — see above), so
- * every rule below is `position: absolute` relative to that region, never
- * the full viewport — the map itself stays visible behind every overlay
- * (§16: "Avoid overlays covering the entire map unnecessarily").
+ * Checkpoint 1B.10 — the interactive floating layer. Everything lives inside
+ * `.tourist-map-body` (`position: relative`-equivalent via `inset: 0`), so
+ * every rule below is positioned relative to that region, and the map stays
+ * visible behind it (§16).
  */
 
-.public-poi-empty-state {
+/**
+ * §8 — transient status as a small, quiet floating toast, NOT a
+ * system/debug line: a centred pill near the top of the map on a light
+ * pill shadow (not the heavier card shadow), sized to sit under the
+ * tourism UI rather than compete with it. `role="status"` is preserved on
+ * the element itself (see `tourist-map.tsx`); the My Location toast also
+ * auto-dismisses (`tourist-map.tsx` clears it after a few seconds).
+ */
+.public-poi-empty-state,
+.my-location-banner {
   position: absolute;
-  top: 0.75rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   margin: 0;
-  padding: 0.4rem 0.9rem;
-  background: rgba(255, 255, 255, 0.95);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: calc(100% - 2rem);
+  padding: 0.35rem 0.75rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--hairline);
   border-radius: 999px;
-  font-size: 0.85rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  box-shadow: var(--shadow-pill);
+  animation: card-in 160ms ease-out;
+}
+
+.public-poi-empty-state {
+  top: 0.6rem;
 }
 
 .my-location-banner {
-  position: absolute;
-  top: 3.25rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  margin: 0;
-  padding: 0.4rem 0.9rem;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 999px;
-  font-size: 0.85rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  top: 0.6rem;
 }
 
-/* Selected POI detail — floating card (desktop/tablet) by default. */
-.poi-detail-card {
-  position: absolute;
-  z-index: 3;
-  top: 1rem;
-  right: 1rem;
-  width: min(340px, calc(100% - 2rem));
-  max-height: calc(100% - 6rem);
-  overflow-y: auto;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  padding: 1rem 1.25rem;
-}
-
-.poi-detail-close {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 32px;
-  height: 32px;
-  min-width: 44px;
-  min-height: 44px;
-  border: none;
-  background: transparent;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
+/* A small static "live" dot tying the toast to the blue location marker —
+   no pulse ring, so it stays quiet. */
+.my-location-banner-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
   border-radius: 50%;
+  background: var(--accent);
 }
 
-.poi-detail-close:focus-visible,
-.public-search-close:focus-visible,
-.public-menu-item:focus-visible,
-.public-search-result:focus-visible,
-.public-search-input:focus-visible {
-  outline: 2px solid #2f6fed;
-  outline-offset: 2px;
+.my-location-banner--error {
+  color: var(--ink);
 }
 
-.poi-detail-name {
-  margin: 0 1.75rem 0.35rem 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.poi-detail-category {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.85rem;
-  color: rgba(0, 0, 0, 0.65);
-}
-
-.poi-detail-description,
-.poi-detail-address {
-  margin: 0 0 0.4rem 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-/* Selected Page overlay — checkpoint 1B.11 §12, floating card (desktop/
-   tablet) by default, mirrors `.poi-detail-card`'s exact rule shape. */
+/* Selected POI / page detail — a floating right-side slide panel
+   (desktop/tablet): ~412px, near full useful viewport height, floating
+   ABOVE the map (the map stays visible + interactable to its left), never a
+   permanent split-screen pane. Enters from the right. The card itself is
+   `padding: 0` and scrolls; a future full-bleed `.poi-detail-cover` slots
+   in above `.poi-detail-body`, which carries the content inset. */
+.poi-detail-card,
 .page-overlay {
   position: absolute;
   z-index: 3;
   top: 1rem;
   right: 1rem;
-  width: min(340px, calc(100% - 2rem));
-  max-height: calc(100% - 6rem);
+  bottom: 1rem;
+  width: min(412px, calc(100% - 2rem));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   overflow-y: auto;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  padding: 1rem 1.25rem;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  padding: 0;
+  animation: panel-slide-in-right 200ms ease-out;
 }
 
-.page-overlay-close {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 32px;
-  height: 32px;
-  min-width: 44px;
-  min-height: 44px;
-  border: none;
-  background: transparent;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 50%;
+/* §6 — the accent that ties the panel to the selected marker is the POI's
+   own category color (never the tenant brand color). */
+.poi-detail-card {
+  border-top: 3px solid var(--poi-accent, var(--brand-primary));
 }
 
-.page-overlay-close:focus-visible {
-  outline: 2px solid #2f6fed;
-  outline-offset: 2px;
+/* Full-bleed cover-image region (checkpoint 1B.16). Not rendered until a
+   published POI image exists — this rule is the reserved slot so the future
+   addition needs no layout change. */
+.poi-detail-cover {
+  margin: 0;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--hairline);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
 }
 
+.poi-detail-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.poi-detail-body,
+.page-overlay-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 1.2rem 1.35rem 1.4rem;
+}
+
+/* Title block: strong hierarchy — name first, then a category identity chip
+   carrying the marker accent. */
+.poi-detail-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding-bottom: 0.9rem;
+  margin-bottom: 0.95rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.poi-detail-name,
 .page-overlay-title {
-  margin: 0 1.75rem 0.5rem 0;
-  font-size: 1.05rem;
+  margin: 0 2.5rem 0 0;
+  font-size: 1.32rem;
   font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--ink);
 }
 
+.poi-detail-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.28rem 0.7rem 0.28rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.05);
+  background: color-mix(in srgb, var(--poi-accent, #6b7280) 12%, #ffffff);
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.poi-detail-category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.08);
+  background: color-mix(in srgb, var(--poi-accent, #6b7280) 22%, #ffffff);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.poi-detail-category-name {
+  white-space: nowrap;
+}
+
+/* Content sections with comfortable rhythm; the address block reads as its
+   own "location" row. */
+.poi-detail-section {
+  margin: 0 0 1rem;
+}
+
+.poi-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.poi-detail-section--address {
+  margin-top: 0.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.poi-detail-description,
 .page-overlay-content {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  /* §4/§12: the one mechanism that preserves the author's plain-text line
-     breaks safely — no `dangerouslySetInnerHTML`, ever. */
+  font-size: 0.92rem;
+  line-height: 1.62;
+  color: var(--ink);
+  /* §4/§12: preserves the author's plain-text line breaks safely — no
+     `dangerouslySetInnerHTML`, ever. */
   white-space: pre-wrap;
 }
 
-/* Floating bottom menu — the published Menu Builder navigation + "All". */
-.public-bottom-menu {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  overflow-x: auto;
-  background: rgba(255, 255, 255, 0.95);
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  -webkit-overflow-scrolling: touch;
+/* §9 — a long authored description collapses to a few lines; the full text
+   stays in the DOM, only its rendered height is capped. */
+.poi-detail-description--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.public-menu-item {
-  flex: 0 0 auto;
+.poi-detail-readmore {
   display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 44px;
-  padding: 0 0.9rem;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  background: #fff;
+  margin: 0.45rem 0 0;
+  padding: 0.2rem 0;
+  border: none;
+  background: transparent;
+  font: inherit;
   font-size: 0.85rem;
-  white-space: nowrap;
+  font-weight: 650;
+  color: var(--accent);
   cursor: pointer;
 }
 
+.poi-detail-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.87rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.poi-detail-address-pin {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.1rem;
+  color: var(--poi-accent, var(--ink-soft));
+}
+
+.poi-detail-address-pin svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: currentColor;
+}
+
+.poi-detail-handle,
+.page-overlay-handle {
+  display: none;
+}
+
+/* §9 — a clearly visible circular close control: a real filled 44×44 target
+   sitting over the top-right of the panel (or a future cover image). */
+.poi-detail-close,
+.page-overlay-close {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--shadow-pill);
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 120ms ease;
+}
+
+.poi-detail-close svg,
+.page-overlay-close svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+@media (hover: hover) {
+  .poi-detail-close:hover,
+  .page-overlay-close:hover {
+    background: #ffffff;
+  }
+}
+
+/* Menu strip inside the dock's middle viewport — the published Menu Builder
+   navigation + "All". Behavior (exact `snapshot.menu` projection, order,
+   `aria-pressed`) is unchanged from checkpoint 1B.10; checkpoint 1B.16
+   §1/§3 restyles each entry from an outlined pill to a compact
+   "icon above, label below" tourism-navigation cell and moves the
+   horizontal scroll here (the parent `.public-map-dock-menu-viewport` clips;
+   this strip scrolls). `flex: none` + `width: 100%` so it fills the clipped
+   viewport and never participates in the dock's own flex sizing. */
+.public-bottom-menu {
+  display: flex;
+  flex: none;
+  width: 100%;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 0.1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.public-bottom-menu::-webkit-scrollbar {
+  display: none;
+}
+
+/* §2 — a compact "icon above / label below" navigation cell, not a pill:
+   no border, quiet by default, never shrinks below a readable size. */
+.public-menu-item {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.2rem;
+  width: 64px;
+  min-height: 58px;
+  padding: 0.35rem 0.25rem;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.69rem;
+  font-weight: 550;
+  line-height: 1.15;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+/* Labels can run to two lines (see `.public-menu-item-label`) before the
+   rare third line is clipped — long multilingual labels stay readable
+   rather than truncating to an unreadable fragment. */
+
+.public-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+.public-menu-item-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  fill: currentColor;
+}
+
+.public-menu-item-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+/* §2 — inactive is quiet; active is a clean, strong state: a soft
+   accent-tinted cell with the accent glyph + label. The accent (#2f6fed,
+   the app's single accent — focus ring / default marker) is used here
+   rather than the tenant primary because it is contrast-guaranteed on the
+   near-white tint for ANY tenant colour, and it matches the reference's
+   active-item treatment. */
 .public-menu-item[aria-pressed='true'] {
-  background: #111827;
-  color: #fff;
-  border-color: #111827;
+  background: rgba(47, 111, 237, 0.12);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+@media (hover: hover) {
+  .public-menu-item:hover {
+    background: rgba(17, 24, 39, 0.05);
+    color: var(--ink);
+  }
+
+  .public-menu-item[aria-pressed='true']:hover {
+    background: rgba(47, 111, 237, 0.16);
+    color: var(--accent);
+  }
+}
+
+.public-menu-item:active {
+  transform: scale(0.96);
 }
 
 .public-menu-item:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* Search overlay — a compact panel (desktop/tablet) by default. */
+/* §2/§5 — Search / My Location are platform utilities, not tourism
+   categories: the glyph sits in a soft rounded chip, and when a utility
+   follows a normal category (the common "utilities grouped at the end"
+   case) a hairline separator appears before it — without ever re-ordering
+   the published menu. */
+.public-menu-item--utility .public-menu-item-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--ink);
+}
+
+.public-menu-item--utility:disabled .public-menu-item-icon {
+  background: rgba(17, 24, 39, 0.04);
+}
+
+.public-menu-item:not(.public-menu-item--utility) + .public-menu-item--utility {
+  margin-left: 0.35rem;
+  border-left: 1px solid var(--hairline);
+  padding-left: 0.4rem;
+}
+
+/* Focus-visible ring — one centralized selector list for every focusable
+   overlay control (§15). The color is the constant accent, never a brand
+   variable. */
+.poi-detail-close:focus-visible,
+.page-overlay-close:focus-visible,
+.poi-detail-readmore:focus-visible,
+.public-search-close:focus-visible,
+.public-menu-item:focus-visible,
+.public-search-result:focus-visible,
+.public-search-input:focus-visible,
+.tourist-language-selector:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Search overlay — a compact floating panel near the upper-left (§2) on
+   desktop/tablet. */
 .public-search-overlay {
   position: absolute;
   z-index: 4;
   top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(420px, calc(100% - 2rem));
+  left: 1rem;
+  width: min(380px, calc(100% - 2rem));
   max-height: calc(100% - 2rem);
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
   padding: 0.75rem 1rem 1rem;
   overflow: hidden;
+  animation: card-in 180ms ease-out;
 }
 
 .public-search-header {
@@ -352,10 +757,14 @@ body {
 .public-search-close {
   width: 44px;
   height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: transparent;
   font-size: 1.4rem;
   line-height: 1;
+  color: var(--ink);
   cursor: pointer;
   border-radius: 50%;
 }
@@ -365,15 +774,15 @@ body {
   width: 100%;
   min-height: 44px;
   padding: 0.5rem 0.75rem;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.2);
+  border-radius: 10px;
   font-size: 1rem;
 }
 
 .public-search-hint {
   margin: 0.75rem 0 0;
   font-size: 0.85rem;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--ink-soft);
 }
 
 .public-search-results {
@@ -392,7 +801,7 @@ body {
   min-height: 44px;
   padding: 0.5rem 0.25rem;
   border: none;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--hairline);
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -405,39 +814,200 @@ body {
 
 .public-search-result-category {
   font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--ink-soft);
 }
 
-/* Mobile (§16: 390×844 conceptually) — the card/overlay become a
-   near-full-width bottom sheet / top sheet instead of a small floating
-   panel, and the bottom menu keeps a compact, thumb-reachable height. */
+/**
+ * Motion (§11) — small, purposeful entrances only. All disabled under
+ * `prefers-reduced-motion: reduce`.
+ */
+@keyframes dock-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* §4 — the right-side POI / page panel enters from the right edge with a
+   small slide + fade. Disabled under `prefers-reduced-motion: reduce`. */
+@keyframes panel-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* §4/§6 — a soft fade at both edges of the menu viewport signals "there is
+   more to scroll" without a scrollbar. Purely cosmetic. */
+.public-map-dock-menu-viewport {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+}
+
+/**
+ * Tablet / small-desktop (§9) — keep the map full-bleed but reserve a strip
+ * at the bottom so Google's own required logo + Terms controls (rendered by
+ * the Maps SDK at the bottom edge of the map div) ride ABOVE the floating
+ * dock rather than behind it. The dock stays centered with side gutters, so
+ * on wider desktop the bottom corners are already clear.
+ */
+@media (max-width: 900px) {
+  .tourist-map-canvas {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  }
+}
+
+/* Tablet portrait (~768px) — the right-side panel narrows a little so a
+   usable strip of interactive map always remains beside it (§4: map stays
+   dominant, never a split layout). */
+@media (max-width: 820px) {
+  .poi-detail-card,
+  .page-overlay {
+    width: min(380px, calc(100% - 2rem));
+  }
+}
+
+/* Mobile (§4/§5/§9/§12) — dock stays ONE nowrap row: fixed brand | scrolling
+   menu viewport | fixed language, spanning nearly the full width. The
+   detail panel becomes a bottom sheet that clears the dock and the
+   safe-area inset; the map reserves bottom space so Google's attribution
+   rides above the dock. */
 @media (max-width: 640px) {
+  .tourist-map-canvas {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+  }
+
+  .public-map-dock {
+    max-width: none;
+    width: calc(100% - 0.75rem);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    gap: 0.25rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 20px;
+  }
+
+  .public-map-dock-brand {
+    max-width: 40%;
+    gap: 0.4rem;
+    padding-left: 0.1rem;
+  }
+
+  .public-map-dock-logo {
+    width: 32px;
+    height: 32px;
+  }
+
+  .public-map-dock-divider {
+    height: 32px;
+  }
+
+  .tourist-language-selector {
+    max-width: 74px;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.25rem;
+  }
+
   .poi-detail-card,
   .page-overlay {
     top: auto;
     right: 0;
     left: 0;
-    bottom: 4rem; /* sits above the floating bottom menu, matching §3's mobile mockup */
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 120px);
     width: 100%;
-    max-height: 55%;
-    border-radius: 16px 16px 0 0;
+    height: auto;
+    max-height: 58%;
+    border-radius: 18px 18px 0 0;
+    animation: sheet-up 200ms ease-out;
+  }
+
+  .poi-detail-body,
+  .page-overlay-body {
+    padding: 0.35rem 1.1rem 1.1rem;
+  }
+
+  .poi-detail-header {
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .poi-detail-name,
+  .page-overlay-title {
+    font-size: 1.2rem;
+  }
+
+  .poi-detail-cover {
+    border-radius: 18px 18px 0 0;
+  }
+
+  .poi-detail-handle,
+  .page-overlay-handle {
+    display: block;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 4px;
+    margin: 0.55rem auto 0.15rem;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.18);
   }
 
   .public-search-overlay {
     top: 0;
     left: 0;
     right: 0;
-    transform: none;
     width: 100%;
     max-height: 70%;
     border-radius: 0 0 16px 16px;
   }
 }
 
+/* Small phones (~320–380px) — tighten the brand block further so the
+   scrolling menu keeps a usable width and the language selector stays
+   reachable; never let the body scroll sideways. */
+@media (max-width: 380px) {
+  .public-map-dock-brand {
+    max-width: 34%;
+  }
+
+  .tourist-map-attribution {
+    font-size: 0.6rem;
+  }
+
+  .public-menu-item {
+    width: 60px;
+  }
+}
+
 /**
  * The full-viewport "nothing here but a sentence" state — shared by
- * loading.tsx, not-found.tsx, and page.tsx's own 'error' branch (via
- * `MapMessageState`).
+ * not-found.tsx and page.tsx's own 'error' branch (via `MapMessageState`).
  */
 .tourist-map-message-shell {
   display: flex;
@@ -449,6 +1019,7 @@ body {
   padding: 1.5rem;
   text-align: center;
   gap: 0.5rem;
+  background: var(--surface);
 }
 
 .tourist-map-message-heading {
@@ -463,22 +1034,23 @@ body {
   color: rgba(0, 0, 0, 0.75);
 }
 
-/* Mobile responsiveness (§14) — a narrow viewport keeps the same layout,
-   just tighter branding/attribution padding so the map body stays maximized. */
-@media (max-width: 480px) {
-  .tourist-map-branding {
-    padding: 0.4rem 0.75rem;
+/**
+ * Motion opt-out (§11) — last in the file so it overrides every animation
+ * declared above, including the mobile `sheet-up` variant.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .public-map-dock,
+  .poi-detail-card,
+  .page-overlay,
+  .public-search-overlay,
+  .public-poi-empty-state,
+  .my-location-banner {
+    animation: none;
   }
 
-  .tourist-map-branding-name {
-    font-size: 0.9rem;
-  }
-
-  .tourist-map-attribution {
-    padding: 0.2rem 0.75rem;
-  }
-
-  .tourist-map-message-shell {
-    padding: 1rem;
+  .public-menu-item,
+  .poi-detail-close,
+  .page-overlay-close {
+    transition: none;
   }
 }

@@ -55,6 +55,12 @@ export interface MapBranding {
  * the PROVIDER's clutter, not by touching anything tenant-owned).
  */
 export interface MapThemeVisibility {
+  /**
+   * Provider commercial + civic POIs (`poi.business`, `poi.government` in the
+   * Google adapter). Since checkpoint 1B.16 this is NARROWER than the
+   * pre-1B.16 field, which also bundled tourist landmarks — those moved to
+   * `landmarkPois` below.
+   */
   readonly businessPois: boolean;
   readonly transit: boolean;
   readonly schools: boolean;
@@ -62,6 +68,27 @@ export interface MapThemeVisibility {
   readonly parks: boolean;
   readonly roadLabels: boolean;
   readonly transitLabels: boolean;
+  /**
+   * checkpoint 1B.16 — provider-neutral, all OPTIONAL so every theme and
+   * frozen publication predating 1B.16 keeps parsing and rendering
+   * unchanged: an ABSENT field means "historical/permissive behaviour",
+   * never a forced value. A provider adapter is free to map each to the
+   * closest deterministic feature set it supports (see
+   * `mapThemeToGoogleMapsStyles`).
+   *
+   * - `roads` — road GEOMETRY itself (distinct from `roadLabels`). Absent → shown.
+   * - `buildings` — building / constructed-area geometry
+   *   (`landscape.man_made`). Absent → shown.
+   * - `placeLabels` — administrative place/area/locality/neighbourhood text
+   *   (country labels are kept for orientation). Absent → shown.
+   * - `landmarkPois` — tourist landmarks (`poi.attraction`,
+   *   `poi.place_of_worship`). Absent → FOLLOWS `businessPois`, exactly
+   *   reproducing the pre-1B.16 grouping.
+   */
+  readonly roads?: boolean;
+  readonly buildings?: boolean;
+  readonly placeLabels?: boolean;
+  readonly landmarkPois?: boolean;
 }
 
 /**

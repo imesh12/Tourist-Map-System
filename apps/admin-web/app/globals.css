@@ -352,6 +352,44 @@ select:focus-visible,
   margin-bottom: var(--space-1);
 }
 
+/* Disclosure — Map Appearance's "Customize map information" advanced
+   section. Native <details>/<summary> (real keyboard/AT semantics for
+   free, no custom JS show/hide) so the eleven visibility checkboxes and
+   four color fields stay reachable by keyboard and assistive technology
+   once expanded, even though the section is COLLAPSED by default — the
+   approved client workflow is preset/provider/style/marker + Save, with
+   this advanced section opened only when a client chooses to customize
+   it. e2e/map-theme.spec.ts explicitly opens it (clicking the summary)
+   before touching any field it contains. */
+.disclosure {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.disclosure-summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  list-style: none;
+}
+
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: var(--space-2);
+  transition: transform 0.15s ease;
+}
+
+.disclosure[open] > .disclosure-summary::before {
+  transform: rotate(90deg);
+}
+
 .card-description {
   font-size: 12.5px;
   color: var(--color-text-secondary);

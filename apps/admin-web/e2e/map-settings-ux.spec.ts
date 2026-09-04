@@ -23,6 +23,18 @@ async function login(page: Page, tenant: Pick<TestTenantFixture, 'email' | 'pass
 }
 
 /**
+ * Admin UX direction (Map Appearance redesign) — the theme color fields
+ * (Background/Road colour/Water/Labels) now live inside a native
+ * `<details>` "Customize map information" disclosure on the Map Appearance
+ * card, COLLAPSED by default. `Primary color`/`Secondary color` (Branding)
+ * are unaffected — that card was never touched. See map-theme.spec.ts's own
+ * copy of this helper for the full reasoning.
+ */
+async function openMapInformationDisclosure(page: Page): Promise<void> {
+  await page.getByText('Customize map information', { exact: true }).click();
+}
+
+/**
  * Drives a native `<input type="color">` the way a real color-picker
  * interaction ultimately manifests to the page. `Locator.fill()` is built
  * for typing into text-like inputs; a `type="color"` control has no such
@@ -109,7 +121,7 @@ test.describe('1B.8 map settings UX repair', () => {
     expect(windowScrollY).toBe(0);
   });
 
-  test('the map preview stays visible (sticky) after scrolling down to the Theme section (B)', async ({ page }) => {
+  test('the map preview stays visible (sticky) after scrolling down to the Branding section (B)', async ({ page }) => {
     const tenant = await provisionTestTenant({
       email: 'checkpoint-1b8-sticky-preview@example.com',
       password: 'correct-horse-battery-staple',
@@ -123,10 +135,12 @@ test.describe('1B.8 map settings UX repair', () => {
     const previewCard = page.locator('#map-preview-card');
     await expect(previewCard).toBeInViewport();
 
-    // Scroll the workspace down to the Theme card, far below the fold on a
-    // normal viewport.
-    await page.getByText('Theme', { exact: true }).scrollIntoViewIfNeeded();
-    await expect(page.getByLabel('Preset')).toBeVisible();
+    // Scroll the workspace down to the Branding card — the Map Appearance
+    // redesign moved Theme/Map Display (now merged into "Map Appearance")
+    // up near the top of the left column, so Branding, the last card, is
+    // now the far-below-the-fold anchor this test needs.
+    await page.getByText('Branding', { exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByLabel('Logo URL')).toBeVisible();
 
     // The preview card is STILL on-screen — this is what "sticky" means
     // concretely: it never scrolled out of the viewport alongside the left
@@ -172,8 +186,10 @@ test.describe('1B.8 map settings UX repair', () => {
     // E: the Theme Water picker updates the HEX field AND the live preview
     // (MapPreviewInfo's semantic "Current Theme" row — see map-theme.spec.ts's
     // own header comment for why this, not a screenshot, is what this suite
-    // asserts against).
+    // asserts against). Water lives inside the "Customize map information"
+    // disclosure now — open it first.
     await expect(page.getByTestId('map-preview-current-theme')).toBeVisible();
+    await openMapInformationDisclosure(page);
     await setNativeColorInputValue(page, 'Water picker', '#0000ff');
     await expect(page.getByLabel('Water', { exact: true })).toHaveValue('#0000ff');
     // A theme color change doesn't itself change the "Hidden: ..." summary
