@@ -141,6 +141,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           sourceType: 'GOOGLE_PLACES',
           provider: parsed.data.provider,
           providerPlaceId: parsed.data.providerPlaceId,
+          ...(details.hasPhoto ? { hasPhoto: true } : {}),
           status: 'ENABLED',
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),

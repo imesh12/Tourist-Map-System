@@ -6,9 +6,58 @@ import {
   type PublishedMapSummary,
   type PublishedPage,
   type PublishedPoi,
+  type PublishedPoiPhotoProviderRef,
+  type PublishedPoiPlace,
+  type PublishedPoiPriceLevel,
 } from 'shared-types';
 import type { CategoryParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
+import type { ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
 import { buildPublicMenuProjection } from './menu-projection';
+
+/** `$`-glyph string for the price levels that have one; FREE deliberately has no glyph (the client shows the word "Free" from `priceLevel === 'FREE'`). */
+const PRICE_LEVEL_GLYPHS: Readonly<Record<PublishedPoiPriceLevel, string | undefined>> = {
+  FREE: undefined,
+  INEXPENSIVE: '$',
+  MODERATE: '$$',
+  EXPENSIVE: '$$$',
+  VERY_EXPENSIVE: '$$$$',
+};
+
+/**
+ * `ExternalPoiPlaceMetadata` (adapter-normalized Google data) → the
+ * public-safe `PublishedPoiPlace` frozen onto the snapshot. Adds only the
+ * DERIVED `priceLevelDisplay` glyph; every other field passes through
+ * unchanged. Returns `undefined` when nothing public-safe survived (so the
+ * caller omits `place` entirely rather than storing an empty object).
+ */
+function toPublishedPlace(metadata: ExternalPoiPlaceMetadata): PublishedPoiPlace | undefined {
+  const priceLevelDisplay = metadata.priceLevel ? PRICE_LEVEL_GLYPHS[metadata.priceLevel] : undefined;
+  const place: PublishedPoiPlace = {
+    ...(metadata.rating !== undefined ? { rating: metadata.rating } : {}),
+    ...(metadata.userRatingCount !== undefined ? { userRatingCount: metadata.userRatingCount } : {}),
+    ...(metadata.priceLevel ? { priceLevel: metadata.priceLevel } : {}),
+    ...(priceLevelDisplay ? { priceLevelDisplay } : {}),
+    ...(metadata.primaryTypeDisplayName ? { primaryTypeDisplayName: metadata.primaryTypeDisplayName } : {}),
+    ...(metadata.openingHours
+      ? {
+          openingHours: {
+            periods: metadata.openingHours.periods.map((period) => ({
+              open: { ...period.open },
+              ...(period.close ? { close: { ...period.close } } : {}),
+            })),
+            weekdayDescriptions: [...metadata.openingHours.weekdayDescriptions],
+          },
+        }
+      : {}),
+    ...(metadata.utcOffsetMinutes !== undefined ? { utcOffsetMinutes: metadata.utcOffsetMinutes } : {}),
+    ...(metadata.websiteUri ? { websiteUri: metadata.websiteUri } : {}),
+    ...(metadata.nationalPhoneNumber ? { nationalPhoneNumber: metadata.nationalPhoneNumber } : {}),
+    ...(metadata.dineIn !== undefined ? { dineIn: metadata.dineIn } : {}),
+    ...(metadata.takeout !== undefined ? { takeout: metadata.takeout } : {}),
+    ...(metadata.delivery !== undefined ? { delivery: metadata.delivery } : {}),
+  };
+  return Object.keys(place).length > 0 ? place : undefined;
+}
 
 /**
  * Pure content-selection for a Publish — checkpoint 1B.8 §13. No Firestore,
@@ -44,6 +93,18 @@ import { buildPublicMenuProjection } from './menu-projection';
  *   (see that type's own doc comment, shared-types/src/map.ts) — so a
  *   future public consumer of a published snapshot never has to re-implement
  *   that fallback itself; the contract guarantees `theme` is always present.
+ * - Photo Experience Prototype checkpoint: a POI publishes `photo: {
+ *   available: true }` (the narrow public-safe hint, see shared-types'
+ *   `PublishedPoiPhoto` doc comment) — and a matching entry is added to the
+ *   separately-returned, SERVER-ONLY `photoProviderRefs` map — exactly when
+ *   it is `sourceType === 'GOOGLE_PLACES'`, was stamped `hasPhoto: true` at
+ *   import time, and still carries `provider`/`providerPlaceId` (always
+ *   true together for a `GOOGLE_PLACES` POI, checked explicitly rather than
+ *   assumed). No network call is made here — this stays a pure function;
+ *   see `Poi.hasPhoto`'s own doc comment for why a possibly-stale
+ *   import-time hint is an acceptable, documented tradeoff, and why the
+ *   ACTUAL photo is always re-resolved fresh, later, by the public photo
+ *   endpoint, never trusted from this hint.
  */
 
 export interface PublicationContent {
@@ -65,6 +126,8 @@ export interface PublicationContent {
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];
   readonly pages: readonly PublishedPage[];
+  /** Photo Experience Prototype checkpoint — see this file's header comment. Always present (possibly `{}`); the caller (the publish route) decides whether to write the key at all onto the stored document, matching `MapPublicationSnapshot.photoProviderRefs`'s own "absent, not empty" convention. */
+  readonly photoProviderRefs: Readonly<Record<string, PublishedPoiPhotoProviderRef>>;
 }
 
 export function buildPublicationContent(
@@ -73,6 +136,16 @@ export function buildPublicationContent(
   pois: readonly PoiParsed[],
   menuItems: readonly MenuItemParsed[],
   pages: readonly PageParsed[] = [],
+  /**
+   * Photo Experience Prototype checkpoint (rich-detail expansion) — the
+   * Google place metadata the PUBLISH ROUTE resolved (one live Place Details
+   * call per `GOOGLE_PLACES` POI), keyed by `poiId`. This function stays
+   * pure — it never makes the network call itself; it only projects what it
+   * is handed onto `PublishedPoi.place`. Empty / a POI absent from it (a
+   * lookup that failed or returned nothing public-safe) → `place` is simply
+   * omitted for that POI, exactly like a pre-expansion publication.
+   */
+  placeMetadataByPoiId: ReadonlyMap<string, ExternalPoiPlaceMetadata> = new Map(),
 ): PublicationContent {
   const publishedCategories: PublishedCategory[] = categories
     .filter((category) => category.enabled)
@@ -88,17 +161,38 @@ export function buildPublicationContent(
 
   const publishedCategoryIds = new Set(publishedCategories.map((category) => category.categoryId));
 
+  const photoProviderRefs: Record<string, PublishedPoiPhotoProviderRef> = {};
   const publishedPois: PublishedPoi[] = pois
     .filter((poi) => poi.status === 'ENABLED' && publishedCategoryIds.has(poi.categoryId))
-    .map((poi) => ({
-      poiId: poi.poiId,
-      categoryId: poi.categoryId,
-      name: poi.name,
-      location: poi.location,
-      ...(poi.address ? { address: poi.address } : {}),
-      ...(poi.description ? { description: poi.description } : {}),
-      ...(poi.translations ? { translations: poi.translations } : {}),
-    }));
+    .map((poi) => {
+      // Photo Experience Prototype checkpoint — see this file's header
+      // comment. `provider`/`providerPlaceId` are only ever set together on
+      // a real `GOOGLE_PLACES` POI (shared-types' `Poi` doc comment), but
+      // both are checked explicitly rather than assumed from `sourceType`
+      // alone — defense-in-depth against a malformed/partial document.
+      const hasResolvablePhoto = poi.sourceType === 'GOOGLE_PLACES' && poi.hasPhoto === true && Boolean(poi.provider) && Boolean(poi.providerPlaceId);
+      if (hasResolvablePhoto && poi.provider && poi.providerPlaceId) {
+        photoProviderRefs[poi.poiId] = { provider: poi.provider, providerPlaceId: poi.providerPlaceId };
+      }
+      // Rich-detail expansion — `place` is independent of `photo`: a
+      // `GOOGLE_PLACES` POI can have rating/hours/phone but no photo, and
+      // vice versa. Only the publish route's resolved metadata is projected;
+      // a non-`GOOGLE_PLACES` POI never gets a `place`, even if the map
+      // somehow held a stray entry for its id.
+      const placeMetadata = poi.sourceType === 'GOOGLE_PLACES' ? placeMetadataByPoiId.get(poi.poiId) : undefined;
+      const place = placeMetadata ? toPublishedPlace(placeMetadata) : undefined;
+      return {
+        poiId: poi.poiId,
+        categoryId: poi.categoryId,
+        name: poi.name,
+        location: poi.location,
+        ...(poi.address ? { address: poi.address } : {}),
+        ...(poi.description ? { description: poi.description } : {}),
+        ...(poi.translations ? { translations: poi.translations } : {}),
+        ...(hasResolvablePhoto ? { photo: { available: true as const } } : {}),
+        ...(place ? { place } : {}),
+      };
+    });
 
   // checkpoint 1B.11 — only `ENABLED` Pages are ever published, mirroring
   // `publishedCategories`'s identical "only enabled" filter above. A Page
@@ -137,5 +231,6 @@ export function buildPublicationContent(
     categories: publishedCategories,
     pois: publishedPois,
     pages: publishedPages,
+    photoProviderRefs,
   };
 }

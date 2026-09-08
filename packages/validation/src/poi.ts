@@ -26,6 +26,8 @@ export const poiSourceTypeSchema = z.enum(POI_SOURCE_TYPES);
 export const poiProviderSchema = z.enum(POI_PROVIDERS);
 /** checkpoint 1B.4 — an opaque external identifier (Google's own Place `id`/resource name), not one of this codebase's own branded ID formats, so only a length bound is enforced, not a prefix/character-class regex. */
 export const poiProviderPlaceIdSchema = z.string().trim().min(1).max(300);
+/** Photo Experience Prototype checkpoint — see shared-types' `Poi.hasPhoto` doc comment. A best-effort, non-authoritative hint captured at import time; never treated as proof a photo is currently resolvable. */
+export const poiHasPhotoSchema = z.boolean();
 
 /** checkpoint 1B.17A — a POI's translated fields, mirroring shared-types' `PoiTranslations`. Each field's translation bound matches its own scalar schema's max length exactly (§13). */
 export const poiTranslationsSchema = z
@@ -46,6 +48,9 @@ export const poiLocationSchema = z.object({
  * `categorySchema`'s role. `provider`/`providerPlaceId` — checkpoint 1B.4,
  * both optional (backward compatible with every 1B.3 `CLIENT_CUSTOM`
  * document, which has neither field) — see shared-types' `Poi` doc comment.
+ * `hasPhoto` — Photo Experience Prototype checkpoint, same backward-
+ * compatible optionality (absent on every POI document written before this
+ * checkpoint, and on every `CLIENT_CUSTOM` POI).
  */
 export const poiSchema = z.object({
   poiId: poiIdSchema,
@@ -59,6 +64,7 @@ export const poiSchema = z.object({
   sourceType: poiSourceTypeSchema,
   provider: poiProviderSchema.optional(),
   providerPlaceId: poiProviderPlaceIdSchema.optional(),
+  hasPhoto: poiHasPhotoSchema.optional(),
   // checkpoint 1B.17A — optional, backward compatible, mirrors `categorySchema.translations`.
   translations: poiTranslationsSchema.optional(),
   status: poiStatusSchema,

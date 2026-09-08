@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type CSSProperties } from 'react';
 import type { PublicContentLanguage } from 'shared-types';
 import type { PublicMapSnapshotParsed } from 'validation';
 import { resolveBrandingVars } from '@/lib/public-map/branding';
+import type { PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
 import { PublicMapShell } from './public-map-shell';
 import { TouristMap } from './tourist-map';
 
@@ -37,9 +38,22 @@ import { TouristMap } from './tourist-map';
 export interface TouristMapPageClientProps {
   readonly snapshot: PublicMapSnapshotParsed;
   readonly initialLanguage: PublicContentLanguage;
+  /** EMBEDDABLE PUBLIC MAP FOUNDATION checkpoint — `?embed=1` presence, resolved server-side by `app/maps/[mapId]/page.tsx`. Threaded straight through to `PublicMapShell` (which stamps an inert `data-embed="1"`); this component's behavior is otherwise identical whether embedded or not. */
+  readonly isEmbed?: boolean;
+  /**
+   * ADMIN PHOTO MARKER STYLE checkpoint — the resolved `PhotoPinTemplate`
+   * for this map's photo-eligible POI markers, already fully resolved
+   * server-side by `app/maps/[mapId]/page.tsx` via
+   * `resolvePublicPhotoPinTemplate()` (which of the map's currently
+   * PUBLISHED `photoMarkerStyle`, or the development-only `?photoMarker=`
+   * override, wins — see that function's own doc comment). Forwarded
+   * straight through to `TouristMap` — this component adds no logic of its
+   * own for it.
+   */
+  readonly photoPinTemplate?: PhotoPinTemplate;
 }
 
-export function TouristMapPageClient({ snapshot, initialLanguage }: TouristMapPageClientProps) {
+export function TouristMapPageClient({ snapshot, initialLanguage, isEmbed = false, photoPinTemplate }: TouristMapPageClientProps) {
   const [language, setLanguage] = useState<PublicContentLanguage>(initialLanguage);
 
   const handleLanguageChange = useCallback((next: PublicContentLanguage) => {
@@ -61,8 +75,8 @@ export function TouristMapPageClient({ snapshot, initialLanguage }: TouristMapPa
   );
 
   return (
-    <PublicMapShell mapName={snapshot.map.name} brandingStyle={brandingStyle}>
-      <TouristMap snapshot={snapshot} language={language} onLanguageChange={handleLanguageChange} />
+    <PublicMapShell mapName={snapshot.map.name} brandingStyle={brandingStyle} isEmbed={isEmbed}>
+      <TouristMap snapshot={snapshot} language={language} onLanguageChange={handleLanguageChange} photoPinTemplate={photoPinTemplate} />
     </PublicMapShell>
   );
 }

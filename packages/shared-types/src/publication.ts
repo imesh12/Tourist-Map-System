@@ -1,4 +1,4 @@
-import type { CategoryIcon } from './enums.js';
+import type { CategoryIcon, PoiProvider } from './enums.js';
 import type { CategoryTranslations } from './category.js';
 import type { PublicContentLanguage } from './language.js';
 import type { MenuItemTranslations } from './menu-item.js';
@@ -89,6 +89,85 @@ export interface PublishedPage {
   readonly translations?: PageTranslations;
 }
 
+/**
+ * Photo Experience Prototype checkpoint — the PUBLIC-SAFE photo signal a
+ * `PublishedPoi` carries. Deliberately the narrowest possible shape: a
+ * presence flag only. This is NOT a photo reference — it never carries a
+ * Google photo resource name, a temporary `photoUri`, a redirected/signed
+ * image URL, or `providerPlaceId`/`provider`. Those stay entirely
+ * server-only, on `MapPublicationSnapshot.photoProviderRefs` (see that
+ * field's own doc comment for why, and for the architectural boundary this
+ * type exists to preserve: a public consumer can learn "try showing a
+ * photo for this POI" without ever learning WHICH provider or WHAT
+ * provider-specific identity backs it). The actual image is always
+ * resolved on demand, server-side, from fresh Google Places data — see
+ * `apps/admin-web/app/api/public/maps/[mapId]/pois/[poiId]/photo/route.ts`.
+ */
+export interface PublishedPoiPhoto {
+  readonly available: true;
+}
+
+/**
+ * Photo Experience Prototype checkpoint (rich-detail expansion) — the
+ * PUBLIC-SAFE, DISPLAY-ONLY price level of a `PublishedPoi.place`. A compact
+ * normalization of the Google Places (New) `priceLevel` enum (its
+ * `PRICE_LEVEL_` prefix stripped); `PRICE_LEVEL_UNSPECIFIED` normalizes to
+ * "no `priceLevel` at all", never a member here.
+ */
+export const PUBLISHED_POI_PRICE_LEVELS = ['FREE', 'INEXPENSIVE', 'MODERATE', 'EXPENSIVE', 'VERY_EXPENSIVE'] as const;
+export type PublishedPoiPriceLevel = (typeof PUBLISHED_POI_PRICE_LEVELS)[number];
+
+/** One `regularOpeningHours` period, mirroring Google Places (New) `Place.OpeningHours.Period` — `day` 0=Sunday..6=Saturday, `hour` 0–23, `minute` 0–59. `close` is absent for a place open 24 h on that `open.day`. */
+export interface PublishedPoiOpeningPeriod {
+  readonly open: { readonly day: number; readonly hour: number; readonly minute: number };
+  readonly close?: { readonly day: number; readonly hour: number; readonly minute: number };
+}
+
+/**
+ * Photo Experience Prototype checkpoint (rich-detail expansion) — the
+ * public-safe REGULAR (not "current") opening hours snapshotted at Publish.
+ * `currentOpeningHours.openNow` is deliberately NOT snapshotted — it is
+ * true only at the instant of Publish. The tourist client computes
+ * "Open now / Closed / Opens at …" itself from `periods` + `utcOffsetMinutes`
+ * against the visitor's own clock (see `lib/public-map/opening-hours.ts`).
+ * `weekdayDescriptions` is Google's already-localized human schedule text.
+ */
+export interface PublishedPoiOpeningHours {
+  readonly periods: readonly PublishedPoiOpeningPeriod[];
+  readonly weekdayDescriptions: readonly string[];
+}
+
+/**
+ * Photo Experience Prototype checkpoint (rich-detail expansion) — the
+ * PUBLIC-SAFE Google Places place metadata snapshotted onto a `PublishedPoi`
+ * at Publish time (§4 of the checkpoint expansion: "snapshot stable
+ * public-safe place metadata at Publish so draft changes remain invisible
+ * until Publish").
+ *
+ * NEVER carries `providerPlaceId`/`provider`/a photo resource name/any
+ * Google review text — only already-public, display-oriented fields. Every
+ * field is optional: Google returns them piecemeal, an old publication has
+ * none of them, and the tourist detail panel renders a row ONLY when its
+ * field is present (never a placeholder). `utcOffsetMinutes` is the place's
+ * standard UTC offset, needed by the client to evaluate `openingHours`
+ * against the visitor's clock.
+ */
+export interface PublishedPoiPlace {
+  readonly rating?: number;
+  readonly userRatingCount?: number;
+  readonly priceLevel?: PublishedPoiPriceLevel;
+  /** A compact currency-neutral glyph string for `priceLevel` (e.g. `"$$"`); FREE renders as the word, handled client-side. Derived, never from Google directly. */
+  readonly priceLevelDisplay?: string;
+  readonly primaryTypeDisplayName?: string;
+  readonly openingHours?: PublishedPoiOpeningHours;
+  readonly utcOffsetMinutes?: number;
+  readonly websiteUri?: string;
+  readonly nationalPhoneNumber?: string;
+  readonly dineIn?: boolean;
+  readonly takeout?: boolean;
+  readonly delivery?: boolean;
+}
+
 /** The narrow, public-safe projection of a `Poi` a publication snapshot ever stores — never `customerId`/`mapId`/`sourceType`/`provider`/`providerPlaceId`/`status`/timestamps. */
 export interface PublishedPoi {
   readonly poiId: string;
@@ -102,6 +181,10 @@ export interface PublishedPoi {
   readonly description?: string;
   /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment (./poi.js). */
   readonly translations?: PoiTranslations;
+  /** Photo Experience Prototype checkpoint — see `PublishedPoiPhoto`'s own doc comment. Absent whenever no photo was available at publish time (never a placeholder/false value — mirrors `address`/`description`'s own "absent, not falsy" optionality convention on this same interface). */
+  readonly photo?: PublishedPoiPhoto;
+  /** Photo Experience Prototype checkpoint (rich-detail expansion) — see `PublishedPoiPlace`'s own doc comment. Absent for every non-`GOOGLE_PLACES` POI, every publication predating this expansion, and any `GOOGLE_PLACES` POI whose Details lookup failed / returned nothing public-safe at Publish time. */
+  readonly place?: PublishedPoiPlace;
 }
 
 /** The map-level fields a publication snapshot carries — a fixed, deliberately narrow subset of `TouristMap`, never `customerId`/`status`/`defaultLanguage`/`enabledLanguages`/`publication`/timestamps. `theme` is always fully resolved (never absent) — see `buildPublicationContent()`'s own doc comment (apps/admin-web/lib/tenant/build-publication-snapshot.ts) for why a snapshot never forces a public consumer to re-implement the `DEFAULT_MAP_THEME` fallback itself. */
@@ -111,6 +194,32 @@ export interface PublishedMapSummary {
   readonly area: MapAreaConfig;
   readonly branding?: MapBranding;
   readonly theme: MapTheme;
+}
+
+/**
+ * Photo Experience Prototype checkpoint — the SERVER-ONLY Google Places
+ * identity needed to resolve a POI's photo, keyed by `poiId`. Lives
+ * exclusively on `MapPublicationSnapshot` (the raw, Admin-SDK-read
+ * Firestore document) and is explicitly excluded from `PublicMapSnapshot`
+ * below via `Omit` — the exact same pattern this file already establishes
+ * for `customerId`/`publishedByUid` (see `PublicMapSnapshot`'s own doc
+ * comment). This is the "server-only publication field / internal photo
+ * reference" the checkpoint's architecture correction explicitly permits:
+ * it carries only `provider`/`providerPlaceId` — the SAME identifier this
+ * codebase already persists on `Poi.provider`/`Poi.providerPlaceId` and
+ * treats as a stable place id. It deliberately does NOT carry a Places
+ * photo resource name or any media URL: this implementation treats those
+ * as non-durable values and never stores them (see
+ * `apps/admin-web/lib/pois/external-provider.ts`'s header for the
+ * conservative posture). Captured onto the immutable snapshot at publish
+ * time exactly like every other published field, and read ONLY by the trusted
+ * public photo endpoints
+ * (apps/admin-web/app/api/public/maps/[mapId]/pois/[poiId]/photo{,-meta}/route.ts)
+ * — never by `GET /api/public/maps/{mapId}` itself.
+ */
+export interface PublishedPoiPhotoProviderRef {
+  readonly provider: PoiProvider;
+  readonly providerPlaceId: string;
 }
 
 /**
@@ -127,11 +236,12 @@ export interface PublishedMapSummary {
  * v1-shaped document; nothing in this checkpoint reads any value other than
  * `1` yet.
  *
- * `customerId`/`publishedByUid` are stored on the document for server-side
- * ownership/audit purposes only — `PublicMapSnapshot` (below) is the
- * distinct, narrower shape the actual public read endpoint returns, which
- * omits both (§16: "Never expose customerId... user ids except where
- * publication audit requires server-side only").
+ * `customerId`/`publishedByUid`/`photoProviderRefs` are stored on the
+ * document for server-side purposes only — `PublicMapSnapshot` (below) is
+ * the distinct, narrower shape the actual public read endpoint returns,
+ * which omits all three (§16: "Never expose customerId... user ids except
+ * where publication audit requires server-side only"; `photoProviderRefs`
+ * — see that field's own doc comment above).
  */
 export interface MapPublicationSnapshot {
   readonly schemaVersion: 1;
@@ -168,11 +278,17 @@ export interface MapPublicationSnapshot {
   readonly pois: readonly PublishedPoi[];
   /** checkpoint 1B.11 — only `ENABLED` Pages, see `PublishedPage`'s own doc comment. */
   readonly pages: readonly PublishedPage[];
+  /** Photo Experience Prototype checkpoint — see `PublishedPoiPhotoProviderRef`'s own doc comment above. Absent (or missing entries for POIs with no resolvable photo) on every publication predating this checkpoint and on any publication with no photo-eligible POIs — never required, never defaulted to an empty object at the type level (the `PublicationContent`/publish-route call sites decide whether to include the key at all, matching this file's established "absent, not empty" convention for optional structured fields). */
+  readonly photoProviderRefs?: Readonly<Record<string, PublishedPoiPhotoProviderRef>>;
 }
 
 /**
  * What `GET /api/public/maps/{mapId}` actually returns — the same snapshot
- * with every admin/audit-only field removed. See `MapPublicationSnapshot`'s
- * own doc comment for why `customerId`/`publishedByUid` are excluded.
+ * with every admin/audit-only AND server-only-resolution field removed.
+ * See `MapPublicationSnapshot`'s own doc comment for why `customerId`/
+ * `publishedByUid` are excluded, and `PublishedPoiPhotoProviderRef`'s own
+ * doc comment for why `photoProviderRefs` is excluded — this `Omit` is the
+ * actual TypeScript-level guarantee behind "do NOT expose providerPlaceId
+ * through GET /api/public/maps/{mapId}".
  */
-export type PublicMapSnapshot = Omit<MapPublicationSnapshot, 'customerId' | 'publishedByUid'>;
+export type PublicMapSnapshot = Omit<MapPublicationSnapshot, 'customerId' | 'publishedByUid' | 'photoProviderRefs'>;

@@ -7,6 +7,7 @@ import type {
   MapStatus,
   MapStyle,
   MapThemePreset,
+  PhotoMarkerStyle,
 } from './enums.js';
 import type { PublicContentLanguage } from './language.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
@@ -132,6 +133,20 @@ export interface MapTheme {
   readonly visibility: MapThemeVisibility;
   readonly colors?: MapThemeColors;
   readonly markerStyle: MapThemeMarkerStyle;
+  /**
+   * ADMIN PHOTO MARKER STYLE checkpoint — which of the three approved photo
+   * marker outer-silhouette templates this map's photo-eligible POIs use.
+   * Optional — absent means "no explicit choice made yet"; every map/theme
+   * that predates this checkpoint has no such field at all, and must keep
+   * parsing/rendering safely by falling back to `DEFAULT_PHOTO_MARKER_STYLE`
+   * (see ./enums.js) at the point of use — see
+   * `resolvePhotoPinTemplate()`/`resolvePublicPhotoPinTemplate()`,
+   * apps/tourist-web/lib/public-map/marker-style-adapter.ts, the ONE place
+   * this value is ever translated into an internal renderer template.
+   * Independent of `markerStyle` above (which governs the ordinary, non-photo
+   * teardrop/dot marker) — never reset when `preset` changes.
+   */
+  readonly photoMarkerStyle?: PhotoMarkerStyle;
 }
 
 /**

@@ -57,6 +57,73 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: 'top-left',
   },
+  // EMBEDDABLE PUBLIC MAP FOUNDATION checkpoint — security headers, scoped
+  // to THIS app only (apps/admin-web/next.config.ts is untouched by this
+  // checkpoint; its own Admin CMS routes keep whatever framing posture they
+  // already had — nothing here weakens that).
+  //
+  // Investigation (this checkpoint): neither app had ANY `headers()`
+  // config, `middleware.ts`, or hosting-level (firebase/firebase.json has no
+  // `hosting` block) header configuration before this change — this repo
+  // never set X-Frame-Options/CSP anywhere. So this is the FIRST explicit,
+  // intentional statement of tourist-web's framing policy, not a relaxation
+  // of an existing restriction.
+  //
+  // Requirement: every published client map must be embeddable inside an
+  // ARBITRARY client website (their own HTML/PHP/WordPress/React/other CMS
+  // — checkpoint's own wording), and this app has no per-map/per-domain
+  // allowlist of embedder origins yet (that is explicitly deferred to a
+  // later "Admin Share & Embed UI" checkpoint, which could tighten this to
+  // a per-map domain allowlist once it exists). Given that, an
+  // `frame-ancestors` value naming specific domains would be actively wrong
+  // today — it would block the exact "any client's own website" use case
+  // this checkpoint exists to prove. `frame-ancestors *` is the deliberate,
+  // documented choice: this app has no authenticated session, no
+  // CSRF-relevant state-changing action, and no secret to protect from a
+  // framing/clickjacking attack (`GET /maps/{mapId}` is the same
+  // unauthenticated, publication-only content whether hosted directly or
+  // embedded — see PublicMapShell/tourist-map-page-client's own doc
+  // comments) — a wildcard here does not create a new vulnerability class
+  // the way it would on, say, a login or payment page.
+  //
+  // Deliberately NOT `X-Frame-Options` — the checkpoint explicitly forbids
+  // `X-Frame-Options: ALLOW-FROM` (removed from all modern browsers years
+  // ago, and it never supported a wildcard anyway), and setting
+  // `X-Frame-Options: SAMEORIGIN`/`DENY` alongside a permissive CSP
+  // `frame-ancestors` would be self-contradictory — a browser that honors
+  // `frame-ancestors` (every current browser) ignores `X-Frame-Options`
+  // entirely once CSP is present, and a legacy browser with no CSP support
+  // gets no framing restriction at all either way. So this omits
+  // `X-Frame-Options` altogether rather than shipping a header whose value
+  // could never be made to agree with the CSP directive next to it.
+  //
+  // `Permissions-Policy: geolocation=*` — checkpoint requirement "My
+  // Location must continue working when browser/parent permissions allow."
+  // A cross-origin iframe's ability to use `navigator.geolocation` is
+  // gated by TWO independent things: the PARENT page's `<iframe allow=
+  // "geolocation">` attribute (an integration contract the embedding site
+  // controls — see the recommended snippet in this checkpoint's completion
+  // report), and THIS app's own `Permissions-Policy` response header, which
+  // can only ever further RESTRICT what a browser allows, never grant
+  // something the iframe `allow` attribute didn't already permit. Explicitly
+  // stating `geolocation=*` here removes any ambiguity/browser-default
+  // difference and makes the intent — My Location must keep working when
+  // embedded, not just when hosted directly — a documented, testable
+  // contract rather than an accident of Next's defaults (which happen to
+  // already omit this header, but "we never set a header that would block
+  // it" and "we explicitly declared it must work" are different
+  // guarantees).
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *' },
+          { key: 'Permissions-Policy', value: 'geolocation=*' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import type { PublicMapSnapshot } from 'shared-types';
-import { mapIdSchema, mapPublicationSnapshotSchema, mapSchema } from 'validation';
-import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
+import { loadCurrentPublication } from '@/lib/tenant/load-current-publication';
 
 /**
  * `GET /api/public/maps/{mapId}` — checkpoint 1B.8 §16, the minimal public
@@ -39,6 +38,16 @@ import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
  * 1B.7's repair round: an underscore-prefixed discarded destructured
  * binding still trips `no-unused-vars` without a project-wide rule change,
  * which is out of scope here just like it was there).
+ *
+ * Photo Experience Prototype checkpoint: the map/publication lookup itself
+ * moved into `loadCurrentPublication()` (lib/tenant/load-current-publication.ts)
+ * — a pure refactor, same behavior, now shared with the new public photo
+ * endpoints (`app/api/public/maps/[mapId]/pois/[poiId]/photo{,-meta}/route.ts`)
+ * so the anti-enumeration lookup can never silently diverge between them.
+ * `photoProviderRefs` (present on the FULL snapshot `loadCurrentPublication()`
+ * returns) is still deliberately NOT added to `publicSnapshot` below — see
+ * shared-types' `PublishedPoiPhotoProviderRef` doc comment for why that
+ * field must never reach this response.
  */
 
 interface RouteParams {
@@ -50,32 +59,11 @@ const NOT_FOUND_RESPONSE = { code: 'public-map/not-found', message: 'This map is
 export async function GET(_request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   const { mapId } = await params;
 
-  if (!mapIdSchema.safeParse(mapId).success) {
+  const snapshot = await loadCurrentPublication(mapId);
+  if (!snapshot) {
     return NextResponse.json(NOT_FOUND_RESPONSE, { status: 404 });
   }
 
-  const firestore = getFirebaseAdminFirestore();
-  const mapSnap = await firestore.doc(`maps/${mapId}`).get();
-  if (!mapSnap.exists) {
-    return NextResponse.json(NOT_FOUND_RESPONSE, { status: 404 });
-  }
-
-  const mapParsed = mapSchema.safeParse(mapSnap.data());
-  if (!mapParsed.success || !mapParsed.data.publication) {
-    return NextResponse.json(NOT_FOUND_RESPONSE, { status: 404 });
-  }
-
-  const publicationSnap = await firestore.doc(`maps/${mapId}/publications/${mapParsed.data.publication.currentPublicationId}`).get();
-  if (!publicationSnap.exists) {
-    return NextResponse.json(NOT_FOUND_RESPONSE, { status: 404 });
-  }
-
-  const publicationParsed = mapPublicationSnapshotSchema.safeParse(publicationSnap.data());
-  if (!publicationParsed.success) {
-    return NextResponse.json(NOT_FOUND_RESPONSE, { status: 404 });
-  }
-
-  const snapshot = publicationParsed.data;
   const publicSnapshot: PublicMapSnapshot = {
     schemaVersion: snapshot.schemaVersion,
     publicationId: snapshot.publicationId,
@@ -94,7 +82,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     // multilingual publish and a legacy pre-1B.17A publication, but were
     // never copied into this hand-built object, so every public response
     // silently dropped them regardless of what the stored/parsed document
-    // actually held).
+    // actually held). `photoProviderRefs` is DELIBERATELY never added here
+    // — see this file's own header comment.
     defaultLanguage: snapshot.defaultLanguage,
     supportedLanguages: snapshot.supportedLanguages,
     menu: snapshot.menu,

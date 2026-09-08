@@ -301,6 +301,153 @@ describe('mapPublicationSnapshotSchema — multilingual (checkpoint 1B.17A)', ()
   });
 });
 
+describe('mapPublicationSnapshotSchema — photo fields (Photo Experience Prototype checkpoint)', () => {
+  it('accepts a snapshot with neither `pois[].photo` nor `photoProviderRefs` (every pre-checkpoint publication)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse(validSnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pois[0]?.photo).toBeUndefined();
+      expect(result.data.photoProviderRefs).toBeUndefined();
+    }
+  });
+
+  it('accepts `photo: { available: true }` on a published POI and a matching `photoProviderRefs` entry', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pois: [{ ...validSnapshot.pois[0], photo: { available: true } }],
+      photoProviderRefs: { [validSnapshot.pois[0]!.poiId]: { provider: 'GOOGLE', providerPlaceId: 'places/ChIJ_test' } },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pois[0]?.photo).toEqual({ available: true });
+      expect(result.data.photoProviderRefs).toEqual({
+        [validSnapshot.pois[0]!.poiId]: { provider: 'GOOGLE', providerPlaceId: 'places/ChIJ_test' },
+      });
+    }
+  });
+
+  it('rejects `photo: { available: false }` — the type is a presence flag, literal `true` only', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pois: [{ ...validSnapshot.pois[0], photo: { available: false } }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown key inside a `pois[].photo` object (.strict())', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pois: [{ ...validSnapshot.pois[0], photo: { available: true, url: 'https://leak.example/photo.jpg' } }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a `photoProviderRefs` entry with an unknown provider', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      photoProviderRefs: { [validSnapshot.pois[0]!.poiId]: { provider: 'YELP', providerPlaceId: 'x' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown key inside a `photoProviderRefs` entry (.strict() — never a photo resource name)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      photoProviderRefs: {
+        [validSnapshot.pois[0]!.poiId]: { provider: 'GOOGLE', providerPlaceId: 'places/x', photoName: 'places/x/photos/y' },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('mapPublicationSnapshotSchema — pois[].place (rich-detail expansion)', () => {
+  const fullPlace = {
+    rating: 4.5,
+    userRatingCount: 128,
+    priceLevel: 'MODERATE',
+    priceLevelDisplay: '$$',
+    primaryTypeDisplayName: 'Sushi restaurant',
+    openingHours: {
+      periods: [{ open: { day: 1, hour: 11, minute: 0 }, close: { day: 1, hour: 22, minute: 0 } }],
+      weekdayDescriptions: ['Monday: 11 AM – 10 PM'],
+    },
+    utcOffsetMinutes: 540,
+    websiteUri: 'https://example.com/sakura',
+    nationalPhoneNumber: '03-1234-5678',
+    dineIn: true,
+    takeout: true,
+    delivery: false,
+  };
+
+  it('BACKWARD COMPATIBLE — a snapshot whose POIs have no `place` still parses (every publication predating this expansion)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse(validSnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pois[0]?.place).toBeUndefined();
+    }
+  });
+
+  it('accepts a fully-populated `pois[].place`', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pois: [{ ...validSnapshot.pois[0], place: fullPlace }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pois[0]?.place).toEqual(fullPlace);
+    }
+  });
+
+  it('accepts a sparse `place` (Google returns fields piecemeal)', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      pois: [{ ...validSnapshot.pois[0], place: { rating: 3.9 } }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown key inside `place` (.strict() — never review text / providerPlaceId / a photo name)', () => {
+    for (const leak of [{ providerPlaceId: 'places/x' }, { reviews: ['great!'] }, { photoName: 'places/x/photos/y' }]) {
+      const result = mapPublicationSnapshotSchema.safeParse({
+        ...validSnapshot,
+        pois: [{ ...validSnapshot.pois[0], place: { rating: 4, ...leak } }],
+      });
+      expect(result.success, JSON.stringify(leak)).toBe(false);
+    }
+  });
+
+  it('rejects out-of-range values (rating > 5, an invalid priceLevel, a bad opening-hours day)', () => {
+    const bad = [
+      { rating: 6 },
+      { priceLevel: 'PRICE_LEVEL_MODERATE' },
+      { openingHours: { periods: [{ open: { day: 9, hour: 1, minute: 0 } }], weekdayDescriptions: [] } },
+      { websiteUri: 'not-a-url' },
+    ];
+    for (const place of bad) {
+      const result = mapPublicationSnapshotSchema.safeParse({
+        ...validSnapshot,
+        pois: [{ ...validSnapshot.pois[0], place }],
+      });
+      expect(result.success, JSON.stringify(place)).toBe(false);
+    }
+  });
+
+  it('is kept (NOT omitted) by publicMapSnapshotSchema — `place` is public-safe, unlike photoProviderRefs', () => {
+    const publicSnapshot: Record<string, unknown> = { ...validSnapshot };
+    delete publicSnapshot.customerId;
+    delete publicSnapshot.publishedByUid;
+    const result = publicMapSnapshotSchema.safeParse({
+      ...publicSnapshot,
+      pois: [{ ...validSnapshot.pois[0], place: fullPlace }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pois[0]?.place).toEqual(fullPlace);
+    }
+  });
+});
+
 /**
  * `publicMapSnapshotSchema` unit tests — checkpoint 1B.9. This is what
  * `tourist-web`'s public-map client actually parses `GET /api/public/maps/
@@ -392,6 +539,27 @@ describe('publicMapSnapshotSchema', () => {
         expect(result.data.defaultLanguage).toBe('en');
         expect(result.data.supportedLanguages).toEqual(['en']);
       }
+    });
+  });
+
+  describe('photo fields — Photo Experience Prototype checkpoint', () => {
+    it('keeps the public-safe `pois[].photo` presence flag in the public shape', () => {
+      const result = publicMapSnapshotSchema.safeParse({
+        ...publicSnapshot,
+        pois: [{ ...(publicSnapshot.pois as unknown[])[0] as object, photo: { available: true } }],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.pois[0]?.photo).toEqual({ available: true });
+      }
+    });
+
+    it('rejects a payload that still carries the server-only `photoProviderRefs` (.omit() + .strict() — provider identity must never reach the wire)', () => {
+      const result = publicMapSnapshotSchema.safeParse({
+        ...publicSnapshot,
+        photoProviderRefs: { poi_aB3dEf6gH9jKlMn0pQ: { provider: 'GOOGLE', providerPlaceId: 'places/ChIJ_test' } },
+      });
+      expect(result.success).toBe(false);
     });
   });
 });

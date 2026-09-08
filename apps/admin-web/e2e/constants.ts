@@ -170,8 +170,25 @@ export const E2E_TOURIST_BASE_URL = `http://127.0.0.1:${E2E_TOURIST_PORT}`;
  * — this suite proves the "map preview is unavailable in this environment"
  * fallback (§4/§13) deterministically, with no real, billable Google Maps
  * network call ever made, and no real key needed to run this suite locally.
+ *
+ * `NEXT_PUBLIC_ADMIN_PUBLIC_API_BASE_URL` (Photo Experience Prototype
+ * checkpoint) — the BROWSER-visible base URL for admin-web's public photo
+ * endpoints (`/api/public/maps/{mapId}/pois/{poiId}/photo{,-meta}`), pointed
+ * at admin-web's own E2E server (`E2E_BASE_URL`, port 3100), exactly like
+ * `ADMIN_PUBLIC_API_BASE_URL` above but readable from client code (see
+ * `apps/tourist-web/lib/public-map/poi-photo-source.ts`). Set explicitly so
+ * `photo-experience-embed.spec.ts` can drive the real POI-detail cover-photo
+ * + attribution path against the deterministic FAKE Google Places provider
+ * (never a real Google request). Every photo those endpoints resolve comes
+ * from `FakeGooglePlacesProvider` — `E2E_APP_ENV` still forces the fake
+ * (`GOOGLE_PLACES_API_KEY: ''` + `E2E_FAKE_EXTERNAL_POI_PROVIDER: 'true'`).
+ * Existing tourist-web specs are unaffected: the photo path only activates
+ * for a published POI carrying `photo.available === true`, which only a
+ * `GOOGLE_PLACES` + `hasPhoto` POI ever produces, and no other spec seeds
+ * one.
  */
 export const E2E_TOURIST_APP_ENV: Record<string, string> = {
   ADMIN_PUBLIC_API_BASE_URL: E2E_BASE_URL,
+  NEXT_PUBLIC_ADMIN_PUBLIC_API_BASE_URL: E2E_BASE_URL,
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: '',
 };

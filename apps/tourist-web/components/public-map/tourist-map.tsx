@@ -8,9 +8,16 @@ import { resolveLocalizedText, type CategoryIcon, type PublicContentLanguage, ty
 import type { PublicMapSnapshotParsed } from 'validation';
 import { ensureGoogleMapsApiConfigured } from '@/lib/public-map/google-maps-loader';
 import { computeBoundsForPois } from '@/lib/public-map/map-camera-utils';
-import { buildMarkerIcon, resolveMarkerVisualConfig } from '@/lib/public-map/marker-style-adapter';
+import { buildMarkerIcon, resolveMarkerVisualConfig, type PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
 import { myLocationErrorMessage, requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
 import { createPoiMarkerLayer, type PoiMarkerLayer } from '@/lib/public-map/poi-marker-layer';
+import {
+  buildPoiPhotoUrl,
+  bytesToDataUri,
+  MARKER_PHOTO_MAX,
+  MARKER_PHOTO_PX,
+  normalizePhotoApiBaseUrl,
+} from '@/lib/public-map/poi-photo-source';
 import { filterPoisByCategory } from '@/lib/public-map/public-poi-filter';
 import { PageOverlay } from './page-overlay';
 import { PoiDetailCard } from './poi-detail-card';
@@ -79,9 +86,25 @@ export interface TouristMapProps {
   readonly language: PublicContentLanguage;
   /** checkpoint 1B.16 §7 — language changes are still owned by `TouristMapPageClient` (URL `?lang=` sync + state); this component only forwards the selection from the `LanguageSelector` it now renders inside the floating `PublicMapDock`. */
   readonly onLanguageChange: (language: PublicContentLanguage) => void;
+  /**
+   * ADMIN PHOTO MARKER STYLE checkpoint — which `'photo-pin'` outer
+   * silhouette a per-POI photo marker uses. Fully resolved server-side by
+   * `app/maps/[mapId]/page.tsx` via `resolvePublicPhotoPinTemplate()`: the
+   * map's currently PUBLISHED `photoMarkerStyle` (Admin → Map → Settings →
+   * Photo Marker Style) in production, or the development-only
+   * `?photoMarker=1|2|3` query override outside production — see that
+   * function's own doc comment for the full precedence rule. Threaded
+   * straight into the existing `photoPinTemplate` seam
+   * (`marker-style-adapter.ts`) via `poi-marker-layer.ts`'s `sync()`; it
+   * affects ONLY which `'photo-pin'` outer silhouette a per-POI photo
+   * marker uses — it never changes which POIs get a photo pin, never
+   * triggers a second photo fetch, and has no effect on any non-photo
+   * marker.
+   */
+  readonly photoPinTemplate?: PhotoPinTemplate;
 }
 
-export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapProps) {
+export function TouristMap({ snapshot, language, onLanguageChange, photoPinTemplate }: TouristMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
   const markerLayerRef = useRef<PoiMarkerLayer | undefined>(undefined);
@@ -102,8 +125,14 @@ export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapP
   const [locationToast, setLocationToast] = useState<number | null>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  // Photo Experience Prototype checkpoint — the browser-visible base URL for
+  // admin-web's public photo endpoints. Read statically (Next inlines
+  // `NEXT_PUBLIC_*` at build time) and normalized once; `undefined` when
+  // unset, which disables every photo-capable marker/cover with no other
+  // visible change (see `lib/public-map/poi-photo-source.ts`).
+  const photoApiBaseUrl = normalizePhotoApiBaseUrl(process.env.NEXT_PUBLIC_ADMIN_PUBLIC_API_BASE_URL);
   const { mapProvider, area, theme, name: mapName, branding } = snapshot.map;
-  const { pois, categories, menu, pages, defaultLanguage, supportedLanguages } = snapshot;
+  const { mapId, pois, categories, menu, pages, defaultLanguage, supportedLanguages } = snapshot;
   // checkpoint 1B.16 §8 — the diagnostics readout below is a dev/E2E-only
   // DOM contract (it is how the hermetic, no-Google-key E2E asserts POI
   // filtering / publication-safety — see this file's top doc comment and
@@ -209,6 +238,97 @@ export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapP
   );
   const visiblePois = useMemo(() => filterPoisByCategory(localizedPois, selectedCategoryId), [localizedPois, selectedCategoryId]);
   const selectedPoi: PublishedPoi | undefined = selectedPoiId ? visiblePois.find((poi) => poi.poiId === selectedPoiId) : undefined;
+
+  // Photo Experience Prototype checkpoint — a live `/photo?index=0` URL per
+  // POI that published `photo.available === true`, and ONLY when a base URL
+  // is configured. Keyed off the immutable `snapshot.pois` (not the
+  // localized projection) since a photo URL depends only on ids, never on
+  // the display language. Bounded by `MARKER_PHOTO_MAX`; POIs past the cap
+  // keep their ordinary category marker. Deterministic (published `pois`
+  // order) so the same POIs get photos, and the useMemo result stays
+  // referentially stable for the page's lifetime.
+  const photoUrlByPoiId = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!photoApiBaseUrl) {
+      return map;
+    }
+    for (const poi of pois) {
+      if (map.size >= MARKER_PHOTO_MAX) {
+        break;
+      }
+      if (!poi.photo?.available) {
+        continue;
+      }
+      const url = buildPoiPhotoUrl(photoApiBaseUrl, mapId, poi.poiId, { maxPx: MARKER_PHOTO_PX });
+      if (url) {
+        map.set(poi.poiId, url);
+      }
+    }
+    return map;
+  }, [photoApiBaseUrl, mapId, pois]);
+
+  /**
+   * Photo Experience Prototype checkpoint — the marker `<image>` cannot load
+   * an external URL (an SVG used as a Maps marker icon runs in the browser's
+   * "secure static" mode), so each eligible marker photo is fetched ONCE
+   * here, base64-encoded into a `data:` URI, and cached in state for the
+   * page's lifetime.
+   *
+   * ROBUSTNESS (fixes the "repeated canceled `/photo?...` fetches, PHOTO_PIN
+   * never renders" bug): there is NO `AbortController` and NO deps-driven
+   * re-run. `markerPhotoFetchKey` is a stable string derived from the
+   * eligible-POI set; `startedFetchKeyRef` makes the fetch loop body run at
+   * most once per that key — so a React Strict-Mode double-mount, an
+   * ordinary re-render, a category-filter change, a selection change, or a
+   * pan/zoom never re-issues or cancels an in-flight request. Each POI's
+   * fetch resolves independently and idempotently: `applyMarkerPhoto` sets
+   * that POI's entry exactly once (a `''` value = "resolved, no usable
+   * image" → the POI simply keeps its ordinary category marker). A failure
+   * is swallowed to the same `''` outcome — never a broken image.
+   */
+  const [photoImageByPoiId, setPhotoImageByPoiId] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const startedFetchKeyRef = useRef<string | null>(null);
+
+  const markerPhotoFetchKey = useMemo(
+    () => (photoApiBaseUrl ? `${photoApiBaseUrl}::${[...photoUrlByPoiId.keys()].sort().join(',')}` : ''),
+    [photoApiBaseUrl, photoUrlByPoiId],
+  );
+
+  const applyMarkerPhoto = useCallback((poiId: string, dataUri: string) => {
+    setPhotoImageByPoiId((previous) => {
+      if (previous.has(poiId)) {
+        return previous;
+      }
+      const next = new Map(previous);
+      next.set(poiId, dataUri);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (markerPhotoFetchKey === '' || photoUrlByPoiId.size === 0) {
+      return;
+    }
+    if (startedFetchKeyRef.current === markerPhotoFetchKey) {
+      return;
+    }
+    startedFetchKeyRef.current = markerPhotoFetchKey;
+    for (const [poiId, url] of photoUrlByPoiId) {
+      void (async () => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            applyMarkerPhoto(poiId, '');
+            return;
+          }
+          const contentType = response.headers.get('content-type') ?? '';
+          applyMarkerPhoto(poiId, bytesToDataUri(new Uint8Array(await response.arrayBuffer()), contentType));
+        } catch {
+          applyMarkerPhoto(poiId, ''); // network error — POI keeps its category marker
+        }
+      })();
+    }
+  }, [markerPhotoFetchKey, photoUrlByPoiId, applyMarkerPhoto]);
   // checkpoint 1B.11 §12: resolved from the already-loaded, already-localized
   // `localizedPages` — never an independent fetch when a PAGE menu item is
   // clicked.
@@ -399,8 +519,11 @@ export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapP
       pixelSize: visual.pixelSize,
       selectedPoiId,
       onSelect: handleSelectPoi,
+      photoImageByPoiId,
+      // ADMIN PHOTO MARKER STYLE checkpoint — see `TouristMapProps.photoPinTemplate`.
+      photoPinTemplate,
     });
-  }, [visiblePois, categoryIconById, selectedPoiId, theme.markerStyle, handleSelectPoi, status]);
+  }, [visiblePois, categoryIconById, selectedPoiId, theme.markerStyle, handleSelectPoi, status, photoImageByPoiId, photoPinTemplate]);
 
   // §12: fit the camera to the filtered set on an EXPLICIT category change
   // only — never on initial mount, so the configured UNBOUNDED/BOUNDED
@@ -466,7 +589,14 @@ export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapP
         </p>
       ) : null}
       {selectedPoi ? (
-        <PoiDetailCard key={selectedPoi.poiId} poi={selectedPoi} category={categoryById.get(selectedPoi.categoryId)} onClose={handleCloseDetail} />
+        <PoiDetailCard
+          key={selectedPoi.poiId}
+          poi={selectedPoi}
+          category={categoryById.get(selectedPoi.categoryId)}
+          onClose={handleCloseDetail}
+          photoApiBaseUrl={photoApiBaseUrl}
+          mapId={mapId}
+        />
       ) : null}
       {selectedPage ? <PageOverlay page={selectedPage} onClose={handleClosePage} /> : null}
       {myLocation.status === 'success' && locationToast !== null ? (
@@ -519,6 +649,20 @@ export function TouristMap({ snapshot, language, onLanguageChange }: TouristMapP
           <dd data-testid="tourist-map-diag-marker-style">
             {theme.markerStyle.style},{theme.markerStyle.size}
           </dd>
+          {/* ADMIN PHOTO MARKER STYLE checkpoint — E2E-only diagnostic
+              readout of the resolved `PhotoPinTemplate` (see
+              `TouristMapProps.photoPinTemplate`'s own doc comment for how
+              this value is resolved). Same dev/E2E-only DOM contract as
+              every other `tourist-map-diag-*` field above: never renders in
+              a production build, exposes only the already-safe internal
+              template name (`photo-pin-1`/`2`/`3`/`legacy`), never the
+              persisted `PhotoMarkerStyle` enum value, any provider
+              identity, or any per-POI photo data. Lets E2E prove the
+              persisted Photo Marker Style publishes correctly and stays
+              immutable across an unpublished draft change, without a
+              live Google Maps key or any pixel/screenshot comparison. */}
+          <dt>photoMarkerTemplate</dt>
+          <dd data-testid="tourist-map-diag-photo-marker-template">{photoPinTemplate ?? 'none'}</dd>
           {/* Checkpoint 1B.10 — a deterministic, dev-mode-only DOM
               representation of the currently visible POI set, so E2E can
               prove filtering/publication-safety without ever depending on a

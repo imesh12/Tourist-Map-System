@@ -92,7 +92,7 @@ test.describe('1B.7 map theme', () => {
     await expect(page.getByLabel('Road colour', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Water', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Labels', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Marker style')).toBeVisible();
+    await expect(page.getByLabel('Marker style', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Marker size')).toBeVisible();
 
     // K: this tenant's map was seeded with no `theme` field at all (see
@@ -242,7 +242,7 @@ test.describe('1B.7 map theme', () => {
     await openMapInformationDisclosure(page);
     await page.getByLabel('Hospitals').check(); // hand-edit after the preset — preset name must stay TOURIST_CLEAN (§9).
     await page.getByLabel('Tourist landmarks').check(); // 1B.16 custom toggle: keep landmarks even under TOURIST_CLEAN.
-    await page.getByLabel('Marker style').selectOption('DOT');
+    await page.getByLabel('Marker style', { exact: true }).selectOption('DOT');
     await page.getByLabel('Marker size').selectOption('LARGE');
 
     await page.getByRole('button', { name: 'Save' }).click();
@@ -267,7 +267,7 @@ test.describe('1B.7 map theme', () => {
     await expect(page.getByLabel('Hospitals')).toBeChecked();
     await expect(page.getByLabel('Tourist landmarks')).toBeChecked();
     await expect(page.getByLabel('Businesses')).not.toBeChecked();
-    await expect(page.getByLabel('Marker style')).toHaveValue('DOT');
+    await expect(page.getByLabel('Marker style', { exact: true })).toHaveValue('DOT');
     await expect(page.getByLabel('Marker size')).toHaveValue('LARGE');
   });
 

@@ -116,6 +116,51 @@ export const MAP_MARKER_SIZES = ['SMALL', 'MEDIUM', 'LARGE'] as const;
 export type MapMarkerSize = (typeof MAP_MARKER_SIZES)[number];
 
 /**
+ * `MapTheme.photoMarkerStyle` — ADMIN PHOTO MARKER STYLE checkpoint (map-level
+ * production persistence of the PHOTO_PIN visual-refinement checkpoint's
+ * three approved outer-silhouette templates). A MAP-LEVEL appearance choice
+ * — never a per-POI property, never derived from category — exactly one
+ * value applies to every photo-eligible POI on a given map, matching
+ * `MapThemeMarkerStyle`'s own "one map, one visual choice" precedent above.
+ *
+ * Deliberately its own enum, not folded into `MAP_MARKER_STYLES` (`'PIN' |
+ * 'DOT'`, the ORDINARY non-photo marker style/size foundation) — these are
+ * different concepts: `MapThemeMarkerStyle` governs the plain teardrop/dot
+ * marker every non-photo POI still uses, while `PhotoMarkerStyle` governs
+ * only which of the three approved photo-pin outer silhouettes a photo-
+ * eligible POI's marker uses (see `resolvePhotoPinTemplate()`,
+ * apps/tourist-web/lib/public-map/marker-style-adapter.ts, the ONE place
+ * this semantic value is ever translated into an internal renderer
+ * template). Values are stable, semantic PRODUCTION names — never the
+ * internal prototype template names (`photo-pin-1`/`2`/`3`) a client must
+ * never be able to persist directly:
+ *
+ * - `ROUNDED_PIN` — the rounded-square badge + integrated pointer template
+ *   (internally `photo-pin-1`). The DEFAULT (see
+ *   `DEFAULT_PHOTO_MARKER_STYLE` below) — visually the strongest/most
+ *   readable of the three in manager review.
+ * - `SHIELD_PIN` — the curved "shield" body + curved integrated pointer
+ *   template (internally `photo-pin-2`).
+ * - `DIAMOND_PIN` — the diamond body whose own bottom vertex is the
+ *   geographic anchor (internally `photo-pin-3`).
+ */
+export const PHOTO_MARKER_STYLES = ['ROUNDED_PIN', 'SHIELD_PIN', 'DIAMOND_PIN'] as const;
+export type PhotoMarkerStyle = (typeof PHOTO_MARKER_STYLES)[number];
+
+/**
+ * The default `PhotoMarkerStyle` for a map with no explicit choice — every
+ * map's `theme.photoMarkerStyle` is OPTIONAL (see `MapTheme`'s own doc
+ * comment, ./map.js) for the same backward-compatibility reason
+ * `markerStyle`'s own foundation fields are: every map/publication that
+ * predates this checkpoint has no such field at all, and must keep
+ * parsing/rendering safely with this constant substituted at the point of
+ * use, rather than requiring a Firestore migration. `ROUNDED_PIN` was
+ * chosen because it was visually the strongest/most readable of the three
+ * approved templates in manager review.
+ */
+export const DEFAULT_PHOTO_MARKER_STYLE: PhotoMarkerStyle = 'ROUNDED_PIN';
+
+/**
  * Controlled category icon identifiers — checkpoint 1B.2, see
  * docs/stages/STAGE_1B_TECHNICAL_PLAN.md. A fixed, small, semantic set (not
  * arbitrary SVG markup, HTML, or a remote icon URL) — the actual glyph/asset

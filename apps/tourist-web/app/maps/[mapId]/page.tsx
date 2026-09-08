@@ -4,6 +4,7 @@ import { MapMessageState } from '@/components/public-map/map-message-state';
 import { TouristMapPageClient } from '@/components/public-map/tourist-map-page-client';
 import { fetchPublicMapSnapshot } from '@/lib/public-map/public-map-client';
 import { parseAcceptLanguageHeader, resolveInitialLanguage } from '@/lib/public-map/language-selection';
+import { resolvePublicPhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
 
 /**
  * `GET /maps/{mapId}` — checkpoint 1B.9 §1/§10/§11. The first real public,
@@ -51,6 +52,23 @@ import { parseAcceptLanguageHeader, resolveInitialLanguage } from '@/lib/public-
  * SDK script loads, which is the actually slow, user-perceptible part; the
  * internal snapshot fetch this file performs is a fast same-origin/
  * same-deployment call with nothing meaningful to show a spinner for.
+ *
+ * EMBEDDABLE PUBLIC MAP FOUNDATION checkpoint — `?embed=1`
+ * (`searchParams.embed`) is accepted here purely as a documented,
+ * additive INTEGRATION CONTRACT, never a rendering fork: this route
+ * renders the exact same `TouristMapPageClient` tree whether `embed` is
+ * present or not (checkpoint requirement: "do not fork markup just because
+ * embed=1"). `isEmbed` is threaded one level down only so
+ * `PublicMapShell` can stamp an inert `data-embed="1"` attribute on its
+ * root element (see that component's own doc comment) — a hook for future
+ * CSS/analytics/E2E assertions, never a behavioral branch. There is no
+ * `embed`-specific desktop/mobile switch anywhere in this app: every
+ * existing responsive rule is a CSS `@media` query against the rendered
+ * document's own viewport (see `app/globals.css`), which is already
+ * exactly the iframe's own viewport once embedded — no parent-window
+ * width is ever read, so embedding requires no separate layout logic at
+ * all. See apps/tourist-web/next.config.ts's own doc comment for the
+ * accompanying CSP/`frame-ancestors` change that actually permits framing.
  */
 
 interface PageParams {
@@ -61,14 +79,40 @@ interface PageParams {
    * this route). A value with more than one entry for `lang` (a malformed/
    * duplicated query string) collapses to `undefined` here — `resolveInitialLanguage()`
    * treats that exactly like "no `?lang` at all," never throwing.
+   *
+   * `embed` — EMBEDDABLE PUBLIC MAP FOUNDATION checkpoint, see this file's
+   * header comment. Any presence of the key (`?embed=1`, `?embed=true`, even
+   * `?embed=`) is treated as "embedded" — this route never validates a
+   * specific value, since the parameter's only purpose is presence-as-a-
+   * signal, not a mode selector with multiple meaningful states.
    */
-  readonly searchParams: Promise<{ readonly lang?: string | readonly string[] }>;
+  readonly searchParams: Promise<{
+    readonly lang?: string | readonly string[];
+    readonly embed?: string | readonly string[];
+    /**
+     * DEVELOPMENT-ONLY manual override, kept for continued manager visual
+     * review — see `resolvePublicPhotoPinTemplate()`
+     * (lib/public-map/marker-style-adapter.ts) for the full precedence
+     * rule. `?photoMarker=1|2|3` selects one of the three approved
+     * `'photo-pin'` templates directly, but ONLY outside a production build
+     * (`process.env.NODE_ENV !== 'production'`) — in production this
+     * param's value is completely ignored, no matter what a visitor puts in
+     * the URL, and the map's currently PUBLISHED `photoMarkerStyle`
+     * (Admin → Map → Settings → Photo Marker Style) is always used instead.
+     * In development, an absent or invalid value likewise falls through to
+     * the published style — this override never hides what a real tourist
+     * would see; it only lets a manager preview an alternate template
+     * on-demand.
+     */
+    readonly photoMarker?: string | readonly string[];
+  }>;
 }
 
 export default async function PublicMapPage({ params, searchParams }: PageParams) {
   const { mapId } = await params;
-  const { lang } = await searchParams;
+  const { lang, embed, photoMarker } = await searchParams;
   const langParam = typeof lang === 'string' ? lang : undefined;
+  const isEmbed = embed !== undefined;
 
   const result = await fetchPublicMapSnapshot(mapId);
 
@@ -81,6 +125,18 @@ export default async function PublicMapPage({ params, searchParams }: PageParams
   }
 
   const { snapshot } = result;
+
+  // ADMIN PHOTO MARKER STYLE checkpoint — resolved AFTER the snapshot fetch
+  // succeeds, since the published `photoMarkerStyle` (falling back safely to
+  // `undefined` for a pre-checkpoint snapshot — see `resolvePhotoPinTemplate`'s
+  // own doc comment) lives on `snapshot.map.theme`. See
+  // `resolvePublicPhotoPinTemplate`'s own doc comment for the full dev-query-
+  // override-vs-published-style precedence rule.
+  const photoPinTemplate = resolvePublicPhotoPinTemplate({
+    publishedStyle: snapshot.map.theme.photoMarkerStyle,
+    devQueryOverride: typeof photoMarker === 'string' ? photoMarker : undefined,
+    isProduction: process.env.NODE_ENV === 'production',
+  });
 
   // checkpoint 1B.17B §12 — resolved server-side so the very first paint
   // already reflects the full precedence order (explicit `?lang=` → browser
@@ -100,5 +156,5 @@ export default async function PublicMapPage({ params, searchParams }: PageParams
     defaultLanguage: snapshot.defaultLanguage,
   });
 
-  return <TouristMapPageClient snapshot={snapshot} initialLanguage={initialLanguage} />;
+  return <TouristMapPageClient snapshot={snapshot} initialLanguage={initialLanguage} isEmbed={isEmbed} photoPinTemplate={photoPinTemplate} />;
 }

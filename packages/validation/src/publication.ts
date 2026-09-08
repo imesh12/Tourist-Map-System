@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CATEGORY_ICONS, DEFAULT_PUBLIC_CONTENT_LANGUAGE } from 'shared-types';
+import { CATEGORY_ICONS, DEFAULT_PUBLIC_CONTENT_LANGUAGE, PUBLISHED_POI_PRICE_LEVELS } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
 import { categoryTranslationsSchema } from './category.js';
 import { categoryIdSchema, customerIdSchema, mapIdSchema, pageIdSchema, poiIdSchema, publicationIdSchema, uidSchema } from './ids.js';
@@ -8,7 +8,7 @@ import { latitudeSchema, longitudeSchema, mapAreaSchema, mapProviderConfigSchema
 import { mapThemeSchema } from './map-theme.js';
 import { menuItemTranslationsSchema } from './menu-item.js';
 import { pageTranslationsSchema } from './page.js';
-import { poiTranslationsSchema } from './poi.js';
+import { poiProviderPlaceIdSchema, poiProviderSchema, poiTranslationsSchema } from './poi.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -90,6 +90,48 @@ const publishedPageSchema = z
   })
   .strict();
 
+/** Photo Experience Prototype checkpoint — mirrors shared-types' `PublishedPoiPhoto` exactly: a presence flag only, never a photo reference. */
+const publishedPoiPhotoSchema = z
+  .object({
+    available: z.literal(true),
+  })
+  .strict();
+
+/** Photo Experience Prototype checkpoint (rich-detail expansion) — mirrors shared-types' `PublishedPoiOpeningPeriod`. `day` 0–6, `hour` 0–23, `minute` 0–59; `close` absent for a 24 h day. */
+const publishedPoiOpeningPeriodSchema = z
+  .object({
+    open: z.object({ day: z.number().int().min(0).max(6), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) }).strict(),
+    close: z
+      .object({ day: z.number().int().min(0).max(6), hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59) })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** Photo Experience Prototype checkpoint (rich-detail expansion) — mirrors shared-types' `PublishedPoiPlace`. Every field optional; `.strict()` still rejects any Google field this checkpoint did not deliberately opt into (e.g. review text, `providerPlaceId`). */
+const publishedPoiPlaceSchema = z
+  .object({
+    rating: z.number().min(0).max(5).optional(),
+    userRatingCount: z.number().int().min(0).optional(),
+    priceLevel: z.enum(PUBLISHED_POI_PRICE_LEVELS).optional(),
+    priceLevelDisplay: z.string().trim().min(1).max(16).optional(),
+    primaryTypeDisplayName: z.string().trim().min(1).max(120).optional(),
+    openingHours: z
+      .object({
+        periods: z.array(publishedPoiOpeningPeriodSchema),
+        weekdayDescriptions: z.array(z.string()),
+      })
+      .strict()
+      .optional(),
+    utcOffsetMinutes: z.number().int().min(-720).max(840).optional(),
+    websiteUri: z.string().trim().url().max(2048).optional(),
+    nationalPhoneNumber: z.string().trim().min(1).max(64).optional(),
+    dineIn: z.boolean().optional(),
+    takeout: z.boolean().optional(),
+    delivery: z.boolean().optional(),
+  })
+  .strict();
+
 const publishedPoiSchema = z
   .object({
     poiId: poiIdSchema,
@@ -99,6 +141,8 @@ const publishedPoiSchema = z
     address: z.string().optional(),
     description: z.string().optional(),
     translations: poiTranslationsSchema.optional(),
+    photo: publishedPoiPhotoSchema.optional(),
+    place: publishedPoiPlaceSchema.optional(),
   })
   .strict();
 
@@ -109,6 +153,14 @@ const publishedMapSummarySchema = z
     area: mapAreaSchema,
     branding: mapBrandingSchema.optional(),
     theme: mapThemeSchema,
+  })
+  .strict();
+
+/** Photo Experience Prototype checkpoint — mirrors shared-types' `PublishedPoiPhotoProviderRef`. Server-only; see that type's own doc comment (packages/shared-types/src/publication.ts) for why this never reaches `publicMapSnapshotSchema` below. */
+const publishedPoiPhotoProviderRefSchema = z
+  .object({
+    provider: poiProviderSchema,
+    providerPlaceId: poiProviderPlaceIdSchema,
   })
   .strict();
 
@@ -165,6 +217,12 @@ export const mapPublicationSnapshotSchema = z
     // fails parsing exactly as before. `.strict()` is unaffected: it only
     // governs unrecognized top-level keys, not this field's optionality.
     pages: z.array(publishedPageSchema).default([]),
+    // Photo Experience Prototype checkpoint — server-only, optional, no
+    // `.default()` (an absent key stays absent on the parsed type, matching
+    // shared-types' `readonly photoProviderRefs?: ...` — there is no
+    // meaningful "default" for a record keyed by arbitrary POI ids the way
+    // there is for `pages`/`supportedLanguages`).
+    photoProviderRefs: z.record(z.string(), publishedPoiPhotoProviderRefSchema).optional(),
   })
   .strict();
 
@@ -173,8 +231,9 @@ export type MapPublicationSnapshotParsed = z.infer<typeof mapPublicationSnapshot
 /**
  * Checkpoint 1B.9 — the schema for what `GET /api/public/maps/{mapId}`
  * actually returns over the wire: the same snapshot shape with
- * `customerId`/`publishedByUid` removed, mirroring shared-types'
- * `PublicMapSnapshot = Omit<MapPublicationSnapshot, 'customerId' | 'publishedByUid'>`
+ * `customerId`/`publishedByUid`/`photoProviderRefs` removed, mirroring
+ * shared-types'
+ * `PublicMapSnapshot = Omit<MapPublicationSnapshot, 'customerId' | 'publishedByUid' | 'photoProviderRefs'>`
  * exactly (see that type's own doc comment, packages/shared-types/src/publication.ts)
  * — derived from `mapPublicationSnapshotSchema` via `.omit()`, never a
  * hand-duplicated second copy of every field. This is what `tourist-web`'s
@@ -189,6 +248,7 @@ export type MapPublicationSnapshotParsed = z.infer<typeof mapPublicationSnapshot
 export const publicMapSnapshotSchema = mapPublicationSnapshotSchema.omit({
   customerId: true,
   publishedByUid: true,
+  photoProviderRefs: true,
 });
 
 export type PublicMapSnapshotParsed = z.infer<typeof publicMapSnapshotSchema>;

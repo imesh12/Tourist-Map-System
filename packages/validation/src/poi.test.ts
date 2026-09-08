@@ -40,6 +40,42 @@ describe('poiSchema', () => {
   });
 });
 
+describe('poiSchema — hasPhoto (Photo Experience Prototype checkpoint)', () => {
+  const googlePoi = {
+    ...validPoi,
+    sourceType: 'GOOGLE_PLACES' as const,
+    provider: 'GOOGLE' as const,
+    providerPlaceId: 'places/ChIJ_test',
+  };
+
+  it('accepts a POI document with no hasPhoto field at all (backward compatibility)', () => {
+    expect(poiSchema.safeParse(validPoi).success).toBe(true);
+  });
+
+  it('accepts hasPhoto: true on an imported GOOGLE_PLACES POI', () => {
+    const result = poiSchema.safeParse({ ...googlePoi, hasPhoto: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.hasPhoto).toBe(true);
+    }
+  });
+
+  it('accepts hasPhoto: false', () => {
+    const result = poiSchema.safeParse({ ...googlePoi, hasPhoto: false });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-boolean hasPhoto', () => {
+    expect(poiSchema.safeParse({ ...googlePoi, hasPhoto: 'yes' }).success).toBe(false);
+    expect(poiSchema.safeParse({ ...googlePoi, hasPhoto: 1 }).success).toBe(false);
+  });
+
+  it('is never accepted on the manual create/update input schemas (server-stamped only)', () => {
+    expect(poiCreateInputSchema.safeParse({ ...validCreateInput, hasPhoto: true }).success).toBe(false);
+    expect(poiUpdateInputSchema.safeParse({ status: 'ENABLED', hasPhoto: true }).success).toBe(false);
+  });
+});
+
 describe('poiSchema — translations (checkpoint 1B.17A, scenario 19)', () => {
   it('accepts a POI document with no translations field at all (backward compatibility)', () => {
     expect(poiSchema.safeParse(validPoi).success).toBe(true);

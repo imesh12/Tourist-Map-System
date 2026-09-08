@@ -1,8 +1,10 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
-import { mapSchema } from 'validation';
+import { mapSchema, type PoiParsed } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
+import type { ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
+import { getExternalPoiProvider } from '@/lib/pois/provider-registry';
 import { buildPublicationContent } from '@/lib/tenant/build-publication-snapshot';
 import { generatePublicationId } from '@/lib/tenant/generate-publication-id';
 import { loadTenantCategories } from '@/lib/tenant/load-categories';
@@ -10,6 +12,48 @@ import { loadTenantMenuItems } from '@/lib/tenant/load-menu-items';
 import { loadTenantPages } from '@/lib/tenant/load-pages';
 import { loadTenantPois } from '@/lib/tenant/load-pois';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
+
+/**
+ * Photo Experience Prototype checkpoint (rich-detail expansion) — resolves
+ * the public-safe Google place metadata to FREEZE onto this publication's
+ * `PublishedPoi.place` (§4: "snapshot stable public-safe place metadata at
+ * Publish so draft changes remain invisible until Publish").
+ *
+ * One live Place Details call per `GOOGLE_PLACES` POI (bounded by a realistic
+ * map's POI count; a Client-Admin action, not a hot path). Fails SOFT: no
+ * provider configured, or a per-POI lookup that throws / returns nothing,
+ * simply omits `place` for that POI — a publish is never blocked by Google.
+ *
+ * SKU: `PLACE_METADATA_FIELD_MASK` (google-places-provider.ts) includes
+ * Enterprise + Atmosphere Place Details fields, so each of these calls bills
+ * at that tier.
+ */
+async function resolvePlaceMetadata(pois: readonly PoiParsed[]): Promise<Map<string, ExternalPoiPlaceMetadata>> {
+  const result = new Map<string, ExternalPoiPlaceMetadata>();
+  const provider = getExternalPoiProvider();
+  if (!provider) {
+    return result;
+  }
+  const googlePois = pois.filter(
+    (poi): poi is PoiParsed & { providerPlaceId: string } =>
+      poi.sourceType === 'GOOGLE_PLACES' && Boolean(poi.provider) && Boolean(poi.providerPlaceId),
+  );
+  const resolved = await Promise.all(
+    googlePois.map(async (poi) => {
+      try {
+        return [poi.poiId, await provider.getPlaceMetadata(poi.providerPlaceId)] as const;
+      } catch {
+        return [poi.poiId, undefined] as const;
+      }
+    }),
+  );
+  for (const [poiId, metadata] of resolved) {
+    if (metadata) {
+      result.set(poiId, metadata);
+    }
+  }
+  return result;
+}
 
 /**
  * `POST /api/maps/{mapId}/publish` — checkpoint 1B.8 §11/§12, see
@@ -106,6 +150,12 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     loadTenantPages(resolvedMapId),
   ]);
 
+  // Rich-detail expansion — resolved just before the transaction, alongside
+  // the content loads (same "a rare edit landing in the fraction of a second
+  // before commit is at most a moment stale" tradeoff the file header
+  // already documents for categories/pois).
+  const placeMetadataByPoiId = await resolvePlaceMetadata(pois);
+
   const firestore = getFirebaseAdminFirestore();
   const publicationId = generatePublicationId();
 
@@ -131,7 +181,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       // `result.context.map` resolved at the top of the request — see the
       // file header comment for exactly why that distinction is the fix for
       // "publication version 2 uses the old map name".
-      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages);
+      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages, placeMetadataByPoiId);
 
       const nextVersion = (mapParsed.data.publication?.version ?? 0) + 1;
       const publishedAt = FieldValue.serverTimestamp();
@@ -156,6 +206,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         categories: content.categories,
         pois: content.pois,
         pages: content.pages,
+        ...(Object.keys(content.photoProviderRefs).length > 0 ? { photoProviderRefs: content.photoProviderRefs } : {}),
       });
 
       transaction.update(mapRef, {

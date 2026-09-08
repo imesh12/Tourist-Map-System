@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAP_MARKER_SIZES, MAP_MARKER_STYLES, MAP_THEME_PRESETS } from 'shared-types';
+import { MAP_MARKER_SIZES, MAP_MARKER_STYLES, MAP_THEME_PRESETS, PHOTO_MARKER_STYLES } from 'shared-types';
 
 /**
  * `MapTheme` validation — checkpoint 1B.7, see
@@ -26,6 +26,14 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 export const mapThemePresetSchema = z.enum(MAP_THEME_PRESETS);
 export const mapMarkerStyleSchema = z.enum(MAP_MARKER_STYLES);
 export const mapMarkerSizeSchema = z.enum(MAP_MARKER_SIZES);
+
+/**
+ * `MapTheme.photoMarkerStyle` validation — ADMIN PHOTO MARKER STYLE
+ * checkpoint. Accepts ONLY the three stable, semantic production values
+ * (`PHOTO_MARKER_STYLES`, shared-types) — never the internal prototype
+ * template names (`photo-pin-1`/`2`/`3`) and never an arbitrary string.
+ */
+export const photoMarkerStyleSchema = z.enum(PHOTO_MARKER_STYLES);
 
 /**
  * `MapTheme.visibility`. The seven original flags are required — a saved
@@ -76,6 +84,7 @@ export const mapThemeSchema = z
     visibility: mapThemeVisibilitySchema,
     colors: mapThemeColorsSchema.optional(),
     markerStyle: mapThemeMarkerStyleSchema,
+    photoMarkerStyle: photoMarkerStyleSchema.optional(),
   })
   .strict();
 

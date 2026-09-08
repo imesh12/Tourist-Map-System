@@ -54,6 +54,24 @@ export interface PoiTranslations {
  * `provider`/`providerPlaceId` fields at all, so neither is ever
  * client-forgeable through those endpoints either.
  *
+ * `hasPhoto` — Photo Experience Prototype checkpoint. A best-effort,
+ * NON-AUTHORITATIVE hint, stamped exactly once at import time from the same
+ * Google Places Details response the import route already fetches (no extra
+ * request): `true` iff that response reported at least one photo. It is
+ * never a photo reference — it carries no Google photo resource name, no
+ * temporary `photoUri`, no signed/redirected image URL — and it is never
+ * treated as proof a photo is currently resolvable. The ACTUAL photo is
+ * always re-resolved fresh, per request, server-side, by the public photo
+ * endpoint (`apps/admin-web/app/api/public/maps/[mapId]/pois/[poiId]/photo/route.ts`),
+ * which never trusts this hint: a POI whose Google photo was removed after
+ * import simply resolves to a generic 404 there, and the tourist UI falls
+ * back to its ordinary category marker with no broken image. Only ever set
+ * on a `sourceType: 'GOOGLE_PLACES'` document (a `CLIENT_CUSTOM` POI never
+ * has it), optional and fully backward compatible — absent on every POI
+ * written before this checkpoint — exactly like `provider`/`providerPlaceId`
+ * above, and never client-suppliable through the manual create/edit schemas
+ * for the same reason.
+ *
  * Deliberately does NOT carry `startAt`/`endAt`/any event-scheduling field —
  * an Event is a distinct future concept that may *reference* a POI/location
  * later, never the other way around. See
@@ -76,6 +94,8 @@ export interface Poi {
   readonly provider?: PoiProvider;
   /** Only present when `sourceType === 'GOOGLE_PLACES'` — the external Google Places `id`/resource name this POI was imported from, used for duplicate-import detection (checkpoint 1B.4 §"duplicate-import protection"). */
   readonly providerPlaceId?: string;
+  /** Photo Experience Prototype checkpoint — a non-authoritative import-time hint, only ever on a `GOOGLE_PLACES` POI. See this interface's doc comment for the full "hint, not authority" contract. */
+  readonly hasPhoto?: boolean;
   /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment above. */
   readonly translations?: PoiTranslations;
   readonly status: PoiStatus;

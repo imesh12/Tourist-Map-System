@@ -190,6 +190,21 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
     expect(content.map).not.toHaveProperty('branding');
   });
 
+  describe('checkpoint ADMIN PHOTO MARKER STYLE — photoMarkerStyle snapshotting', () => {
+    it('snapshots the draft theme\'s photoMarkerStyle onto the publication content unchanged', () => {
+      const themeWithPhotoMarkerStyle = { ...DEFAULT_MAP_THEME, photoMarkerStyle: 'DIAMOND_PIN' as const };
+      const content = buildPublicationContent(map({ theme: themeWithPhotoMarkerStyle }), [], [], []);
+      expect(content.map.theme.photoMarkerStyle).toBe('DIAMOND_PIN');
+      expect(content.map.theme).toEqual(themeWithPhotoMarkerStyle);
+    });
+
+    it('an old-shape theme with no photoMarkerStyle at all still parses/freezes fine (no field is injected)', () => {
+      const legacyTheme = { ...DEFAULT_MAP_THEME };
+      const content = buildPublicationContent(map({ theme: legacyTheme }), [], [], []);
+      expect(content.map.theme).not.toHaveProperty('photoMarkerStyle');
+    });
+  });
+
   it('the resolved default theme is now the TOURISM preset (checkpoint 1B.16 clean base map)', () => {
     const content = buildPublicationContent(map({ theme: undefined }), [], [], []);
     expect(content.map.theme.preset).toBe('TOURISM');
@@ -320,6 +335,150 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
       const translations = { label: { ko: '미식가' } };
       const content = buildPublicationContent(map(), [category({ enabled: true })], [], [categoryMenuItem({ translations })]);
       expect(content.menu[0]).toMatchObject({ translations });
+    });
+  });
+
+  describe('photo derivation — Photo Experience Prototype checkpoint', () => {
+    const googlePoi = (overrides: Partial<PoiParsed> = {}): PoiParsed =>
+      poi({
+        sourceType: 'GOOGLE_PLACES',
+        provider: 'GOOGLE',
+        providerPlaceId: 'places/ChIJ_test',
+        hasPhoto: true,
+        ...overrides,
+      });
+
+    it('publishes `photo: { available: true }` AND a matching photoProviderRefs entry for an ENABLED GOOGLE_PLACES POI stamped hasPhoto', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], []);
+      expect(content.pois[0]?.photo).toEqual({ available: true });
+      expect(content.photoProviderRefs).toEqual({
+        poi_a0000000000000000000000: { provider: 'GOOGLE', providerPlaceId: 'places/ChIJ_test' },
+      });
+    });
+
+    it('never exposes provider/providerPlaceId on the PublishedPoi itself — only the presence flag', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], []);
+      expect(content.pois[0]).not.toHaveProperty('provider');
+      expect(content.pois[0]).not.toHaveProperty('providerPlaceId');
+      expect(content.pois[0]).not.toHaveProperty('hasPhoto');
+    });
+
+    it('omits photo + ref when a GOOGLE_PLACES POI was stamped hasPhoto: false', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi({ hasPhoto: false })], []);
+      expect(content.pois[0]?.photo).toBeUndefined();
+      expect(content.photoProviderRefs).toEqual({});
+    });
+
+    it('omits photo + ref when hasPhoto is absent entirely (a POI imported before this checkpoint)', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi({ hasPhoto: undefined })], []);
+      expect(content.pois[0]?.photo).toBeUndefined();
+      expect(content.photoProviderRefs).toEqual({});
+    });
+
+    it('omits photo + ref for a CLIENT_CUSTOM POI even if it somehow carries hasPhoto (defense-in-depth: sourceType is checked)', () => {
+      const content = buildPublicationContent(
+        map(),
+        [category({ enabled: true })],
+        [poi({ sourceType: 'CLIENT_CUSTOM', hasPhoto: true })],
+        [],
+      );
+      expect(content.pois[0]?.photo).toBeUndefined();
+      expect(content.photoProviderRefs).toEqual({});
+    });
+
+    it('omits photo + ref when providerPlaceId is missing despite hasPhoto (malformed/partial document)', () => {
+      const content = buildPublicationContent(
+        map(),
+        [category({ enabled: true })],
+        [googlePoi({ providerPlaceId: undefined })],
+        [],
+      );
+      expect(content.pois[0]?.photo).toBeUndefined();
+      expect(content.photoProviderRefs).toEqual({});
+    });
+
+    it('never adds a ref for a POI excluded from the publication (disabled POI / disabled category)', () => {
+      const content = buildPublicationContent(
+        map(),
+        [category({ enabled: true })],
+        [googlePoi({ poiId: 'poi_disabled0000000000000', status: 'DISABLED' })],
+        [],
+      );
+      expect(content.pois).toHaveLength(0);
+      expect(content.photoProviderRefs).toEqual({});
+    });
+
+    it('photoProviderRefs is always an object (empty, never undefined) so the publish route can decide whether to persist the key', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [poi()], []);
+      expect(content.photoProviderRefs).toEqual({});
+    });
+  });
+
+  describe('place metadata projection — rich-detail expansion', () => {
+    const googlePoi = (overrides: Partial<PoiParsed> = {}): PoiParsed =>
+      poi({ sourceType: 'GOOGLE_PLACES', provider: 'GOOGLE', providerPlaceId: 'places/ChIJ_test', ...overrides });
+
+    const FULL_METADATA = {
+      rating: 4.5,
+      userRatingCount: 128,
+      priceLevel: 'MODERATE' as const,
+      primaryTypeDisplayName: 'Sushi restaurant',
+      openingHours: {
+        periods: [{ open: { day: 1, hour: 11, minute: 0 }, close: { day: 1, hour: 22, minute: 0 } }],
+        weekdayDescriptions: ['Monday: 11 AM – 10 PM'],
+      },
+      utcOffsetMinutes: 540,
+      websiteUri: 'https://example.com/sakura',
+      nationalPhoneNumber: '03-1234-5678',
+      dineIn: true,
+      takeout: true,
+      delivery: false,
+    };
+
+    it('is BACKWARD COMPATIBLE — with no metadata map arg, no POI gets a `place` (an old-shape publish)', () => {
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], []);
+      expect(content.pois[0]).not.toHaveProperty('place');
+    });
+
+    it('projects the resolved metadata onto `PublishedPoi.place`, adding the derived priceLevelDisplay glyph', () => {
+      const meta = new Map([['poi_a0000000000000000000000', FULL_METADATA]]);
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], [], [], meta);
+      expect(content.pois[0]?.place).toEqual({ ...FULL_METADATA, priceLevelDisplay: '$$' });
+      // never the provider identity
+      expect(JSON.stringify(content.pois[0])).not.toContain('providerPlaceId');
+      expect(JSON.stringify(content.pois[0])).not.toContain('ChIJ_test');
+    });
+
+    it('FREE price level gets no glyph (client shows the word)', () => {
+      const meta = new Map([['poi_a0000000000000000000000', { priceLevel: 'FREE' as const, rating: 4.1 }]]);
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], [], [], meta);
+      expect(content.pois[0]?.place).toEqual({ priceLevel: 'FREE', rating: 4.1 });
+    });
+
+    it('omits `place` when the metadata object is empty after normalization', () => {
+      const meta = new Map([['poi_a0000000000000000000000', {}]]);
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi()], [], [], meta);
+      expect(content.pois[0]).not.toHaveProperty('place');
+    });
+
+    it('never attaches `place` to a CLIENT_CUSTOM POI even if the metadata map holds an entry for its id', () => {
+      const meta = new Map([['poi_a0000000000000000000000', FULL_METADATA]]);
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [poi()], [], [], meta);
+      expect(content.pois[0]).not.toHaveProperty('place');
+    });
+
+    it('`place` is independent of `photo` — a POI can have metadata but no photo', () => {
+      const meta = new Map([['poi_a0000000000000000000000', FULL_METADATA]]);
+      const content = buildPublicationContent(
+        map(),
+        [category({ enabled: true })],
+        [googlePoi({ hasPhoto: false })],
+        [],
+        [],
+        meta,
+      );
+      expect(content.pois[0]?.photo).toBeUndefined();
+      expect(content.pois[0]?.place).toMatchObject({ rating: 4.5 });
     });
   });
 });

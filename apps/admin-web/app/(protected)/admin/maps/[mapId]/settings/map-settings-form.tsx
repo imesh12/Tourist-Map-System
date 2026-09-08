@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   DEFAULT_MAP_THEME,
+  DEFAULT_PHOTO_MARKER_STYLE,
   MAP_AREA_TYPES,
   MAP_MARKER_SIZES,
   MAP_MARKER_STYLES,
@@ -20,6 +21,7 @@ import {
   type MapStyle,
   type MapTheme,
   type MapThemePreset,
+  type PhotoMarkerStyle,
   type PublicContentLanguage,
 } from 'shared-types';
 import { mapSettingsUpdateSchema, type MapParsed } from 'validation';
@@ -218,6 +220,71 @@ function sortByRegistryOrder(codes: readonly PublicContentLanguage[]): readonly 
   return PUBLIC_CONTENT_LANGUAGE_CODES.filter((code) => set.has(code));
 }
 
+/**
+ * ADMIN PHOTO MARKER STYLE checkpoint — the three approved
+ * `PhotoMarkerStyle` choices, each with a small, deterministic, hand-authored
+ * inline SVG silhouette preview for the "Photo Marker Style" card below.
+ *
+ * Deliberately NOT built from the real tourist-web renderer
+ * (`apps/tourist-web/lib/public-map/marker-style-adapter.ts`): that module
+ * lives in a different Next.js app with its own build boundary, and
+ * admin-web cannot cleanly import across apps. Extracting its ~20 lines of
+ * shared outer-silhouette geometry into a new shared package would be a
+ * disproportionate refactor for three small, static preview shapes that
+ * never need to match the real renderer pixel-for-pixel — they only need to
+ * communicate "rounded", "shield", "diamond" at a glance. These previews
+ * use flat, neutral colors (never a real category color or brand color) and
+ * a plain gray circle standing in for a photo — never a real Google photo,
+ * so this card makes zero network requests and leaks no photo-provider
+ * identity, satisfying the checkpoint's own explicit requirement.
+ */
+const PHOTO_MARKER_STYLE_OPTIONS: ReadonlyArray<{
+  readonly value: PhotoMarkerStyle;
+  readonly label: string;
+  readonly preview: ReactNode;
+}> = [
+  {
+    value: 'ROUNDED_PIN',
+    label: 'Rounded Pin',
+    preview: (
+      <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true" focusable="false">
+        <path
+          d="M6 4h28a2 2 0 0 1 2 2v26a2 2 0 0 1-2 2H23l-3 8-3-8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+          fill="#e5e7eb"
+          stroke="#94a3b8"
+          strokeWidth="1.5"
+        />
+        <circle cx="20" cy="18" r="9" fill="#9ca3af" />
+      </svg>
+    ),
+  },
+  {
+    value: 'SHIELD_PIN',
+    label: 'Shield Pin',
+    preview: (
+      <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true" focusable="false">
+        <path
+          d="M20 2c8 3 14 3 14 3v18c0 12-8 18-14 21C14 41 6 35 6 23V5s6 0 14-3z"
+          fill="#e5e7eb"
+          stroke="#94a3b8"
+          strokeWidth="1.5"
+        />
+        <circle cx="20" cy="18" r="8" fill="#9ca3af" />
+      </svg>
+    ),
+  },
+  {
+    value: 'DIAMOND_PIN',
+    label: 'Diamond Pin',
+    preview: (
+      <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true" focusable="false">
+        <path d="M20 2 36 20 20 44 4 20z" fill="#e5e7eb" stroke="#94a3b8" strokeWidth="1.5" />
+        <circle cx="20" cy="18" r="8" fill="#9ca3af" />
+      </svg>
+    ),
+  },
+];
+
 export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormProps) {
   const router = useRouter();
 
@@ -272,6 +339,12 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
   const [themeLabel, setThemeLabel] = useState(initialTheme.colors?.label ?? '');
   const [markerStyle, setMarkerStyle] = useState<MapMarkerStyle>(initialTheme.markerStyle.style);
   const [markerSize, setMarkerSize] = useState<MapMarkerSize>(initialTheme.markerStyle.size);
+  // ADMIN PHOTO MARKER STYLE checkpoint — independent of markerStyle/markerSize
+  // above (which govern the ordinary, non-photo teardrop/dot marker); never
+  // reset by handleThemePresetChange, since no preset concerns photo markers.
+  const [photoMarkerStyle, setPhotoMarkerStyle] = useState<PhotoMarkerStyle>(
+    initialTheme.photoMarkerStyle ?? DEFAULT_PHOTO_MARKER_STYLE,
+  );
 
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
   const [formError, setFormError] = useState<string | undefined>(undefined);
@@ -372,6 +445,7 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
       },
       ...(Object.keys(colors).length > 0 ? { colors } : {}),
       markerStyle: { style: markerStyle, size: markerSize },
+      photoMarkerStyle,
     };
   }, [
     themePreset,
@@ -392,6 +466,7 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     themeLabel,
     markerStyle,
     markerSize,
+    photoMarkerStyle,
   ]);
 
   /**
@@ -488,6 +563,7 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
     setThemeLabel(initialTheme.colors?.label ?? '');
     setMarkerStyle(initialTheme.markerStyle.style);
     setMarkerSize(initialTheme.markerStyle.size);
+    setPhotoMarkerStyle(initialTheme.photoMarkerStyle ?? DEFAULT_PHOTO_MARKER_STYLE);
     setFormError(undefined);
     setFieldErrors([]);
     setSaveState('idle');
@@ -1109,6 +1185,56 @@ export function MapSettingsForm({ mapId, initialMap, canEdit }: MapSettingsFormP
               <ColorField id="themeLabel" label="Labels" value={themeLabel} onChange={setThemeLabel} disabled={controlsDisabled} />
             </div>
             </details>
+          </div>
+
+          <div className="card">
+            <div className="card-title">Photo Marker Style</div>
+            <p className="field-hint">
+              Which marker shape photo-eligible places use on the published map. Changes here only take effect the
+              next time this map is published.
+            </p>
+            <div className="photo-marker-style-grid" role="radiogroup" aria-label="Photo marker style">
+              {PHOTO_MARKER_STYLE_OPTIONS.map((option) => {
+                const inputId = `photoMarkerStyle-${option.value}`;
+                const selected = photoMarkerStyle === option.value;
+                return (
+                  <label key={option.value} className="photo-marker-style-card" data-selected={selected} htmlFor={inputId}>
+                    {/* E2E repair round: NOT `.sr-only` (that shared utility
+                        clips its element to a 0x0 painted rect via
+                        `clip: rect(0, 0, 0, 0)` — correct for hiding
+                        supplementary TEXT from sighted users while keeping it
+                        screen-reader-only, but wrong for a REAL native
+                        control a visual sibling stands in for: a
+                        zero-area-clipped element is not a valid hit-test
+                        target, so a click lands on whatever solid ancestor
+                        is actually painted at that point instead — here,
+                        this card's own <label> once the decorative preview/
+                        check children were fixed to `pointer-events: none`
+                        (see globals.css). `.photo-marker-style-input`
+                        instead covers this whole card (invisible via
+                        `opacity: 0`, not `clip`), so the real control's own
+                        hit-test area matches what the user actually sees and
+                        clicks — the standard pattern for a native input a
+                        custom-styled label visually replaces. */}
+                    <input
+                      className="photo-marker-style-input"
+                      type="radio"
+                      id={inputId}
+                      name="photoMarkerStyle"
+                      value={option.value}
+                      checked={selected}
+                      onChange={() => setPhotoMarkerStyle(option.value)}
+                      disabled={controlsDisabled}
+                    />
+                    <span className="photo-marker-style-check" aria-hidden="true">
+                      ✓
+                    </span>
+                    <span className="photo-marker-style-preview">{option.preview}</span>
+                    <span className="photo-marker-style-name">{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div className="card">

@@ -81,11 +81,44 @@ export default defineConfig({
   // up before any spec file's `page.goto()` — Playwright's own `webServer`
   // array semantics wait for every entry's `url` to respond before running
   // tests, so no spec needs to coordinate startup order itself.
+  // E2E repair round (post-ADMIN PHOTO MARKER STYLE checkpoint) — both
+  // entries below always start a FRESH `next dev` process now
+  // (`reuseExistingServer: false`), never `!process.env.CI`. A real, local,
+  // non-CI run reproduced a run where `GET /api/public/maps/{mapId}/pois/
+  // {poiId}/photo` and `.../photo-meta` both 404'd for a POI that was
+  // genuinely published with a resolvable photo (proven correct at every
+  // application layer: `buildPublicationContent`'s `photoProviderRefs`
+  // computation, `mapPublicationSnapshotSchema`'s parsing of it, and
+  // `getExternalPoiProvider()`'s fake-provider resolution are each already
+  // unit-tested, and the SAME `loadCurrentPublication()` lookup these two
+  // routes share with the general `GET /api/public/maps/{mapId}` route
+  // demonstrably worked for the identical POI in the same run). The
+  // response bodies for those 404s were HTML, not this app's own
+  // `NOT_FOUND_RESPONSE` JSON shape (confirmed via a real failure's
+  // artifact: `getPublic()`'s `JSON.parse` on the body threw
+  // `SyntaxError: Unexpected token '<'`) — every return path in
+  // `app/api/public/maps/[mapId]/pois/[poiId]/photo{,-meta}/route.ts`
+  // returns either `NextResponse.json(...)` or (only for `/photo`'s success
+  // path) raw image bytes, never HTML, so an HTML body proves Next's router
+  // never matched the request to these route handlers at all — the
+  // built-in "page not found" fallback, not an app-level decision. With
+  // `reuseExistingServer: !process.env.CI` (`true` for any local, non-CI
+  // invocation of this suite, including the one that reproduced this), a
+  // `next dev --port 3100` process left over from an earlier, not cleanly
+  // terminated run is silently reused as-is instead of being restarted —
+  // exactly the failure mode this flip removes, by making a local run start
+  // exactly as reliably as CI already does (CI's `!process.env.CI` was
+  // already `false`, so CI was never exposed to this). This is a suite
+  // startup-reliability fix only: it changes nothing about which route
+  // files exist, what they return, or how the app behaves once its server
+  // is actually up — the tradeoff is a slower local `pnpm test:e2e` (a cold
+  // `next dev` compile every run, same as CI already pays) in exchange for
+  // this suite never again silently running against a stale server.
   webServer: [
     {
       command: `next dev --port ${E2E_PORT}`,
       url: E2E_BASE_URL,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 60_000,
       env: E2E_APP_ENV,
     },
@@ -93,7 +126,7 @@ export default defineConfig({
       command: `next dev --port ${E2E_TOURIST_PORT}`,
       cwd: '../tourist-web',
       url: E2E_TOURIST_BASE_URL,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 60_000,
       env: E2E_TOURIST_APP_ENV,
     },

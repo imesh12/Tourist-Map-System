@@ -396,6 +396,137 @@ select:focus-visible,
   margin-bottom: var(--space-4);
 }
 
+/* Visually hidden but still reachable by keyboard/assistive technology —
+   NOT display:none (which removes an element from the accessibility tree
+   entirely). Used by the native <input type="radio"> controls backing the
+   Photo Marker Style cards below, so those cards get full native radio
+   semantics (arrow-key navigation, screen-reader announcement) while the
+   custom card styling stays purely visual. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Photo Marker Style — ADMIN PHOTO MARKER STYLE checkpoint. Selectable
+   visual cards (not a plain dropdown), matching this file's existing
+   "native control > custom-drawn" precedent (see .checkbox-field above):
+   a real <input type="radio"> per card, visually hidden via .sr-only. */
+.photo-marker-style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.photo-marker-style-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+}
+
+/* E2E repair round — the real, native <input type="radio"> this card's
+   `<label>` wraps, made invisible via `opacity: 0` (not the shared
+   `.sr-only` utility's `clip: rect(0, 0, 0, 0)`, which zeroes the element's
+   painted area and makes it an invalid hit-test target — see this input's
+   own doc comment in map-settings-form.tsx). Sized to cover the ENTIRE
+   card via `inset: 0` rather than `.sr-only`'s 1px box, so this real
+   control's own clickable/tappable area always matches exactly what the
+   card visually presents, for every input method — mouse, touch,
+   assistive tech, and browser automation alike — not just whatever pixel
+   its layout happened to collapse to. Still a real, focusable, labeled
+   form control: nothing here removes it from the tab order or from
+   accessible-name resolution (`<label for>` still applies), and it is
+   NEVER visible on screen either way — only the previously ambiguous hit
+   area changes. */
+.photo-marker-style-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.photo-marker-style-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.photo-marker-style-card[data-selected='true'] {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.photo-marker-style-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* E2E repair round (post-ADMIN PHOTO MARKER STYLE checkpoint): this is a
+     purely decorative SVG preview inside the card's own <label> — the real
+     interactive control is the sr-only <input type="radio"> sibling, whose
+     `position: absolute` + auto offsets (see `.sr-only` above) resolves its
+     hit-testable box to its in-flow "static position", which in this
+     flex-column card can coincide with where this preview renders. Without
+     `pointer-events: none` here, a click/tap landing on that exact pixel
+     hit-tests against this decorative <svg> instead of falling through to
+     the label/input beneath it — confirmed via Playwright's own
+     actionability check ("<svg> ... intercepts pointer events") on the
+     "Diamond Pin" card. Real browsers already forward a label-child click to
+     the associated input via native <label> semantics in the common case,
+     but that fallback is not guaranteed once an element between the click
+     point and the label paints on top — removing pointer events from every
+     purely decorative child (this preview and the selected-state check
+     badge below) makes the click landing on this control unambiguous for
+     every input method (mouse, touch, assistive tech, and automation)
+     rather than relying on incidental DOM/paint ordering. */
+  pointer-events: none;
+}
+
+.photo-marker-style-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.photo-marker-style-check {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  /* Decorative selected-state badge, same reasoning as
+     `.photo-marker-style-preview`'s own comment above — never a click
+     target in its own right, so it must never be able to intercept a
+     click/tap meant for the card's underlying real control. */
+  pointer-events: none;
+}
+
+.photo-marker-style-card[data-selected='true'] .photo-marker-style-check {
+  display: flex;
+}
+
 /* ---------------------------------------------------------------------
    Alerts / status banners
 --------------------------------------------------------------------- */

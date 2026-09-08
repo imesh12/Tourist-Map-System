@@ -99,11 +99,13 @@ body {
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.35rem;
-  padding: 0.4rem 0.5rem;
-  background: var(--surface-glass);
-  border: 1px solid var(--hairline);
-  border-radius: 22px;
-  box-shadow: var(--shadow-card);
+  padding: 0.4rem 0.55rem;
+  /* one continuous, solid white floating dock (reference) — a clean shadow
+     surface rather than a translucent glass panel. */
+  background: var(--surface);
+  border: 1px solid rgba(17, 24, 39, 0.05);
+  border-radius: 26px;
+  box-shadow: 0 10px 34px rgba(17, 24, 39, 0.18);
   animation: dock-rise 220ms ease-out;
 }
 
@@ -375,6 +377,7 @@ body {
    published POI image exists — this rule is the reserved slot so the future
    addition needs no layout change. */
 .poi-detail-cover {
+  position: relative;
   margin: 0;
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -388,6 +391,253 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Google Places photo's required author attribution — bottom-LEFT of the
+   cover, over a soft gradient, paired with the "N / M" count bottom-right. */
+.poi-detail-cover::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+.poi-detail-cover-credit {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  bottom: 0;
+  max-width: 62%;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.poi-detail-cover-credit a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Circular white prev/next controls over the photo (reference). */
+.poi-detail-gallery-nav {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+.poi-detail-gallery-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  display: block;
+}
+
+.poi-detail-gallery-nav--prev {
+  left: 0.55rem;
+}
+
+.poi-detail-gallery-nav--next {
+  right: 0.55rem;
+}
+
+@media (hover: hover) {
+  .poi-detail-gallery-nav:hover {
+    background: #ffffff;
+  }
+}
+
+/* "N / M" count — bottom-right of the photo (no dot row). */
+.poi-detail-gallery-count {
+  position: absolute;
+  z-index: 1;
+  right: 0.6rem;
+  bottom: 0.5rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* Rich-detail rows — type / rating / price / service chips / hours / links.
+   Polished toward docs/UI-sample/tourist-map-ui-target.png (reference only).
+   Every row renders only when its data exists (no placeholders); links use
+   the fixed UI accent blue, never the tenant primary. */
+.poi-detail-type {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.poi-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.poi-detail-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 700;
+}
+
+.poi-detail-rating > span[aria-hidden='true'] {
+  color: #f5a524;
+}
+
+.poi-detail-rating-count {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.poi-detail-price {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.poi-detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poi-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.26rem 0.62rem 0.26rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.poi-detail-chip-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+}
+
+.poi-detail-chip-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: currentColor;
+}
+
+.poi-detail-chip--on .poi-detail-chip-icon {
+  color: #15803d;
+}
+
+.poi-detail-chip--off {
+  color: var(--ink-soft);
+  background: rgba(17, 24, 39, 0.03);
+}
+
+.poi-detail-chip--off .poi-detail-chip-icon {
+  color: var(--ink-soft);
+}
+
+.poi-detail-section--hours .poi-detail-hours-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.poi-detail-hours-badge {
+  font-weight: 700;
+}
+
+.poi-detail-hours-badge--open {
+  color: #15803d;
+}
+
+.poi-detail-hours-badge--closed {
+  color: #b91c1c;
+}
+
+.poi-detail-hours-detail {
+  color: var(--ink-soft);
+}
+
+.poi-detail-hours-list {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* Website / phone: a leading glyph + an accent-blue link, tight rhythm. */
+.poi-detail-linkrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.poi-detail-linkrow-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--poi-accent, var(--ink-soft));
+}
+
+.poi-detail-linkrow-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: currentColor;
+}
+
+.poi-detail-link {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  word-break: break-word;
+}
+
+@media (hover: hover) {
+  .poi-detail-link:hover {
+    text-decoration: underline;
+  }
 }
 
 .poi-detail-body,
@@ -412,11 +662,14 @@ body {
 
 .poi-detail-name,
 .page-overlay-title {
+  /* right margin keeps the name clear of the close button in the no-photo
+     case; with a gallery the button overlays the photo instead, so the
+     margin is just harmless trailing space. */
   margin: 0 2.5rem 0 0;
-  font-size: 1.32rem;
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
+  font-size: 1.5rem;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--ink);
 }
 
@@ -425,11 +678,11 @@ body {
   align-items: center;
   gap: 0.4rem;
   margin: 0;
-  padding: 0.28rem 0.7rem 0.28rem 0.4rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.4rem;
   border-radius: 999px;
   background: rgba(17, 24, 39, 0.05);
-  background: color-mix(in srgb, var(--poi-accent, #6b7280) 12%, #ffffff);
-  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--poi-accent, #6b7280) 10%, #ffffff);
+  font-size: 0.8rem;
   font-weight: 650;
   color: var(--ink);
 }
@@ -531,13 +784,17 @@ body {
 }
 
 /* §9 — a clearly visible circular close control: a real filled 44×44 target
-   sitting over the top-right of the panel (or a future cover image). */
+   over the top-right of the panel. When a gallery is present it visually
+   overlays the photo's upper-right (the card has `padding: 0`, so this
+   corner IS the photo corner); with no photo it sits over the body's
+   top-right. A near-opaque white disc + shadow keeps it legible on any
+   photo. */
 .poi-detail-close,
 .page-overlay-close {
   position: absolute;
   top: 0.7rem;
   right: 0.7rem;
-  z-index: 1;
+  z-index: 2;
   width: 36px;
   height: 36px;
   min-width: 44px;
@@ -546,8 +803,8 @@ body {
   align-items: center;
   justify-content: center;
   border: none;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: var(--shadow-pill);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   color: var(--ink);
   cursor: pointer;
   border-radius: 50%;
@@ -659,9 +916,9 @@ body {
    near-white tint for ANY tenant colour, and it matches the reference's
    active-item treatment. */
 .public-menu-item[aria-pressed='true'] {
-  background: rgba(47, 111, 237, 0.12);
+  background: color-mix(in srgb, var(--accent) 15%, #ffffff);
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 700;
 }
 
 @media (hover: hover) {
@@ -671,7 +928,7 @@ body {
   }
 
   .public-menu-item[aria-pressed='true']:hover {
-    background: rgba(47, 111, 237, 0.16);
+    background: color-mix(in srgb, var(--accent) 20%, #ffffff);
     color: var(--accent);
   }
 }
@@ -960,7 +1217,7 @@ body {
 
   .poi-detail-name,
   .page-overlay-title {
-    font-size: 1.2rem;
+    font-size: 1.32rem;
   }
 
   .poi-detail-cover {

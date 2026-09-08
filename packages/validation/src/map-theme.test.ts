@@ -161,6 +161,30 @@ describe('mapThemeSchema — checkpoint 1B.7', () => {
   });
 });
 
+describe('checkpoint ADMIN PHOTO MARKER STYLE — photoMarkerStyle', () => {
+  it.each(['ROUNDED_PIN', 'SHIELD_PIN', 'DIAMOND_PIN'])('accepts the production value %s', (photoMarkerStyle) => {
+    const result = mapThemeSchema.safeParse({ ...validTheme, photoMarkerStyle });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a theme with no photoMarkerStyle at all (backward compatibility)', () => {
+    expect(mapThemeSchema.safeParse(validTheme).success).toBe(true);
+  });
+
+  it('rejects an internal prototype template name (photo-pin-1) — never a persisted value', () => {
+    const result = mapThemeSchema.safeParse({ ...validTheme, photoMarkerStyle: 'photo-pin-1' });
+    expect(result.success).toBe(false);
+  });
+
+  it.each(['photo-pin-2', 'photo-pin-3', 'legacy', 'rounded_pin', 'CUSTOM', ''])(
+    'rejects an arbitrary/invalid string: %s',
+    (photoMarkerStyle) => {
+      const result = mapThemeSchema.safeParse({ ...validTheme, photoMarkerStyle });
+      expect(result.success).toBe(false);
+    },
+  );
+});
+
 describe('mapThemeVisibilitySchema', () => {
   it('requires every flag to be present (no partial visibility)', () => {
     expect(mapThemeVisibilitySchema.safeParse({ businessPois: true }).success).toBe(false);
