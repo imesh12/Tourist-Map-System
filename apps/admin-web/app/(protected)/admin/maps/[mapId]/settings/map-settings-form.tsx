@@ -183,7 +183,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
  * itself), so an existing MAPBOX map is never silently hidden from its own
  * field.
  */
-const LIVE_PREVIEW_MAP_PROVIDERS: readonly MapProviderName[] = ['GOOGLE_MAPS'];
+const LIVE_PREVIEW_MAP_PROVIDERS: readonly MapProviderName[] = ['GOOGLE_MAPS', 'MAPBOX'];
 
 interface MapSettingsFormProps {
   readonly mapId: string;

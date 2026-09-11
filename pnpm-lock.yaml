@@ -41,6 +41,9 @@ importers:
       map-theme-adapter:
         specifier: workspace:*
         version: link:../../packages/map-theme-adapter
+      mapbox-gl:
+        specifier: ^3.30.0
+        version: 3.30.0
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(@types/node@24.13.3)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -93,6 +96,9 @@ importers:
       map-theme-adapter:
         specifier: workspace:*
         version: link:../../packages/map-theme-adapter
+      mapbox-gl:
+        specifier: ^3.30.0
+        version: 3.30.0
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(@types/node@24.13.3)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -3614,6 +3620,9 @@ packages:
   make-dir@3.1.0:
     resolution: {integrity: sha512-g3FeP20LNwhALb/6Cz6Dd4F2ngze0jz7tbzrD2wAV+o9FeNHe4rL+yK2md0J/fiSf1sa1ADhXqi5+oVwOM/eGw==}
     engines: {node: '>=8'}
+
+  mapbox-gl@3.30.0:
+    resolution: {integrity: sha512-26m0CSBszLkvbdVWf2oIZ3SjqCuResxJKEbupwwSyNwbwJAcgnMhDy2Yl5cSgtUxeamUJ1UeXRqpBmGEUVaAeQ==}
 
   marked-terminal@7.3.0:
     resolution: {integrity: sha512-t4rBvPsHc57uE/2nJOLmMbZCQ4tgAccAED3ngXQqW6g+TxA488JzJ+FK3lQkzBQOI1mRV/r/Kq+1ZlJ4D0owQw==}
@@ -8920,6 +8929,8 @@ snapshots:
   make-dir@3.1.0:
     dependencies:
       semver: 6.3.1
+
+  mapbox-gl@3.30.0: {}
 
   marked-terminal@7.3.0(marked@13.0.3):
     dependencies:

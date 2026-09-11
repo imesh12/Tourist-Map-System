@@ -2,6 +2,7 @@
 
 import { GoogleMapsPreview } from './google-maps-preview';
 import { MapPreviewSummary } from './map-preview-summary';
+import { MapboxPreview } from './mapbox-preview';
 import type { MapPreviewProps } from './types';
 
 /**
@@ -15,20 +16,15 @@ import type { MapPreviewProps } from './types';
  * only ever means adding one more case here; it never touches
  * `map-settings-form.tsx`.
  *
- * MAPBOX is deliberately not implemented in this checkpoint — a live
- * Mapbox GL adapter is a real, separate SDK integration (a second
- * dependency, a second env-var-sourced credential, its own load/sync/
- * bounds-overlay logic), and 1B.1-D's default/demo path is GOOGLE_MAPS
- * (the same default `registerClient` provisioning already assigns new
- * tenants — see docs/stages/STAGE_1A_TECHNICAL_PLAN.md §11). Selecting
- * MAPBOX in the form still works end-to-end (it's a real, saveable value),
- * it just falls back to the same non-interactive summary the "no API key"
- * case uses, rather than pretending to be interactive.
+ * Each provider adapter owns its SDK lifecycle and translates the same
+ * provider-neutral preview props. MAPBOX also uses the shared theme mapper,
+ * while an absent token remains a safe summary fallback.
  */
 export function MapPreview(props: MapPreviewProps) {
   if (props.provider === 'GOOGLE_MAPS') {
     return <GoogleMapsPreview {...props} />;
   }
 
+  if (props.provider === 'MAPBOX') return <MapboxPreview {...props} />;
   return <MapPreviewSummary notice={`Live preview for ${props.provider} is not yet implemented — showing current values only.`} />;
 }

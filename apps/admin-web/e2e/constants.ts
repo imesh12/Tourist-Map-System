@@ -85,6 +85,9 @@ export const E2E_APP_ENV: Record<string, string> = {
   // any value from a developer's own local .env.local — see this file's
   // doc comment above for how this was actually discovered as a real gap.
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: '',
+  // Keep the public Mapbox runtime deterministic in E2E: the provider seam
+  // must be observable without a real token or network access.
+  NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: '',
   // Server-only — read by the Firebase Admin SDK (`lib/firebase/admin.ts`)
   // and directly by `resolveFirebaseAdminAppOptions` for `projectId`. Must
   // agree with the client-side project ID above for the same reason.
@@ -191,4 +194,5 @@ export const E2E_TOURIST_APP_ENV: Record<string, string> = {
   ADMIN_PUBLIC_API_BASE_URL: E2E_BASE_URL,
   NEXT_PUBLIC_ADMIN_PUBLIC_API_BASE_URL: E2E_BASE_URL,
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: '',
+  NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN: '',
 };

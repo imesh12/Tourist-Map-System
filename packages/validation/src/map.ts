@@ -74,7 +74,7 @@ export const mapAreaSchema = z
 export const mapProviderConfigSchema = z.object({
   provider: z.enum(MAP_PROVIDER_NAMES),
   style: z.enum(MAP_STYLES),
-});
+}).default({ provider: 'GOOGLE_MAPS', style: 'ROAD' });
 
 /**
  * `TouristMap.publication` — checkpoint 1B.8, mirrors shared-types'

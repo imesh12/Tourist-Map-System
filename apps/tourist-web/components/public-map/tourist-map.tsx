@@ -34,6 +34,7 @@ import { PageOverlay } from './page-overlay';
 import { PoiDetailCard } from './poi-detail-card';
 import { PublicMapDock } from './public-map-dock';
 import { PublicSearch } from './public-search';
+import { MapboxMap } from './mapbox-map';
 
 /**
  * The public tourist map — checkpoint 1B.9 §4/§6/§8/§10, extended by
@@ -167,7 +168,8 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
   // `NEXT_PUBLIC_TOURIST_MAP_DIAGNOSTICS=1`.
   const isDiagnosticsMode = process.env.NODE_ENV !== 'production';
   const showDiagnosticsPanel = process.env.NEXT_PUBLIC_TOURIST_MAP_DIAGNOSTICS === '1';
-  const canLoadLiveMap = Boolean(apiKey) && mapProvider.provider === 'GOOGLE_MAPS';
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  const canLoadLiveMap = mapProvider.provider === 'GOOGLE_MAPS' ? Boolean(apiKey) : Boolean(mapboxToken);
 
   // checkpoint 1B.17B §14-§17 — the ONE place this component resolves
   // translatable content, via the shared `resolveLocalizedText()` fallback
@@ -640,10 +642,10 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
       setMapInstance(undefined);
       userLocationMarkerRef.current = undefined;
     };
-    // Mount-only, matching 1B.9's own established convention (`snapshot`
-    // never changes after first render).
+    // Re-run when the selected base-map provider changes so the old runtime
+    // and its marker/listener resources are destroyed before the new adapter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey]);
+  }, [apiKey, mapProvider.provider]);
 
   // Re-sync markers whenever the visible POI set or selection changes —
   // independent of the mount effect above so a category-filter/selection
@@ -718,10 +720,10 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCameraId]);
 
-  const unavailableMessage = !apiKey
+  const unavailableMessage = mapProvider.provider === 'GOOGLE_MAPS' && !apiKey
     ? 'Map preview is unavailable in this environment.'
-    : mapProvider.provider !== 'GOOGLE_MAPS'
-      ? `Live preview for ${mapProvider.provider} is not yet implemented.`
+    : mapProvider.provider === 'MAPBOX' && !mapboxToken
+      ? 'Mapbox map requires NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to be configured.'
       : status === 'error'
         ? "We couldn't load this map right now."
         : null;
@@ -733,13 +735,11 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
           Loading map…
         </p>
       ) : null}
-      <div
-        ref={containerRef}
-        data-testid="tourist-map"
-        role="img"
-        aria-label={`Map of ${snapshot.map.name}`}
-        className="tourist-map-canvas"
-      />
+      {mapProvider.provider === 'MAPBOX' ? (
+        <MapboxMap area={area} style={mapProvider.style} theme={theme} pois={visiblePois} categories={categoryById} cameras={localizedCameras} selectedPoiId={selectedPoiId} selectedCameraId={selectedCameraId} onSelectPoi={handleSelectPoi} onSelectCamera={handleSelectCamera} photoImageByPoiId={photoImageByPoiId} photoPinTemplate={photoPinTemplate} onReady={() => setStatus('ready')} />
+      ) : (
+        <div ref={containerRef} data-testid="tourist-map" role="img" aria-label={`Map of ${snapshot.map.name}`} className="tourist-map-canvas" />
+      )}
       {unavailableMessage ? <TouristMapUnavailable message={unavailableMessage} /> : null}
       {visiblePois.length === 0 ? (
         // §8 — a subtle empty-state, not an application error, whenever the
@@ -805,6 +805,11 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         >
           <dt>preset</dt>
           <dd data-testid="tourist-map-diag-preset">{theme.preset}</dd>
+          {/* Checkpoint 1B.18 — E2E-only provider readout. This exposes
+              only the already-published base-map choice, never a token or
+              provider SDK internals, and is absent from production builds. */}
+          <dt>mapProvider</dt>
+          <dd data-testid="tourist-map-diag-map-provider">{mapProvider.provider}</dd>
           <dt>areaType</dt>
           <dd data-testid="tourist-map-diag-area-type">{area.type}</dd>
           <dt>center</dt>

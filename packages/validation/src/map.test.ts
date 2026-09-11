@@ -19,6 +19,14 @@ describe('mapSchema', () => {
     expect(mapSchema.safeParse(validMap).success).toBe(true);
   });
 
+  it('defaults a legacy map without a provider to Google Maps', () => {
+    const { mapProvider, ...legacyMap } = validMap;
+    void mapProvider;
+    const result = mapSchema.safeParse(legacyMap);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.mapProvider).toEqual({ provider: 'GOOGLE_MAPS', style: 'ROAD' });
+  });
+
   it('rejects a malformed customerId (the ownership field)', () => {
     const result = mapSchema.safeParse({ ...validMap, customerId: 'not-a-customer-id' });
     expect(result.success).toBe(false);

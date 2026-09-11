@@ -6,8 +6,8 @@
  * 1B.7) and `apps/tourist-web` (public tourist map, checkpoint 1B.9). See
  * `google-theme-adapter.ts`'s own doc comment for the full reasoning and
  * `docs/architecture/MAP_THEME_ARCHITECTURE.md` for the architecture this
- * implements. A future `MapboxThemeAdapter` (not implemented yet) would live
- * alongside this file as a sibling module with the identical
- * `MapTheme -> <provider format>` signature.
+ * implements. `mapbox-theme-adapter.ts` is the sibling Mapbox translation
+ * boundary with the same provider-neutral input discipline.
  */
 export * from './google-theme-adapter.js';
+export * from './mapbox-theme-adapter.js';
