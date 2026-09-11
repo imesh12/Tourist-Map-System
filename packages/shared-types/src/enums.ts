@@ -248,6 +248,16 @@ export const PAGE_STATUSES = ['ENABLED', 'DISABLED'] as const;
 export type PageStatus = (typeof PAGE_STATUSES)[number];
 
 /**
+ * A Live Camera's visibility state — LIVE CAMERAS FOUNDATION checkpoint, see
+ * ./live-camera.js. Mirrors `PageStatus`/`PoiStatus`'s exact shape (same
+ * "separate small enum per domain concept" precedent). Disabling a camera
+ * never deletes it — the document remains stored, simply excluded from
+ * `buildPublicationContent()` until re-enabled.
+ */
+export const LIVE_CAMERA_STATUSES = ['ENABLED', 'DISABLED'] as const;
+export type LiveCameraStatus = (typeof LIVE_CAMERA_STATUSES)[number];
+
+/**
  * Which external service authored a `sourceType: 'GOOGLE_PLACES'` POI's
  * content — checkpoint 1B.4. Only meaningful alongside that `sourceType`;
  * a `CLIENT_CUSTOM` POI's `provider`/`providerPlaceId` are always absent
@@ -283,7 +293,7 @@ export type PoiProvider = (typeof POI_PROVIDERS)[number];
  * `menuItemSchema`/`menuItemCreateInputSchema` discriminated unions for the
  * enforced shape.
  */
-export const MENU_ITEM_TYPES = ['CATEGORY', 'FEATURE', 'PAGE'] as const;
+export const MENU_ITEM_TYPES = ['CATEGORY', 'FEATURE', 'PAGE', 'LIVE_CAMERAS'] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number];
 
 /**

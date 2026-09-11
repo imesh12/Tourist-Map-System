@@ -114,6 +114,21 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       updatedAt: firestoreTimestampLikeSchema,
     })
     .strict(),
+  z
+    .object({
+      menuItemId: menuItemIdSchema,
+      customerId: customerIdSchema,
+      mapId: mapIdSchema,
+      type: z.literal('LIVE_CAMERAS'),
+      label: menuItemLabelSchema,
+      translations: menuItemTranslationsSchema.optional(),
+      icon: menuItemIconSchema.optional(),
+      order: menuItemOrderSchema,
+      status: menuItemStatusSchema,
+      createdAt: firestoreTimestampLikeSchema,
+      updatedAt: firestoreTimestampLikeSchema,
+    })
+    .strict(),
 ]);
 export type MenuItemParsed = z.infer<typeof menuItemSchema>;
 
@@ -170,6 +185,16 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('PAGE'),
       pageId: pageIdSchema,
+      label: menuItemLabelSchema,
+      icon: menuItemIconSchema.optional(),
+      order: menuItemOrderSchema.optional(),
+      status: menuItemStatusSchema.optional(),
+      translations: menuItemTranslationsSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('LIVE_CAMERAS'),
       label: menuItemLabelSchema,
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema.optional(),

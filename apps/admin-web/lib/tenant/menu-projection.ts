@@ -72,7 +72,14 @@ export interface PublicMenuProjectionPageItem {
   readonly translations?: MenuItemTranslations;
 }
 
-export type PublicMenuProjectionItem = PublicMenuProjectionCategoryItem | PublicMenuProjectionFeatureItem | PublicMenuProjectionPageItem;
+export interface PublicMenuProjectionLiveCamerasItem {
+  readonly type: 'LIVE_CAMERAS';
+  readonly label: string;
+  readonly icon: CategoryIcon;
+  readonly translations?: MenuItemTranslations;
+}
+
+export type PublicMenuProjectionItem = PublicMenuProjectionCategoryItem | PublicMenuProjectionFeatureItem | PublicMenuProjectionPageItem | PublicMenuProjectionLiveCamerasItem;
 
 export function buildPublicMenuProjection(
   menuItems: readonly MenuItemParsed[],
@@ -119,6 +126,16 @@ export function buildPublicMenuProjection(
         label: item.label,
         icon: registryEntry.icon,
         featureKey: item.featureKey,
+        ...(item.translations ? { translations: item.translations } : {}),
+      });
+      continue;
+    }
+
+    if (item.type === 'LIVE_CAMERAS') {
+      projection.push({
+        type: 'LIVE_CAMERAS',
+        label: item.label,
+        icon: item.icon ?? 'INFORMATION',
         ...(item.translations ? { translations: item.translations } : {}),
       });
       continue;

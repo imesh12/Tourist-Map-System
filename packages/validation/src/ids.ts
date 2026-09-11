@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   CATEGORY_ID_PREFIX,
   CUSTOMER_ID_PREFIX,
+  LIVE_CAMERA_ID_PREFIX,
   MAP_ID_PREFIX,
   MENU_ITEM_ID_PREFIX,
   PAGE_ID_PREFIX,
@@ -57,6 +58,11 @@ export const publicationIdSchema = z
 export const pageIdSchema = z
   .string()
   .regex(randomSuffixPattern(PAGE_ID_PREFIX), `pageId must match ${PAGE_ID_PREFIX}<16-40 url-safe characters>`);
+
+/** LIVE CAMERAS FOUNDATION checkpoint — see shared-types' `LiveCamera`. */
+export const liveCameraIdSchema = z
+  .string()
+  .regex(randomSuffixPattern(LIVE_CAMERA_ID_PREFIX), `cameraId must match ${LIVE_CAMERA_ID_PREFIX}<16-40 url-safe characters>`);
 
 /**
  * Firebase Authentication UID. Firebase documents UIDs as 1-128 characters;

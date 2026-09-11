@@ -563,3 +563,84 @@ describe('publicMapSnapshotSchema', () => {
     });
   });
 });
+
+describe('mapPublicationSnapshotSchema — liveCameras (LIVE CAMERAS FOUNDATION checkpoint)', () => {
+  const camera = {
+    cameraId: 'cam_aB3dEf6gH9jKlMn0pQ',
+    name: 'Beachfront Plaza',
+    location: { latitude: 35.0116, longitude: 135.7681 },
+  };
+
+  it('accepts a snapshot with a liveCameras entry that has no playback configured', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({ ...validSnapshot, liveCameras: [camera] });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a snapshot with a liveCameras entry that DOES carry a public-safe HLS playback descriptor', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      liveCameras: [{ ...camera, playback: { transport: 'HLS', playbackUrl: 'https://relay.example.com/live/cam-1.m3u8' } }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a legacy stored document predating this checkpoint (no `liveCameras` field at all), normalizing it to `liveCameras: []`', () => {
+    const withoutLiveCameras: Record<string, unknown> = { ...validSnapshot };
+    delete withoutLiveCameras.liveCameras;
+    const result = mapPublicationSnapshotSchema.safeParse(withoutLiveCameras);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.liveCameras).toEqual([]);
+    }
+  });
+
+  it('rejects a malformed cameraId inside liveCameras', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({ ...validSnapshot, liveCameras: [{ ...camera, cameraId: 'not-a-camera-id' }] });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a liveCameras entry carrying admin-only fields (customerId/mapId/status) — .strict() defense-in-depth', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      liveCameras: [{ ...camera, customerId: 'cust_aB3dEf6gH9jKlMn0pQ', status: 'ENABLED' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an rtsp:// playback URL inside a stored liveCameras entry — the boundary is enforced on the read side too, not only at write', () => {
+    const result = mapPublicationSnapshotSchema.safeParse({
+      ...validSnapshot,
+      liveCameras: [{ ...camera, playback: { transport: 'HLS', playbackUrl: 'rtsp://192.168.1.50/stream1' } }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('publicMapSnapshotSchema — liveCameras (LIVE CAMERAS FOUNDATION checkpoint)', () => {
+  const publicSnapshot: Record<string, unknown> = { ...validSnapshot };
+  delete publicSnapshot.customerId;
+  delete publicSnapshot.publishedByUid;
+  const camera = {
+    cameraId: 'cam_aB3dEf6gH9jKlMn0pQ',
+    name: 'Beachfront Plaza',
+    location: { latitude: 35.0116, longitude: 135.7681 },
+  };
+
+  it('includes a published liveCameras entry in the public shape unchanged', () => {
+    const result = publicMapSnapshotSchema.safeParse({ ...publicSnapshot, liveCameras: [camera] });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.liveCameras).toEqual([camera]);
+    }
+  });
+
+  it('accepts a legacy public snapshot predating this checkpoint (no `liveCameras` field), normalizing it to `liveCameras: []` — the exact shape tourist-web’s public-map client parses for a pre-Live-Cameras stored publication', () => {
+    const legacyPublicSnapshot: Record<string, unknown> = { ...publicSnapshot };
+    delete legacyPublicSnapshot.liveCameras;
+    const result = publicMapSnapshotSchema.safeParse(legacyPublicSnapshot);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.liveCameras).toEqual([]);
+    }
+  });
+});

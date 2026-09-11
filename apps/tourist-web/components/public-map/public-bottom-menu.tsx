@@ -58,6 +58,8 @@ export interface PublicBottomMenuProps {
   readonly onOpenSearch: () => void;
   readonly onRequestMyLocation: () => void;
   readonly onOpenPage: (pageId: string) => void;
+  readonly cameraFilterActive: boolean;
+  readonly onSelectCameraFilter: () => void;
 }
 
 /**
@@ -89,6 +91,8 @@ export function PublicBottomMenu({
   onOpenSearch,
   onRequestMyLocation,
   onOpenPage,
+  cameraFilterActive,
+  onSelectCameraFilter,
 }: PublicBottomMenuProps) {
   if (menu.length === 0) {
     // An admin who publishes zero menu items has deliberately chosen no
@@ -111,6 +115,14 @@ export function PublicBottomMenu({
         <MenuItemFace path={ALL_GLYPH_PATH} label="All" />
       </button>
       {menu.map((item) => {
+        if (item.type === 'LIVE_CAMERAS') {
+          const meta = categoryIconMeta(item.icon);
+          return (
+            <button key="LIVE_CAMERAS" type="button" data-testid="public-menu-live-cameras" className="public-menu-item public-menu-item--utility" aria-pressed={cameraFilterActive} onClick={onSelectCameraFilter} title={item.label}>
+              <MenuItemFace path={meta.markerGlyphPath} emoji={meta.emoji} label={item.label} />
+            </button>
+          );
+        }
         if (item.type === 'CATEGORY') {
           const isActive = selectedCategoryId === item.categoryId;
           const meta = categoryIconMeta(item.icon);

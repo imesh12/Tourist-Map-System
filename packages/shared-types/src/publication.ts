@@ -3,6 +3,7 @@ import type { CategoryTranslations } from './category.js';
 import type { PublicContentLanguage } from './language.js';
 import type { MenuItemTranslations } from './menu-item.js';
 import type { PageTranslations } from './page.js';
+import type { LiveCameraLocation, LiveCameraPlayback, LiveCameraTranslations } from './live-camera.js';
 import type { PoiTranslations } from './poi.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 import type { MapAreaConfig, MapBranding, MapProviderConfig, MapTheme } from './map.js';
@@ -69,7 +70,14 @@ export interface PublicationMenuPageItem {
   readonly translations?: MenuItemTranslations;
 }
 
-export type PublicationMenuItem = PublicationMenuCategoryItem | PublicationMenuFeatureItem | PublicationMenuPageItem;
+export interface PublicationMenuLiveCamerasItem {
+  readonly type: 'LIVE_CAMERAS';
+  readonly label: string;
+  readonly icon: CategoryIcon;
+  readonly translations?: MenuItemTranslations;
+}
+
+export type PublicationMenuItem = PublicationMenuCategoryItem | PublicationMenuFeatureItem | PublicationMenuPageItem | PublicationMenuLiveCamerasItem;
 
 /** The narrow, public-safe projection of a `Category` a publication snapshot ever stores — never `customerId`/`mapId`/`enabled`/`order`/`sourceType`/timestamps, all of which are admin-only bookkeeping. */
 export interface PublishedCategory {
@@ -87,6 +95,29 @@ export interface PublishedPage {
   readonly content: string;
   /** checkpoint 1B.17A — see `PageTranslations`'s own doc comment (./page.js). */
   readonly translations?: PageTranslations;
+}
+
+/**
+ * LIVE CAMERAS FOUNDATION checkpoint — the narrow, public-safe projection
+ * of a `LiveCamera` a publication snapshot ever stores. Never `customerId`/
+ * `mapId`/`status`/timestamps, all of which are admin-only bookkeeping;
+ * only `ENABLED` cameras are ever included (`buildPublicationContent()`'s
+ * own rule, mirroring `PublishedPage`/`PublishedCategory`'s identical "only
+ * enabled" filter). `playback` is OPTIONAL — see `LiveCameraPlayback`'s own
+ * doc comment (./live-camera.js) for why a camera with no playback
+ * configuration is a fully valid published camera (MANDATORY ARCHITECTURE
+ * CORRECTION 1): the public tourist client shows a clean "not configured"
+ * state rather than fabricating a stream.
+ */
+export interface PublishedLiveCamera {
+  readonly cameraId: string;
+  readonly name: string;
+  /** See `LiveCameraTranslations`'s own doc comment (./live-camera.js). */
+  readonly translations?: LiveCameraTranslations;
+  readonly description?: string;
+  readonly location: LiveCameraLocation;
+  /** See `LiveCameraPlayback`'s own doc comment (./live-camera.js) — already public-safe by construction (a browser-facing relay URL, never a camera-source URL), so this published shape is identical to the draft's own `playback` field. */
+  readonly playback?: LiveCameraPlayback;
 }
 
 /**
@@ -278,6 +309,22 @@ export interface MapPublicationSnapshot {
   readonly pois: readonly PublishedPoi[];
   /** checkpoint 1B.11 — only `ENABLED` Pages, see `PublishedPage`'s own doc comment. */
   readonly pages: readonly PublishedPage[];
+  /**
+   * LIVE CAMERAS FOUNDATION checkpoint — only `ENABLED` Live Cameras, see
+   * `PublishedLiveCamera`'s own doc comment above. REQUIRED on this parsed/
+   * output type (never absent) even though a publication document written
+   * before this checkpoint has no `liveCameras` field at all —
+   * `packages/validation`'s `mapPublicationSnapshotSchema` normalizes a
+   * legacy snapshot to `liveCameras: []` at parse time (`.default([])`,
+   * mirroring the exact `pages` precedent immediately above), so every
+   * consumer of the PARSED type can rely on this being a real array, never
+   * `undefined`. Deliberately INCLUDED (not `Omit`-excluded) on
+   * `PublicMapSnapshot` below — unlike `photoProviderRefs`, this field is
+   * already public-safe by construction (see `PublishedLiveCamera`'s own
+   * doc comment), so it is meant to reach the public read endpoint exactly
+   * like `pois`/`pages`/`categories` already do.
+   */
+  readonly liveCameras: readonly PublishedLiveCamera[];
   /** Photo Experience Prototype checkpoint — see `PublishedPoiPhotoProviderRef`'s own doc comment above. Absent (or missing entries for POIs with no resolvable photo) on every publication predating this checkpoint and on any publication with no photo-eligible POIs — never required, never defaulted to an empty object at the type level (the `PublicationContent`/publish-route call sites decide whether to include the key at all, matching this file's established "absent, not empty" convention for optional structured fields). */
   readonly photoProviderRefs?: Readonly<Record<string, PublishedPoiPhotoProviderRef>>;
 }

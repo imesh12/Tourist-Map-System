@@ -8,6 +8,7 @@ import { getExternalPoiProvider } from '@/lib/pois/provider-registry';
 import { buildPublicationContent } from '@/lib/tenant/build-publication-snapshot';
 import { generatePublicationId } from '@/lib/tenant/generate-publication-id';
 import { loadTenantCategories } from '@/lib/tenant/load-categories';
+import { loadTenantLiveCameras } from '@/lib/tenant/load-live-cameras';
 import { loadTenantMenuItems } from '@/lib/tenant/load-menu-items';
 import { loadTenantPages } from '@/lib/tenant/load-pages';
 import { loadTenantPois } from '@/lib/tenant/load-pois';
@@ -143,11 +144,12 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   const resolvedCustomerId = result.context.identity.customer.customerId;
   const publishedByUid = result.context.identity.uid;
 
-  const [categories, pois, menuItems, pages] = await Promise.all([
+  const [categories, pois, menuItems, pages, liveCameras] = await Promise.all([
     loadTenantCategories(resolvedMapId),
     loadTenantPois(resolvedMapId),
     loadTenantMenuItems(resolvedMapId),
     loadTenantPages(resolvedMapId),
+    loadTenantLiveCameras(resolvedMapId),
   ]);
 
   // Rich-detail expansion — resolved just before the transaction, alongside
@@ -181,7 +183,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       // `result.context.map` resolved at the top of the request — see the
       // file header comment for exactly why that distinction is the fix for
       // "publication version 2 uses the old map name".
-      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages, placeMetadataByPoiId);
+      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages, placeMetadataByPoiId, liveCameras);
 
       const nextVersion = (mapParsed.data.publication?.version ?? 0) + 1;
       const publishedAt = FieldValue.serverTimestamp();
@@ -206,6 +208,13 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         categories: content.categories,
         pois: content.pois,
         pages: content.pages,
+        // LIVE CAMERAS FOUNDATION checkpoint — unconditional, like `pages`/
+        // `pois`/`categories` (never conditionally like `photoProviderRefs`):
+        // `content.liveCameras` is always a real array (possibly `[]`), and
+        // `mapPublicationSnapshotSchema.liveCameras` is a required,
+        // `.default([])` field on read, so writing the key unconditionally
+        // keeps every future read simple.
+        liveCameras: content.liveCameras,
         ...(Object.keys(content.photoProviderRefs).length > 0 ? { photoProviderRefs: content.photoProviderRefs } : {}),
       });
 

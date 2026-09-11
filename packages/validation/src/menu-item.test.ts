@@ -39,6 +39,9 @@ const validPageMenuItem = {
   createdAt: { seconds: 1700000000, nanoseconds: 0 },
   updatedAt: { seconds: 1700000001, nanoseconds: 0 },
 };
+const validLiveCamerasMenuItem = {
+  menuItemId: 'menu_aB3dEf6gH9jKlMn0T', customerId: 'cust_aB3dEf6gH9jKlMn0pQ', mapId: 'map_aB3dEf6gH9jKlMn0pQ', type: 'LIVE_CAMERAS', label: 'Live Cameras', order: 3, status: 'ENABLED', createdAt: { seconds: 1700000000, nanoseconds: 0 }, updatedAt: { seconds: 1700000001, nanoseconds: 0 },
+};
 
 describe('menuItemSchema', () => {
   it('accepts a valid CATEGORY menu item', () => {
@@ -77,6 +80,10 @@ describe('menuItemSchema', () => {
 
   it('accepts a valid FEATURE menu item', () => {
     expect(menuItemSchema.safeParse(validFeatureMenuItem).success).toBe(true);
+  });
+
+  it('accepts a valid LIVE_CAMERAS collection menu item', () => {
+    expect(menuItemSchema.safeParse(validLiveCamerasMenuItem).success).toBe(true);
   });
 
   it('rejects a CATEGORY item missing categoryId', () => {

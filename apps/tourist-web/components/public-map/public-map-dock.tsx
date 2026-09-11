@@ -40,6 +40,8 @@ export interface PublicMapDockProps {
   readonly onOpenSearch: () => void;
   readonly onRequestMyLocation: () => void;
   readonly onOpenPage: (pageId: string) => void;
+  readonly cameraFilterActive: boolean;
+  readonly onSelectCameraFilter: () => void;
   readonly supportedLanguages: readonly PublicContentLanguage[];
   readonly currentLanguage: PublicContentLanguage;
   readonly onLanguageChange: (language: PublicContentLanguage) => void;
@@ -54,6 +56,8 @@ export function PublicMapDock({
   onOpenSearch,
   onRequestMyLocation,
   onOpenPage,
+  cameraFilterActive,
+  onSelectCameraFilter,
   supportedLanguages,
   currentLanguage,
   onLanguageChange,
@@ -101,6 +105,8 @@ export function PublicMapDock({
               onOpenSearch={onOpenSearch}
               onRequestMyLocation={onRequestMyLocation}
               onOpenPage={onOpenPage}
+              cameraFilterActive={cameraFilterActive}
+              onSelectCameraFilter={onSelectCameraFilter}
             />
           </div>
         </>

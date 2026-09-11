@@ -232,6 +232,44 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     }
   }
 
+  if (parsed.data.type === 'LIVE_CAMERAS') {
+    const liveCamerasInput = parsed.data;
+    try {
+      const menuItemId = await firestore.runTransaction(async (transaction) => {
+        const duplicateSnap = await transaction.get(menuItemsRef.where('type', '==', 'LIVE_CAMERAS').limit(1));
+        if (!duplicateSnap.empty) throw new DuplicateMenuItemError();
+        let order = liveCamerasInput.order;
+        if (order === undefined) {
+          const existing = await transaction.get(menuItemsRef);
+          order = existing.size;
+        }
+        const newMenuItemId = generateMenuItemId();
+        transaction.set(menuItemsRef.doc(newMenuItemId), {
+          menuItemId: newMenuItemId,
+          customerId: result.context.map.customerId,
+          mapId: resolvedMapId,
+          type: 'LIVE_CAMERAS',
+          label: liveCamerasInput.label,
+          ...(liveCamerasInput.icon ? { icon: liveCamerasInput.icon } : {}),
+          ...(liveCamerasInput.translations && Object.keys(liveCamerasInput.translations).length > 0
+            ? { translations: liveCamerasInput.translations }
+            : {}),
+          order,
+          status: desiredStatus,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return newMenuItemId;
+      });
+      return NextResponse.json({ ok: true, menuItemId }, { status: 201 });
+    } catch (error) {
+      if (error instanceof DuplicateMenuItemError) {
+        return NextResponse.json({ code: 'map/duplicate-menu-item', message: 'Live Cameras is already in the menu.' }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
   const featureInput = parsed.data;
 
   try {

@@ -3,6 +3,7 @@ import {
   type PublicationMenuItem,
   type PublicContentLanguage,
   type PublishedCategory,
+  type PublishedLiveCamera,
   type PublishedMapSummary,
   type PublishedPage,
   type PublishedPoi,
@@ -10,7 +11,7 @@ import {
   type PublishedPoiPlace,
   type PublishedPoiPriceLevel,
 } from 'shared-types';
-import type { CategoryParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
+import type { CategoryParsed, LiveCameraParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
 import type { ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
 import { buildPublicMenuProjection } from './menu-projection';
 
@@ -126,6 +127,14 @@ export interface PublicationContent {
   readonly categories: readonly PublishedCategory[];
   readonly pois: readonly PublishedPoi[];
   readonly pages: readonly PublishedPage[];
+  /**
+   * LIVE CAMERAS FOUNDATION checkpoint — only `ENABLED` cameras, see
+   * `PublishedLiveCamera`'s own doc comment (packages/shared-types/src/
+   * publication.ts). Always present (possibly `[]`) — the publish route
+   * writes this key unconditionally, mirroring `pages`, never conditionally
+   * like `photoProviderRefs`.
+   */
+  readonly liveCameras: readonly PublishedLiveCamera[];
   /** Photo Experience Prototype checkpoint — see this file's header comment. Always present (possibly `{}`); the caller (the publish route) decides whether to write the key at all onto the stored document, matching `MapPublicationSnapshot.photoProviderRefs`'s own "absent, not empty" convention. */
   readonly photoProviderRefs: Readonly<Record<string, PublishedPoiPhotoProviderRef>>;
 }
@@ -146,6 +155,15 @@ export function buildPublicationContent(
    * omitted for that POI, exactly like a pre-expansion publication.
    */
   placeMetadataByPoiId: ReadonlyMap<string, ExternalPoiPlaceMetadata> = new Map(),
+  /**
+   * LIVE CAMERAS FOUNDATION checkpoint — appended as the LAST parameter
+   * (not inserted between `pages` and `placeMetadataByPoiId`) specifically
+   * so no existing positional call site (including every existing test in
+   * build-publication-snapshot.test.ts) needs to change. Defaults to `[]`
+   * so an old caller that never learned about cameras still gets a
+   * publication with an empty `liveCameras` array, never `undefined`.
+   */
+  liveCameras: readonly LiveCameraParsed[] = [],
 ): PublicationContent {
   const publishedCategories: PublishedCategory[] = categories
     .filter((category) => category.enabled)
@@ -208,6 +226,25 @@ export function buildPublicationContent(
       ...(page.translations ? { translations: page.translations } : {}),
     }));
 
+  // LIVE CAMERAS FOUNDATION checkpoint — only `ENABLED` cameras are ever
+  // published, mirroring `publishedCategories`/`publishedPages`'s identical
+  // "only enabled" filter above. A camera creates its own marker and has no
+  // category relationship, so — like a Page — there is no cross-reference
+  // to validate here. `playback` (when present) is passed through
+  // unchanged: it is already public-safe by construction (a browser-safe
+  // WEBRTC/HLS relay URL only — see shared-types' `LiveCameraPlayback` doc
+  // comment), so this is a straight projection, not a sanitizing step.
+  const publishedLiveCameras: PublishedLiveCamera[] = liveCameras
+    .filter((camera) => camera.status === 'ENABLED')
+    .map((camera) => ({
+      cameraId: camera.cameraId,
+      name: camera.name,
+      ...(camera.translations ? { translations: camera.translations } : {}),
+      ...(camera.description ? { description: camera.description } : {}),
+      location: camera.location,
+      ...(camera.playback ? { playback: camera.playback } : {}),
+    }));
+
   // `buildPublicMenuProjection()` is given every category/page (not just the
   // already-enabled subsets above) — it applies its own, already-correct
   // enabled/disabled check per menu item internally; passing the full lists
@@ -231,6 +268,7 @@ export function buildPublicationContent(
     categories: publishedCategories,
     pois: publishedPois,
     pages: publishedPages,
+    liveCameras: publishedLiveCameras,
     photoProviderRefs,
   };
 }

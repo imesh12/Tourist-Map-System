@@ -22,6 +22,8 @@ export const MENU_ITEM_ID_PREFIX = 'menu_' as const;
 export const PUBLICATION_ID_PREFIX = 'pub_' as const;
 /** checkpoint 1B.11 — see `Page` (./page.js). */
 export const PAGE_ID_PREFIX = 'page_' as const;
+/** LIVE CAMERAS FOUNDATION checkpoint — see `LiveCamera` (./live-camera.js). */
+export const LIVE_CAMERA_ID_PREFIX = 'cam_' as const;
 
 export type CustomerId = Branded<string, 'CustomerId'>;
 export type MapId = Branded<string, 'MapId'>;
@@ -30,6 +32,7 @@ export type PoiId = Branded<string, 'PoiId'>;
 export type MenuItemId = Branded<string, 'MenuItemId'>;
 export type PublicationId = Branded<string, 'PublicationId'>;
 export type PageId = Branded<string, 'PageId'>;
+export type LiveCameraId = Branded<string, 'LiveCameraId'>;
 
 /**
  * Firebase Authentication UID. Deliberately branded but otherwise treated as

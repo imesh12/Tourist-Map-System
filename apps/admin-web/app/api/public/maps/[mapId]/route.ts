@@ -90,6 +90,17 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
     categories: snapshot.categories,
     pois: snapshot.pois,
     pages: snapshot.pages,
+    // LIVE CAMERAS FOUNDATION checkpoint — this route builds its response
+    // via an explicit field-by-field pick (see this file's own header
+    // comment on why: the `defaultLanguage`/`supportedLanguages` regression
+    // this same comment documents), so `liveCameras` must be added here BY
+    // HAND, exactly like every other field — it is NOT carried through
+    // automatically just because `snapshot` (parsed via
+    // `mapPublicationSnapshotSchema`) already has it. `PublishedLiveCamera`
+    // has no admin-only/private field to strip (see its own doc comment,
+    // packages/shared-types/src/publication.ts) — a straight pass-through,
+    // not a sanitizing step.
+    liveCameras: snapshot.liveCameras,
   };
 
   return NextResponse.json(publicSnapshot);

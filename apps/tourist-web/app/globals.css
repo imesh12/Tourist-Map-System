@@ -1311,3 +1311,129 @@ body {
     transition: none;
   }
 }
+
+/* LIVE CAMERAS FOUNDATION checkpoint — additive-only rules for
+   `CameraDetailCard`'s inner content. The card's own responsive shell
+   (desktop right-panel / mobile bottom-sheet, entrance animation, safe-area
+   handling) is inherited entirely from the existing `.poi-detail-card`
+   rules above via that shared class on the wrapping element — nothing in
+   this block redefines position/size/layout for the card itself, only the
+   camera-specific content inside it. */
+.camera-detail-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-primary, #1a73e8);
+  margin-bottom: 0.35rem;
+}
+
+.camera-detail-kicker-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.camera-detail-playback {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.camera-detail-playback-surface {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  background: #0b0b14;
+  overflow: hidden;
+  display: none;
+}
+
+.camera-detail-playback-surface[data-visible='true'] {
+  display: block;
+}
+
+.camera-detail-status {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--ink-muted, #5b6472);
+}
+
+.camera-detail-status--muted {
+  font-style: italic;
+}
+
+.camera-detail-status--error {
+  color: #b3261e;
+}
+
+.camera-detail-play-button,
+.camera-detail-stop-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.camera-preview-overlay-pane {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 3;
+}
+.camera-preview-fallback { position: fixed; z-index: 20; top: 1rem; left: 50%; transform: translateX(-50%); pointer-events: auto; }
+
+.camera-preview-card {
+  position: relative;
+  width: min(260px, calc(100vw - 32px));
+  padding: 8px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(17, 24, 39, 0.24);
+  cursor: pointer;
+}
+
+.camera-preview-surface {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0b0b14;
+}
+
+.camera-preview-surface iframe,
+.camera-preview-surface video { width: 100%; height: 100%; border: 0; display: block; }
+.camera-preview-meta { display: grid; gap: 2px; padding: 7px 4px 2px; }
+.camera-preview-live { color: #c62828; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; }
+.camera-preview-live-dot { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: #d32f2f; }
+.camera-preview-affordance { color: var(--ink-muted, #5b6472); font-size: 0.75rem; }
+.camera-preview-close { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border: 0; border-radius: 50%; background: rgba(0,0,0,.64); color: #fff; font-size: 1.15rem; line-height: 1; cursor: pointer; }
+
+.camera-detail-play-button {
+  background: var(--brand-primary, #1a73e8);
+  color: #fff;
+}
+
+.camera-detail-play-button:hover {
+  filter: brightness(1.05);
+}
+
+.camera-detail-play-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.camera-detail-stop-button {
+  background: var(--hairline, rgba(17, 24, 39, 0.08));
+  color: var(--ink, #111827);
+}

@@ -4,12 +4,21 @@
 import { importLibrary } from '@googlemaps/js-api-loader';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mapThemeToGoogleMapsStyles } from 'map-theme-adapter';
-import { resolveLocalizedText, type CategoryIcon, type PublicContentLanguage, type PublishedPoi } from 'shared-types';
+import {
+  resolveLocalizedText,
+  type CategoryIcon,
+  type PublicContentLanguage,
+  type PublishedLiveCamera,
+  type PublishedPoi,
+} from 'shared-types';
 import type { PublicMapSnapshotParsed } from 'validation';
 import { ensureGoogleMapsApiConfigured } from '@/lib/public-map/google-maps-loader';
 import { computeBoundsForPois } from '@/lib/public-map/map-camera-utils';
 import { buildMarkerIcon, resolveMarkerVisualConfig, type PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
 import { myLocationErrorMessage, requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
+import { createLiveCameraMarkerLayer, type LiveCameraMarkerLayer } from '@/lib/public-map/live-camera-marker-layer';
+import { LivePlaybackSession } from '@/lib/public-map/live-playback';
+import { resolveCameraPlaybackAdapterFactory } from '@/lib/public-map/live-camera-e2e';
 import { createPoiMarkerLayer, type PoiMarkerLayer } from '@/lib/public-map/poi-marker-layer';
 import {
   buildPoiPhotoUrl,
@@ -19,6 +28,8 @@ import {
   normalizePhotoApiBaseUrl,
 } from '@/lib/public-map/poi-photo-source';
 import { filterPoisByCategory } from '@/lib/public-map/public-poi-filter';
+import { CameraDetailCard } from './camera-detail-card';
+import { CameraPreviewOverlay } from './camera-preview-overlay';
 import { PageOverlay } from './page-overlay';
 import { PoiDetailCard } from './poi-detail-card';
 import { PublicMapDock } from './public-map-dock';
@@ -106,15 +117,25 @@ export interface TouristMapProps {
 
 export function TouristMap({ snapshot, language, onLanguageChange, photoPinTemplate }: TouristMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const diagnosticsRef = useRef<HTMLDListElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | undefined>(undefined);
   const markerLayerRef = useRef<PoiMarkerLayer | undefined>(undefined);
+  const cameraMarkerLayerRef = useRef<LiveCameraMarkerLayer | undefined>(undefined);
   const userLocationMarkerRef = useRef<google.maps.Marker | undefined>(undefined);
   const hasUserChangedCategoryRef = useRef(false);
   const [status, setStatus] = useState<LoadStatus>('loading');
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [cameraFilterActive, setCameraFilterActive] = useState(false);
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  // LIVE CAMERAS FOUNDATION checkpoint — a THIRD, mutually-exclusive
+  // selection slot alongside `selectedPoiId`/`selectedPageId`: only one of
+  // the three is ever non-null (see `handleSelectPoi`/`handleOpenPage`/
+  // `handleSelectCamera` below, each of which clears the other two).
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+  const [cameraDetailOpen, setCameraDetailOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [myLocation, setMyLocation] = useState<MyLocationState>({ status: 'idle' });
   // checkpoint 1B.16 §8 — the My Location status is a TRANSIENT toast: this
@@ -132,7 +153,7 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
   // visible change (see `lib/public-map/poi-photo-source.ts`).
   const photoApiBaseUrl = normalizePhotoApiBaseUrl(process.env.NEXT_PUBLIC_ADMIN_PUBLIC_API_BASE_URL);
   const { mapProvider, area, theme, name: mapName, branding } = snapshot.map;
-  const { mapId, pois, categories, menu, pages, defaultLanguage, supportedLanguages } = snapshot;
+  const { mapId, pois, categories, menu, pages, liveCameras, defaultLanguage, supportedLanguages } = snapshot;
   // checkpoint 1B.16 §8 — the diagnostics readout below is a dev/E2E-only
   // DOM contract (it is how the hermetic, no-Google-key E2E asserts POI
   // filtering / publication-safety — see this file's top doc comment and
@@ -214,6 +235,30 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
     [pages, language, defaultLanguage],
   );
 
+  // LIVE CAMERAS FOUNDATION checkpoint — same localization convention
+  // `localizedPois`/`localizedPages` already establish: resolved once here,
+  // never re-implemented inside the marker layer or the detail card.
+  const localizedCameras = useMemo(
+    () =>
+      liveCameras.map((camera) => ({
+        ...camera,
+        name: resolveLocalizedText({
+          requestedLanguage: language,
+          defaultLanguage,
+          translations: camera.translations?.name,
+          legacyValue: camera.name,
+        }),
+        description:
+          resolveLocalizedText({
+            requestedLanguage: language,
+            defaultLanguage,
+            translations: camera.translations?.description,
+            legacyValue: camera.description,
+          }) || undefined,
+      })),
+    [liveCameras, language, defaultLanguage],
+  );
+
   const localizedMenu = useMemo(
     () =>
       menu.map((item) => ({
@@ -236,8 +281,24 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
     () => new Map(localizedCategories.map((category) => [category.categoryId, category.icon] as const)),
     [localizedCategories],
   );
-  const visiblePois = useMemo(() => filterPoisByCategory(localizedPois, selectedCategoryId), [localizedPois, selectedCategoryId]);
+  const visiblePois = useMemo(
+    () => (cameraFilterActive ? [] : filterPoisByCategory(localizedPois, selectedCategoryId)),
+    [cameraFilterActive, localizedPois, selectedCategoryId],
+  );
   const selectedPoi: PublishedPoi | undefined = selectedPoiId ? visiblePois.find((poi) => poi.poiId === selectedPoiId) : undefined;
+  const selectedCamera: PublishedLiveCamera | undefined = selectedCameraId
+    ? localizedCameras.find((camera) => camera.cameraId === selectedCameraId)
+    : undefined;
+  const previewSession = useMemo(
+    () => selectedCamera ? new LivePlaybackSession(selectedCamera.playback, resolveCameraPlaybackAdapterFactory()) : undefined,
+    [selectedCamera],
+  );
+  useEffect(() => () => previewSession?.stop(), [previewSession]);
+  const detailSession = useMemo(
+    () => selectedCamera && cameraDetailOpen ? new LivePlaybackSession(selectedCamera.playback, resolveCameraPlaybackAdapterFactory()) : undefined,
+    [selectedCamera, cameraDetailOpen],
+  );
+  useEffect(() => () => detailSession?.stop(), [detailSession]);
 
   // Photo Experience Prototype checkpoint — a live `/photo?index=0` URL per
   // POI that published `photo.available === true`, and ONLY when a base URL
@@ -339,7 +400,12 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
   const handleSelectCategory = useCallback(
     (categoryId: string | null) => {
       hasUserChangedCategoryRef.current = true;
+      previewSession?.stop();
+      detailSession?.stop();
+      setSelectedCameraId(null);
+      setCameraDetailOpen(false);
       setSelectedCategoryId(categoryId);
+      setCameraFilterActive(false);
       setSelectedPoiId((current) => {
         if (current === null) {
           return current;
@@ -348,17 +414,24 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         return stillVisible ? current : null;
       });
     },
-    [pois],
+    [detailSession, pois, previewSession],
   );
 
   const handleSelectPoi = useCallback((poiId: string) => {
+    previewSession?.stop();
+    setCameraFilterActive(false);
     setSelectedPoiId(poiId);
     setSearchOpen(false);
     // checkpoint 1B.11 §13: a Page overlay and a POI detail card occupy the
     // same visual slot — selecting a POI closes any open Page rather than
     // stacking two overlays. Never touches `selectedCategoryId`/map camera.
     setSelectedPageId(null);
-  }, []);
+    // LIVE CAMERAS FOUNDATION checkpoint — POI/Page/Camera selection is a
+    // single mutually-exclusive slot; selecting a POI also closes an open
+    // camera detail (its own `useLivePlayback` unmount-cleanup then tears
+    // any active playback down — see that hook's own doc comment).
+    setSelectedCameraId(null);
+  }, [previewSession]);
 
   const handleSelectSearchResult = useCallback(
     (poi: PublishedPoi) => {
@@ -383,11 +456,70 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
   // closes any open POI detail/search for the same single-overlay-slot
   // reason `handleSelectPoi` closes an open Page.
   const handleOpenPage = useCallback((pageId: string) => {
+    previewSession?.stop();
+    setCameraFilterActive(false);
     setSelectedPageId(pageId);
     setSelectedPoiId(null);
     setSearchOpen(false);
-  }, []);
+    // LIVE CAMERAS FOUNDATION checkpoint — see `handleSelectPoi`'s identical comment above.
+    setSelectedCameraId(null);
+  }, [previewSession]);
   const handleClosePage = useCallback(() => setSelectedPageId(null), []);
+
+  // LIVE CAMERAS FOUNDATION checkpoint — selecting a camera marker. Clears
+  // the other two selection slots (mirrors `handleSelectPoi`/`handleOpenPage`
+  // exactly) and never itself starts playback — see `camera-detail-card.tsx`/
+  // `live-playback.ts`'s own doc comments for the structural no-autoplay
+  // guarantee: only that card's "Play Live" button ever calls `play()`.
+  const handleSelectCamera = useCallback((cameraId: string) => {
+    previewSession?.stop();
+    setCameraFilterActive(true);
+    setSelectedCameraId(cameraId);
+    setCameraDetailOpen(false);
+    setSearchOpen(false);
+    setSelectedPoiId(null);
+    setSelectedPageId(null);
+  }, [previewSession]);
+  const handleSelectCameraFilter = useCallback(() => {
+    previewSession?.stop();
+    detailSession?.stop();
+    setCameraFilterActive(true);
+    setSelectedCameraId(null);
+    setCameraDetailOpen(false);
+    setSelectedPoiId(null);
+    setSelectedPageId(null);
+    setSearchOpen(false);
+  }, [detailSession, previewSession]);
+  const handleCloseCameraDetail = useCallback(() => {
+    previewSession?.stop();
+    setSelectedCameraId(null);
+    setCameraDetailOpen(false);
+  }, [previewSession]);
+  const handleOpenCameraDetail = useCallback(() => {
+    previewSession?.stop();
+    setCameraDetailOpen(true);
+  }, [previewSession]);
+
+  // Camera menu controls use the same selection handler as marker clicks.
+  // Like POI selection, the focus effect below pans to the selected target.
+
+  useEffect(() => {
+    const diagnostics = diagnosticsRef.current;
+    if (!isDiagnosticsMode || !window.__TOURIST_MAP_E2E__ || !diagnostics) return;
+    // Test-only selection through the existing diagnostics boundary, not a
+    // marker or a second camera UI. Uses the real marker selection handler.
+    const selectCamera = (event: Event) => {
+      if (event instanceof CustomEvent && localizedCameras.some((camera) => camera.cameraId === event.detail)) {
+        handleSelectCamera(event.detail);
+      }
+    };
+    diagnostics.addEventListener('tourist-map-e2e-select-camera', selectCamera);
+    diagnostics.dataset.cameraSelectionReady = 'true';
+    return () => {
+      diagnostics.removeEventListener('tourist-map-e2e-select-camera', selectCamera);
+      delete diagnostics.dataset.cameraSelectionReady;
+    };
+  }, [isDiagnosticsMode, localizedCameras, handleSelectCamera]);
 
   const handleRequestMyLocation = useCallback(() => {
     setLocationToast((n) => (n ?? 0) + 1);
@@ -483,7 +615,11 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         }
 
         mapRef.current = map;
+        setMapInstance(map);
         markerLayerRef.current = createPoiMarkerLayer(map);
+        // LIVE CAMERAS FOUNDATION checkpoint — its own dedicated layer,
+        // never mixed into `markerLayerRef`'s POI markers.
+        cameraMarkerLayerRef.current = createLiveCameraMarkerLayer(map);
         setStatus('ready');
       })
       .catch(() => {
@@ -496,7 +632,12 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
       cancelled = true;
       markerLayerRef.current?.destroy();
       markerLayerRef.current = undefined;
+      // LIVE CAMERAS FOUNDATION checkpoint — guaranteed teardown alongside
+      // the POI marker layer's own, on the same unmount/re-init path.
+      cameraMarkerLayerRef.current?.destroy();
+      cameraMarkerLayerRef.current = undefined;
       mapRef.current = undefined;
+      setMapInstance(undefined);
       userLocationMarkerRef.current = undefined;
     };
     // Mount-only, matching 1B.9's own established convention (`snapshot`
@@ -524,6 +665,20 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
       photoPinTemplate,
     });
   }, [visiblePois, categoryIconById, selectedPoiId, theme.markerStyle, handleSelectPoi, status, photoImageByPoiId, photoPinTemplate]);
+
+  // LIVE CAMERAS FOUNDATION checkpoint — its own resync effect, independent
+  // of the POI marker effect above: a camera-only change (e.g. selecting a
+  // camera) never re-creates/re-syncs the POI marker layer, and vice versa.
+  useEffect(() => {
+    if (!cameraMarkerLayerRef.current) {
+      return;
+    }
+    cameraMarkerLayerRef.current.sync({
+      cameras: localizedCameras,
+      selectedCameraId,
+      onSelect: handleSelectCamera,
+    });
+  }, [localizedCameras, selectedCameraId, handleSelectCamera, status]);
 
   // §12: fit the camera to the filtered set on an EXPLICIT category change
   // only — never on initial mount, so the configured UNBOUNDED/BOUNDED
@@ -556,6 +711,12 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
     mapRef.current.panTo({ lat: selectedPoi.location.latitude, lng: selectedPoi.location.longitude });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPoiId]);
+
+  useEffect(() => {
+    if (!selectedCamera || !mapRef.current) return;
+    mapRef.current.panTo({ lat: selectedCamera.location.latitude, lng: selectedCamera.location.longitude });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCameraId]);
 
   const unavailableMessage = !apiKey
     ? 'Map preview is unavailable in this environment.'
@@ -599,6 +760,12 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         />
       ) : null}
       {selectedPage ? <PageOverlay page={selectedPage} onClose={handleClosePage} /> : null}
+      {selectedCamera && !cameraDetailOpen && previewSession ? (
+        <CameraPreviewOverlay map={mapInstance} camera={selectedCamera} session={previewSession} onOpen={handleOpenCameraDetail} onClose={handleCloseCameraDetail} />
+      ) : null}
+      {selectedCamera && cameraDetailOpen ? (
+        <CameraDetailCard key={selectedCamera.cameraId} camera={selectedCamera} onClose={handleCloseCameraDetail} autoPlayOnMount playbackSession={detailSession} />
+      ) : null}
       {myLocation.status === 'success' && locationToast !== null ? (
         <p key={locationToast} data-testid="my-location-status" className="my-location-banner" role="status">
           <span className="my-location-banner-dot" aria-hidden="true" />
@@ -622,12 +789,15 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         onOpenSearch={handleOpenSearch}
         onRequestMyLocation={handleRequestMyLocation}
         onOpenPage={handleOpenPage}
+        cameraFilterActive={cameraFilterActive}
+        onSelectCameraFilter={handleSelectCameraFilter}
         supportedLanguages={supportedLanguages}
         currentLanguage={language}
         onLanguageChange={onLanguageChange}
       />
       {isDiagnosticsMode ? (
         <dl
+          ref={diagnosticsRef}
           data-testid="tourist-map-diagnostics"
           className="tourist-map-diagnostics"
           data-visible={showDiagnosticsPanel ? 'true' : undefined}
@@ -684,6 +854,15 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
           <dd data-testid="tourist-map-diag-selected-poi">{selectedPoiId ?? 'none'}</dd>
           <dt>selectedPage</dt>
           <dd data-testid="tourist-map-diag-selected-page">{selectedPageId ?? 'none'}</dd>
+          {/* LIVE CAMERAS FOUNDATION checkpoint — same dev/E2E-only DOM
+              contract as every other `tourist-map-diag-*` field: never
+              renders in a production build, exposes only already-public
+              camera ids/counts (already present verbatim in the public
+              snapshot). */}
+          <dt>cameraCount</dt>
+          <dd data-testid="tourist-map-diag-camera-count">{localizedCameras.length}</dd>
+          <dt>selectedCamera</dt>
+          <dd data-testid="tourist-map-diag-selected-camera">{selectedCameraId ?? 'none'}</dd>
           <dt>userLocation</dt>
           <dd data-testid="tourist-map-diag-user-location">{myLocation.status === 'success' ? 'set' : 'unset'}</dd>
         </dl>

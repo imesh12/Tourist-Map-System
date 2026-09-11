@@ -88,9 +88,20 @@ function pageMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'PAGE' 
   };
 }
 
+function liveCamerasMenuItem(overrides: Partial<Extract<MenuItemParsed, { type: 'LIVE_CAMERAS' }>> = {}): MenuItemParsed {
+  return { menuItemId: 'menu_live000000000000000000', customerId: 'cust_a0000000000000000000', mapId: 'map_a0000000000000000000000', type: 'LIVE_CAMERAS', label: 'Live Cameras', order: 3, status: 'ENABLED', createdAt: TIMESTAMP, updatedAt: TIMESTAMP, ...overrides };
+}
+
 describe('buildPublicMenuProjection', () => {
   it('returns an empty array for an empty menu', () => {
     expect(buildPublicMenuProjection([], [])).toEqual([]);
+  });
+
+  it('projects one collection target without synthesizing camera entries', () => {
+    expect(buildPublicMenuProjection([liveCamerasMenuItem(), liveCamerasMenuItem({ menuItemId: 'menu_live2_00000000000000000' })], [])).toEqual([
+      { type: 'LIVE_CAMERAS', label: 'Live Cameras', icon: 'INFORMATION' },
+      { type: 'LIVE_CAMERAS', label: 'Live Cameras', icon: 'INFORMATION' },
+    ]);
   });
 
   it('projects an enabled CATEGORY item linked to an enabled category', () => {

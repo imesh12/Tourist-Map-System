@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MAP_THEME } from 'shared-types';
-import type { CategoryParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
+import type { CategoryParsed, LiveCameraParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
 import { buildPublicationContent } from './build-publication-snapshot';
 
 /**
@@ -88,6 +88,20 @@ function page(overrides: Partial<PageParsed> = {}): PageParsed {
     mapId: 'map_a0000000000000000000000',
     title: 'Wi-Fi Guide',
     content: 'Network: Guest\nPassword: welcome',
+    status: 'ENABLED',
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function liveCamera(overrides: Partial<LiveCameraParsed> = {}): LiveCameraParsed {
+  return {
+    cameraId: 'cam_beachfront000000000000',
+    customerId: 'cust_a0000000000000000000',
+    mapId: 'map_a0000000000000000000000',
+    name: 'Beachfront Plaza',
+    location: { latitude: 35.0116, longitude: 135.7681 },
     status: 'ENABLED',
     createdAt: TIMESTAMP,
     updatedAt: TIMESTAMP,
@@ -296,6 +310,69 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
     it('excludes a PAGE menu item whose referenced page is disabled', () => {
       const content = buildPublicationContent(map(), [], [], [pageMenuItem()], [page({ status: 'DISABLED' })]);
       expect(content.menu).toEqual([]);
+    });
+  });
+
+  describe('liveCameras — LIVE CAMERAS FOUNDATION checkpoint', () => {
+    it('includes only ENABLED cameras', () => {
+      const content = buildPublicationContent(
+        map(),
+        [],
+        [],
+        [],
+        [],
+        new Map(),
+        [liveCamera({ status: 'ENABLED' }), liveCamera({ cameraId: 'cam_disabled0000000000000', status: 'DISABLED', name: 'Retired Camera' })],
+      );
+      expect(content.liveCameras).toHaveLength(1);
+      expect(content.liveCameras[0]).toEqual({
+        cameraId: 'cam_beachfront000000000000',
+        name: 'Beachfront Plaza',
+        location: { latitude: 35.0116, longitude: 135.7681 },
+      });
+    });
+
+    it('excludes a DISABLED camera from the publication', () => {
+      const content = buildPublicationContent(map(), [], [], [], [], new Map(), [liveCamera({ status: 'DISABLED' })]);
+      expect(content.liveCameras).toEqual([]);
+    });
+
+    it('never includes admin-only camera fields (customerId/mapId/status/timestamps)', () => {
+      const content = buildPublicationContent(map(), [], [], [], [], new Map(), [liveCamera()]);
+      expect(content.liveCameras[0]).toEqual({
+        cameraId: 'cam_beachfront000000000000',
+        name: 'Beachfront Plaza',
+        location: { latitude: 35.0116, longitude: 135.7681 },
+      });
+    });
+
+    it('defaults to an empty liveCameras array when the parameter is omitted entirely (backward-compatible default, and no existing call site needs updating)', () => {
+      const content = buildPublicationContent(map(), [], [], []);
+      expect(content.liveCameras).toEqual([]);
+    });
+
+    it('passes a public-safe HLS playback descriptor through unchanged', () => {
+      const content = buildPublicationContent(map(), [], [], [], [], new Map(), [
+        liveCamera({ playback: { transport: 'HLS', playbackUrl: 'https://relay.example.com/live/cam-1.m3u8' } }),
+      ]);
+      expect(content.liveCameras[0]?.playback).toEqual({ transport: 'HLS', playbackUrl: 'https://relay.example.com/live/cam-1.m3u8' });
+    });
+
+    it('omits `playback` entirely for a camera with no playback configuration — MANDATORY ARCHITECTURE CORRECTION 1, never fabricated', () => {
+      const content = buildPublicationContent(map(), [], [], [], [], new Map(), [liveCamera()]);
+      expect(content.liveCameras[0]).not.toHaveProperty('playback');
+    });
+
+    it('passes translations/description through unchanged, omitting them entirely when absent', () => {
+      const withExtras = buildPublicationContent(map(), [], [], [], [], new Map(), [
+        liveCamera({ description: 'Overlooking the main plaza.', translations: { name: { ja: 'ビーチフロント広場' } } }),
+      ]);
+      expect(withExtras.liveCameras[0]?.description).toBe('Overlooking the main plaza.');
+      expect(withExtras.liveCameras[0]?.translations).toEqual({ name: { ja: 'ビーチフロント広場' } });
+
+      const withoutExtras = buildPublicationContent(map(), [], [], [], [], new Map(), [liveCamera()]);
+      expect(withoutExtras.liveCameras[0]).not.toHaveProperty('description');
+      expect(withoutExtras.liveCameras[0]).not.toHaveProperty('translations');
     });
   });
 

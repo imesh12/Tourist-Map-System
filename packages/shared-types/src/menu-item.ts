@@ -96,4 +96,10 @@ export interface MenuItemPage extends MenuItemCommon {
   readonly icon?: CategoryIcon;
 }
 
-export type MenuItem = MenuItemCategory | MenuItemFeature | MenuItemPage;
+/** A single navigation control for the published Live Camera collection. */
+export interface MenuItemLiveCameras extends MenuItemCommon {
+  readonly type: 'LIVE_CAMERAS';
+  readonly icon?: CategoryIcon;
+}
+
+export type MenuItem = MenuItemCategory | MenuItemFeature | MenuItemPage | MenuItemLiveCameras;

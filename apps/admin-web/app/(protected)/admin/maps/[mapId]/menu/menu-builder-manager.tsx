@@ -73,7 +73,7 @@ function menuItemToFormValues(menuItem: MenuItemParsed): MenuItemFormValues {
     // checkpoint 1B.11 — a PAGE item's icon override shares CATEGORY's
     // identical optional-icon-override shape (see `MenuItemPage` in
     // shared-types), so it belongs on this same branch.
-    icon: menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? (menuItem.icon ?? '') : '',
+    icon: menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' || menuItem.type === 'LIVE_CAMERAS' ? (menuItem.icon ?? '') : '',
     status: menuItem.status,
     translations: menuItem.translations ?? {},
   };
@@ -118,6 +118,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     [menuItems],
   );
   const usedPageIds = useMemo(() => new Set(menuItems.filter((item) => item.type === 'PAGE').map((item) => item.pageId)), [menuItems]);
+  const liveCamerasAvailable = !menuItems.some((item) => item.type === 'LIVE_CAMERAS');
 
   // §11: only enabled categories are ever offered for a NEW menu link.
   // §12: a category (or feature, or page) already in the menu is never
@@ -200,7 +201,9 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
               status: values.status,
               ...translationsField,
             }
-          : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status, ...translationsField };
+          : values.type === 'LIVE_CAMERAS'
+            ? { type: 'LIVE_CAMERAS' as const, label: values.label, status: values.status, ...translationsField }
+            : { type: 'FEATURE' as const, featureKey: values.featureKey, label: values.label, status: values.status, ...translationsField };
 
     const parsed = menuItemCreateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -239,7 +242,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
       // `menuItemUpdateInputSchema` has no type-awareness of its own, but the
       // route rejects `icon` on a FEATURE item's target, so this form never
       // sends it for one.
-      ...(menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' ? { icon: values.icon ? values.icon : null } : {}),
+      ...(menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' || menuItem.type === 'LIVE_CAMERAS' ? { icon: values.icon ? values.icon : null } : {}),
       // checkpoint 1B.17B — ALWAYS sent on edit, even as `{}` (full-replace/
       // clear semantics — see `PATCH /api/maps/{mapId}/menu-items/{menuItemId}`'s
       // own doc comment).
@@ -454,7 +457,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
                       </div>
                     </td>
                     <td>{menuItem.label}</td>
-                    <td>{menuItem.type === 'CATEGORY' ? 'Category' : menuItem.type === 'PAGE' ? 'Page' : 'Feature'}</td>
+                    <td>{menuItem.type === 'CATEGORY' ? 'Category' : menuItem.type === 'PAGE' ? 'Page' : menuItem.type === 'LIVE_CAMERAS' ? 'Live Cameras' : 'Feature'}</td>
                     <td>
                       {menuItem.type === 'CATEGORY' ? (
                         category ? (
@@ -476,6 +479,8 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
                         ) : (
                           <span className="field-hint">Unknown page</span>
                         )
+                      ) : menuItem.type === 'LIVE_CAMERAS' ? (
+                        <span className="icon-cell"><span aria-hidden="true">📹</span> All live cameras</span>
                       ) : feature ? (
                         feature.label
                       ) : (
@@ -523,13 +528,14 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
           initialValues={
             drawer.mode === 'edit'
               ? menuItemToFormValues(drawer.menuItem)
-              : emptyFormValues(selectableCategories[0]?.categoryId ?? '', selectableFeatures[0]?.key ?? '', selectablePages[0]?.pageId ?? '')
+                : emptyFormValues(selectableCategories[0]?.categoryId ?? '', selectableFeatures[0]?.key ?? '', selectablePages[0]?.pageId ?? '')
           }
           categories={categories}
           pages={pages}
           selectableCategories={selectableCategories}
           selectableFeatures={selectableFeatures}
           selectablePages={selectablePages}
+          liveCamerasAvailable={liveCamerasAvailable}
           enabledLanguages={enabledLanguages}
           defaultLanguage={defaultLanguage}
           isSaving={isSaving}
@@ -549,7 +555,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
               ? categoryById.get(deleteTarget.categoryId)?.name
               : deleteTarget.type === 'PAGE'
                 ? pageById.get(deleteTarget.pageId)?.title
-                : undefined
+              : undefined
           }
           isDeleting={isDeleting}
           onCancel={cancelDelete}

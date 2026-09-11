@@ -2,12 +2,22 @@ import { z } from 'zod';
 import { CATEGORY_ICONS, DEFAULT_PUBLIC_CONTENT_LANGUAGE, PUBLISHED_POI_PRICE_LEVELS } from 'shared-types';
 import { mapBrandingSchema } from './branding.js';
 import { categoryTranslationsSchema } from './category.js';
-import { categoryIdSchema, customerIdSchema, mapIdSchema, pageIdSchema, poiIdSchema, publicationIdSchema, uidSchema } from './ids.js';
+import {
+  categoryIdSchema,
+  customerIdSchema,
+  liveCameraIdSchema,
+  mapIdSchema,
+  pageIdSchema,
+  poiIdSchema,
+  publicationIdSchema,
+  uidSchema,
+} from './ids.js';
 import { legacyPublicContentLanguageInputSchema, publicContentLanguageSchema, supportedPublicContentLanguagesSchema } from './language.js';
 import { latitudeSchema, longitudeSchema, mapAreaSchema, mapProviderConfigSchema } from './map.js';
 import { mapThemeSchema } from './map-theme.js';
 import { menuItemTranslationsSchema } from './menu-item.js';
 import { pageTranslationsSchema } from './page.js';
+import { liveCameraLocationSchema, liveCameraPlaybackSchema, liveCameraTranslationsSchema } from './live-camera.js';
 import { poiProviderPlaceIdSchema, poiProviderSchema, poiTranslationsSchema } from './poi.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
@@ -69,6 +79,14 @@ const publicationMenuItemSchema = z.discriminatedUnion('type', [
       translations: menuItemTranslationsSchema.optional(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('LIVE_CAMERAS'),
+      label: z.string().trim().min(1),
+      icon: z.enum(CATEGORY_ICONS),
+      translations: menuItemTranslationsSchema.optional(),
+    })
+    .strict(),
 ]);
 
 const publishedCategorySchema = z
@@ -87,6 +105,25 @@ const publishedPageSchema = z
     title: z.string().trim().min(1),
     content: z.string().trim().min(1),
     translations: pageTranslationsSchema.optional(),
+  })
+  .strict();
+
+/**
+ * LIVE CAMERAS FOUNDATION checkpoint — mirrors `publishedPageSchema`'s role
+ * for `PublishedLiveCamera`. `playback` is OPTIONAL (MANDATORY
+ * ARCHITECTURE CORRECTION 1 — a published camera with no playback
+ * configuration is valid); when present it is validated by the SAME
+ * `liveCameraPlaybackSchema` the draft document uses (already public-safe
+ * by construction, so no separate narrower published variant is needed).
+ */
+const publishedLiveCameraSchema = z
+  .object({
+    cameraId: liveCameraIdSchema,
+    name: z.string().trim().min(1),
+    translations: liveCameraTranslationsSchema.optional(),
+    description: z.string().optional(),
+    location: liveCameraLocationSchema,
+    playback: liveCameraPlaybackSchema.optional(),
   })
   .strict();
 
@@ -217,6 +254,21 @@ export const mapPublicationSnapshotSchema = z
     // fails parsing exactly as before. `.strict()` is unaffected: it only
     // governs unrecognized top-level keys, not this field's optionality.
     pages: z.array(publishedPageSchema).default([]),
+    // LIVE CAMERAS FOUNDATION checkpoint regression-safe addition, mirrors
+    // the `pages` `.default([])` precedent immediately above: `.default(...)`
+    // keeps `liveCameras` REQUIRED on the parsed/output type
+    // (MapPublicationSnapshotParsed.liveCameras is always
+    // `PublishedLiveCamera[]`, never undefined — matching shared-types'
+    // non-optional `readonly liveCameras: readonly PublishedLiveCamera[]`)
+    // while making the KEY optional on the input side only. A stored
+    // publication document written before this checkpoint (no `liveCameras`
+    // field at all) still parses successfully and is normalized to
+    // `liveCameras: []`. This does NOT weaken validation of a *present*
+    // `liveCameras` field — an array that is the wrong type, or whose
+    // entries fail `publishedLiveCameraSchema`, still fails parsing exactly
+    // as before. `.strict()` is unaffected: it only governs unrecognized
+    // top-level keys, not this field's optionality.
+    liveCameras: z.array(publishedLiveCameraSchema).default([]),
     // Photo Experience Prototype checkpoint — server-only, optional, no
     // `.default()` (an absent key stays absent on the parsed type, matching
     // shared-types' `readonly photoProviderRefs?: ...` — there is no

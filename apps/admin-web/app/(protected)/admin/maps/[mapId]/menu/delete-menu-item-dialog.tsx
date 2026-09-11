@@ -19,7 +19,7 @@ import { useEffect } from 'react';
  */
 interface DeleteMenuItemDialogProps {
   readonly label: string;
-  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE';
+  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE' | 'LIVE_CAMERAS';
   readonly linkedName?: string;
   readonly isDeleting: boolean;
   readonly onCancel: () => void;
@@ -42,7 +42,9 @@ export function DeleteMenuItemDialog({ label, type, linkedName, isDeleting, onCa
       ? `This will not delete ${linkedName ? `the ${linkedName} category` : 'the linked category'} or its POIs.`
       : type === 'PAGE'
         ? `This will not delete ${linkedName ? `the "${linkedName}" page` : 'the linked page'} — only its link from the public menu.`
-        : 'This only removes it from the menu — nothing else is affected.';
+        : type === 'LIVE_CAMERAS'
+          ? 'This only removes the Live Cameras navigation control — camera records are unaffected.'
+          : 'This only removes it from the menu — nothing else is affected.';
 
   return (
     <div className="modal-overlay" onClick={onCancel}>

@@ -44,6 +44,9 @@ export function buildAdminNavSections(activeMapId?: string): readonly NavSection
       // an unrelated, not-yet-built product direction item and must stay
       // untouched.
       { kind: 'link', label: 'Pages', href: `/admin/maps/${activeMapId}/pages`, icon: 'page' },
+      // LIVE CAMERAS FOUNDATION checkpoint — map-scoped, consistent with
+      // every other content-type link above.
+      { kind: 'link', label: 'Live Cameras', href: `/admin/maps/${activeMapId}/cameras`, icon: 'camera' },
       { kind: 'future', label: 'Map Preview', icon: 'preview' },
     );
   }

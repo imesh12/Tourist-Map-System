@@ -28,7 +28,7 @@ const MENU_ITEM_LABEL_MAX_LENGTH = 60;
  */
 
 export interface MenuItemFormValues {
-  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE';
+  readonly type: 'CATEGORY' | 'FEATURE' | 'PAGE' | 'LIVE_CAMERAS';
   /** Meaningful only when `type === 'CATEGORY'`. */
   readonly categoryId: string;
   /** Meaningful only when `type === 'FEATURE'`. */
@@ -59,6 +59,7 @@ interface MenuItemFormDrawerProps {
   readonly selectableFeatures: readonly PublicFeatureRegistryEntry[];
   /** Enabled pages not already linked to any existing menu item — what the CREATE-mode Page `<select>` offers, mirroring `selectableCategories`. Irrelevant in edit mode. */
   readonly selectablePages: readonly PageParsed[];
+  readonly liveCamerasAvailable: boolean;
   readonly isSaving: boolean;
   readonly formError?: string;
   readonly fieldErrors: readonly string[];
@@ -74,6 +75,7 @@ export function MenuItemFormDrawer({
   selectableCategories,
   selectableFeatures,
   selectablePages,
+  liveCamerasAvailable,
   enabledLanguages,
   defaultLanguage,
   isSaving,
@@ -82,7 +84,7 @@ export function MenuItemFormDrawer({
   onCancel,
   onSubmit,
 }: MenuItemFormDrawerProps) {
-  const [type, setType] = useState<'CATEGORY' | 'FEATURE' | 'PAGE'>(initialValues.type);
+  const [type, setType] = useState<'CATEGORY' | 'FEATURE' | 'PAGE' | 'LIVE_CAMERAS'>(initialValues.type);
   const [categoryId, setCategoryId] = useState(initialValues.categoryId || selectableCategories[0]?.categoryId || '');
   const [featureKey, setFeatureKey] = useState(initialValues.featureKey || selectableFeatures[0]?.key || '');
   const [pageId, setPageId] = useState(initialValues.pageId || selectablePages[0]?.pageId || '');
@@ -150,7 +152,7 @@ export function MenuItemFormDrawer({
       featureKey,
       pageId,
       label,
-      icon: type === 'CATEGORY' || type === 'PAGE' ? icon : '',
+      icon: type === 'CATEGORY' || type === 'PAGE' || type === 'LIVE_CAMERAS' ? icon : '',
       status,
       translations,
     });
@@ -161,7 +163,7 @@ export function MenuItemFormDrawer({
   const noPagesAvailable = type === 'PAGE' && mode === 'create' && selectablePages.length === 0;
   const canSubmit =
     mode === 'edit' ||
-    (type === 'CATEGORY' ? !noCategoriesAvailable : type === 'PAGE' ? !noPagesAvailable : !noFeaturesAvailable);
+    (type === 'CATEGORY' ? !noCategoriesAvailable : type === 'PAGE' ? !noPagesAvailable : type === 'LIVE_CAMERAS' ? liveCamerasAvailable : !noFeaturesAvailable);
 
   return (
     <div className="drawer-overlay" onClick={onCancel}>
@@ -229,6 +231,9 @@ export function MenuItemFormDrawer({
                   >
                     Feature
                   </button>
+                  <button type="button" className="segmented-option" aria-pressed={type === 'LIVE_CAMERAS'} onClick={() => setType('LIVE_CAMERAS')} disabled={isSaving || !liveCamerasAvailable}>
+                    Live Cameras
+                  </button>
                 </div>
               </div>
             ) : (
@@ -237,7 +242,9 @@ export function MenuItemFormDrawer({
                   ? 'Linked to a category — the link, and which category it points to, cannot be changed here. Remove this item and add a new one to link a different category.'
                   : type === 'PAGE'
                     ? 'Linked to a page — the link, and which page it points to, cannot be changed here. Remove this item and add a new one to link a different page.'
-                    : 'Linked to a feature — the link cannot be changed here. Remove this item and add a new one to link a different feature.'}
+                    : type === 'LIVE_CAMERAS'
+                      ? 'This links to the published Live Camera collection.'
+                      : 'Linked to a feature — the link cannot be changed here. Remove this item and add a new one to link a different feature.'}
               </p>
             )}
 
@@ -400,6 +407,14 @@ export function MenuItemFormDrawer({
                   </div>
                 </>
               )
+            ) : type === 'LIVE_CAMERAS' ? (
+              <>
+                <div className="field">
+                  <label className="field-label" htmlFor="menuItemLabel">Public label</label>
+                  <input id="menuItemLabel" className="input" type="text" required autoFocus maxLength={MENU_ITEM_LABEL_MAX_LENGTH} value={label} onChange={(event) => { setLabelTouched(true); setLabel(event.target.value); }} disabled={isSaving} />
+                </div>
+                <p className="field-hint">This single menu item filters all enabled published live cameras.</p>
+              </>
             ) : mode === 'create' && noFeaturesAvailable ? (
               <div className="empty-state">
                 <p>No eligible features — every released feature is already in the menu.</p>

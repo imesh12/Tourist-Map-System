@@ -8,6 +8,7 @@ export type NavIconName =
   | 'tag'
   | 'media'
   | 'page'
+  | 'camera'
   | 'announcement'
   | 'analytics'
   | 'users'
@@ -98,6 +99,16 @@ export function NavIcon({ name, className }: { name: NavIconName; className?: st
         <svg {...props}>
           <path d="M6 3h9l4 4v14H6Z" />
           <path d="M15 3v4h4M9 12h6M9 16h6" />
+        </svg>
+      );
+    // LIVE CAMERAS FOUNDATION checkpoint — a simple camera-body + lens
+    // glyph, matching this file's own "basic geometric primitives, no
+    // external asset requests" convention (see this file's header comment).
+    case 'camera':
+      return (
+        <svg {...props}>
+          <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.5h7L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" />
+          <circle cx="12" cy="13" r="3.2" />
         </svg>
       );
     case 'announcement':
