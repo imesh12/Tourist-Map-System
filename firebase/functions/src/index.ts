@@ -20,3 +20,4 @@
  */
 
 export { registerClient } from './register-client.js';
+export * from './translation/index.js';

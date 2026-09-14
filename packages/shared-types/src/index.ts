@@ -43,3 +43,4 @@ export * from './public-feature.js';
 export * from './page.js';
 export * from './menu-item.js';
 export * from './live-camera.js';
+export * from './translation.js';
