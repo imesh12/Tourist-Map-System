@@ -1,6 +1,7 @@
 import type { LiveCameraStatus } from './enums.js';
 import type { CustomerId, LiveCameraId, MapId } from './ids.js';
 import type { LocalizedText } from './language.js';
+import type { TranslationMetadata } from './translation.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 
 /**
@@ -99,6 +100,7 @@ export interface LiveCamera {
   readonly name: string;
   /** See `LiveCameraTranslations`'s own doc comment above. */
   readonly translations?: LiveCameraTranslations;
+  readonly translationMetadata?: TranslationMetadata;
   readonly description?: string;
   readonly location: LiveCameraLocation;
   readonly status: LiveCameraStatus;

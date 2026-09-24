@@ -101,6 +101,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       mapId: result.context.map.mapId,
       name: parsed.data.name,
       ...(parsed.data.translations && Object.keys(parsed.data.translations).length > 0 ? { translations: parsed.data.translations } : {}),
+      ...(parsed.data.translationMetadata ? { translationMetadata: parsed.data.translationMetadata } : {}),
       ...(parsed.data.description ? { description: parsed.data.description } : {}),
       location: parsed.data.location,
       status: parsed.data.status ?? 'ENABLED',

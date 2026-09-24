@@ -1,4 +1,5 @@
 import { setOptions } from '@googlemaps/js-api-loader';
+import type { PublicContentLanguage } from 'shared-types';
 
 /**
  * The one place `setOptions()` (the Google Maps JS API loader's
@@ -27,9 +28,12 @@ import { setOptions } from '@googlemaps/js-api-loader';
  */
 let apiKeyConfigured = false;
 
-export function ensureGoogleMapsApiConfigured(apiKey: string): void {
+export function ensureGoogleMapsApiConfigured(apiKey: string, language?: PublicContentLanguage): void {
   if (!apiKeyConfigured) {
-    setOptions({ key: apiKey, v: 'weekly' });
+    // Google Maps reads `language` when the JS API is loaded. The loader is
+    // intentionally configured once, so later content-language changes do
+    // not inject a second script with conflicting options.
+    setOptions({ key: apiKey, v: 'weekly', ...(language ? { language } : {}) });
     apiKeyConfigured = true;
   }
 }

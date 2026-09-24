@@ -440,6 +440,14 @@ describe('buildPublicationContent — checkpoint 1B.8', () => {
       expect(content.pois[0]).not.toHaveProperty('hasPhoto');
     });
 
+    it('publishes provider-localized values without changing canonical source fields', () => {
+      const localization = new Map([['poi_a0000000000000000000000', { provider: 'GOOGLE_PLACES' as const, name: { ko: '한국 이름' }, address: { ko: '한국 주소' }, primaryTypeDisplayName: { ko: '식당' }, weekdayDescriptions: { ko: ['월요일'] } }]]);
+      const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi({ name: 'Canonical', address: 'Canonical address' })], [], [], new Map(), [], localization);
+      expect(content.pois[0]?.name).toBe('Canonical');
+      expect(content.pois[0]?.address).toBe('Canonical address');
+      expect(content.pois[0]?.providerLocalization?.name?.ko).toBe('한국 이름');
+    });
+
     it('omits photo + ref when a GOOGLE_PLACES POI was stamped hasPhoto: false', () => {
       const content = buildPublicationContent(map(), [category({ enabled: true })], [googlePoi({ hasPhoto: false })], []);
       expect(content.pois[0]?.photo).toBeUndefined();

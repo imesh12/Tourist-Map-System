@@ -144,7 +144,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           categoryId: categoryInput.categoryId,
           ...(categoryInput.icon ? { icon: categoryInput.icon } : {}),
           ...(categoryInput.translations && Object.keys(categoryInput.translations).length > 0
-            ? { translations: categoryInput.translations }
+            ? { translations: categoryInput.translations, ...(categoryInput.translationMetadata ? { translationMetadata: categoryInput.translationMetadata } : {}) }
             : {}),
           order,
           status: desiredStatus,
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           label: pageInput.label,
           pageId: pageInput.pageId,
           ...(pageInput.icon ? { icon: pageInput.icon } : {}),
-          ...(pageInput.translations && Object.keys(pageInput.translations).length > 0 ? { translations: pageInput.translations } : {}),
+        ...(pageInput.translations && Object.keys(pageInput.translations).length > 0 ? { translations: pageInput.translations, ...(pageInput.translationMetadata ? { translationMetadata: pageInput.translationMetadata } : {}) } : {}),
           order,
           status: desiredStatus,
           createdAt: FieldValue.serverTimestamp(),
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
           label: liveCamerasInput.label,
           ...(liveCamerasInput.icon ? { icon: liveCamerasInput.icon } : {}),
           ...(liveCamerasInput.translations && Object.keys(liveCamerasInput.translations).length > 0
-            ? { translations: liveCamerasInput.translations }
+            ? { translations: liveCamerasInput.translations, ...(liveCamerasInput.translationMetadata ? { translationMetadata: liveCamerasInput.translationMetadata } : {}) }
             : {}),
           order,
           status: desiredStatus,
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         label: featureInput.label,
         featureKey: featureInput.featureKey,
         ...(featureInput.translations && Object.keys(featureInput.translations).length > 0
-          ? { translations: featureInput.translations }
+          ? { translations: featureInput.translations, ...(featureInput.translationMetadata ? { translationMetadata: featureInput.translationMetadata } : {}) }
           : {}),
         order,
         status: desiredStatus,

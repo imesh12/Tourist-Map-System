@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublishedCategory, PublishedPoi } from 'shared-types';
 import { searchPois } from '@/lib/public-map/public-poi-search';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.10 §9 — the released SEARCH feature's UI. Local, snapshot-
@@ -27,6 +28,7 @@ export interface PublicSearchProps {
 }
 
 export function PublicSearch({ pois, categories, onSelect, onClose }: PublicSearchProps) {
+  const messages = useTouristMessages();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -44,7 +46,7 @@ export function PublicSearch({ pois, categories, onSelect, onClose }: PublicSear
       className="public-search-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Search places"
+      aria-label={messages.searchPlaces}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           onClose();
@@ -53,9 +55,9 @@ export function PublicSearch({ pois, categories, onSelect, onClose }: PublicSear
     >
       <div className="public-search-header">
         <label htmlFor="public-search-input" className="public-search-label">
-          Search places
+          {messages.searchPlaces}
         </label>
-        <button type="button" data-testid="public-search-close" className="public-search-close" aria-label="Close search" onClick={onClose}>
+        <button type="button" data-testid="public-search-close" className="public-search-close" aria-label={messages.closeSearch} onClick={onClose}>
           ×
         </button>
       </div>
@@ -65,15 +67,15 @@ export function PublicSearch({ pois, categories, onSelect, onClose }: PublicSear
         type="search"
         data-testid="public-search-input"
         className="public-search-input"
-        placeholder="Search places…"
+        placeholder={messages.searchPlaceholder}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
       {trimmedQuery === '' ? (
-        <p className="public-search-hint">Start typing to find a place.</p>
+        <p className="public-search-hint">{messages.searchHint}</p>
       ) : results.length === 0 ? (
         <p data-testid="public-search-no-results" className="public-search-hint">
-          No places found.
+          {messages.noPlacesFound}
         </p>
       ) : (
         <ul data-testid="public-search-results" className="public-search-results">

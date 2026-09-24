@@ -112,6 +112,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     if (parsed.data.translations !== undefined) {
       update.translations = Object.keys(parsed.data.translations).length > 0 ? parsed.data.translations : FieldValue.delete();
     }
+    if (parsed.data.translationMetadata !== undefined) {
+      update.translationMetadata = Object.keys(parsed.data.translationMetadata).length > 0 ? parsed.data.translationMetadata : FieldValue.delete();
+    }
 
     await cameraRef.update(update);
 

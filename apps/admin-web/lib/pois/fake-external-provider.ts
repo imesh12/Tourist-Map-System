@@ -7,6 +7,7 @@ import type {
   ExternalPoiProvider,
   ExternalPoiSearchParams,
 } from './external-provider';
+import type { PublicContentLanguage } from 'shared-types';
 
 /**
  * `FakeGooglePlacesProvider` — checkpoint 1B.4's hermetic test double for
@@ -128,6 +129,11 @@ export class FakeGooglePlacesProvider implements ExternalPoiProvider {
       ...(candidate.address ? { address: candidate.address } : {}),
       hasPhoto: candidate.providerPlaceId === FAKE_PROVIDER_PHOTO_PLACE_ID,
     };
+  }
+
+  async getPlaceLocalizedDetails(providerPlaceId: string, language: PublicContentLanguage) {
+    const details = await this.getPlaceDetails(providerPlaceId);
+    return details ? { language, name: details.name, address: details.address } : undefined;
   }
 
   async getPlacePhotoRefs(providerPlaceId: string): Promise<readonly ExternalPoiPhotoRef[]> {

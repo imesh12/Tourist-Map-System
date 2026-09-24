@@ -1,6 +1,6 @@
 'use client';
 
-import { listPublicContentLanguages, type LocalizedText, type PublicContentLanguage } from 'shared-types';
+import { listPublicContentLanguages, type LocalizedText, type PublicContentLanguage, type TranslationMetadata } from 'shared-types';
 
 /**
  * The shared, reusable Admin "Translations" editor — checkpoint 1B.17B
@@ -60,6 +60,9 @@ export interface TranslationEditorProps {
   readonly disabled?: boolean;
   /** Used to build stable, unique `id`/`data-testid` attributes per field/language — e.g. `'category'`, `'poi'`, `'page'`, `'menu-item'`. */
   readonly idPrefix: string;
+  readonly metadata?: TranslationMetadata;
+  readonly onGenerate?: () => void;
+  readonly generating?: boolean;
 }
 
 /** Strips an emptied `LocalizedText` field, and an emptied whole `translations` object, from the returned state — never leaves a dangling `{}` nested value where the field key itself could simply be absent. */
@@ -86,7 +89,7 @@ function setLanguageValue(
   return next;
 }
 
-export function TranslationEditor({ fields, enabledLanguages, defaultLanguage, value, onChange, disabled, idPrefix }: TranslationEditorProps) {
+export function TranslationEditor({ fields, enabledLanguages, defaultLanguage, value, onChange, disabled, idPrefix, metadata, onGenerate, generating }: TranslationEditorProps) {
   if (enabledLanguages.length === 0) {
     // Should not normally happen — every map always has at least one
     // enabled language (1B.17A) — but fails safe rather than rendering an
@@ -103,6 +106,11 @@ export function TranslationEditor({ fields, enabledLanguages, defaultLanguage, v
         Optional. Add translated text for the languages this map supports — leave any language blank to fall back
         automatically to the default content above. This does not change the primary field.
       </p>
+      {onGenerate ? (
+        <button type="button" className="btn btn-secondary" onClick={onGenerate} disabled={disabled || generating}>
+          {generating ? 'Generating…' : 'Generate translations'}
+        </button>
+      ) : null}
 
       {fields.map((field) => (
         <div key={field.key} className="field">
@@ -120,6 +128,11 @@ export function TranslationEditor({ fields, enabledLanguages, defaultLanguage, v
                   <label className="field-label" htmlFor={fieldId} style={{ fontWeight: 'normal' }}>
                     {entry.englishLabel} ({entry.nativeLabel}){isDefault ? ' — Map default' : ''}
                   </label>
+                  {metadata?.[field.key]?.[entry.code] ? (
+                    <span className="field-hint">
+                      {metadata[field.key]?.[entry.code]?.status === 'AUTO' ? 'Generated' : metadata[field.key]?.[entry.code]?.status === 'STALE' ? 'Needs update' : 'Manually edited'}
+                    </span>
+                  ) : null}
                   {field.multiline ? (
                     <textarea
                       id={fieldId}

@@ -117,6 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
         center,
         radiusMeters: parsed.data.radiusMeters,
         includedTypes: capability.googlePlaces.includedTypes,
+        languageCode: result.context.map.defaultLanguage,
       });
     } catch {
       return NextResponse.json(

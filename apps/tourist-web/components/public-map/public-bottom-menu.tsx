@@ -3,6 +3,7 @@
 import type { PublicationMenuItem } from 'shared-types';
 import { categoryIconMeta } from '@/lib/public-map/category-icon-meta';
 import { ALL_GLYPH_PATH, featureGlyphPath } from '@/lib/public-map/menu-glyphs';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.10 §6/§7/§8 — the floating bottom menu, and the ONLY place
@@ -94,6 +95,7 @@ export function PublicBottomMenu({
   cameraFilterActive,
   onSelectCameraFilter,
 }: PublicBottomMenuProps) {
+  const messages = useTouristMessages();
   if (menu.length === 0) {
     // An admin who publishes zero menu items has deliberately chosen no
     // public navigation at all (§7: "render only what publication has
@@ -103,16 +105,16 @@ export function PublicBottomMenu({
   }
 
   return (
-    <nav data-testid="public-bottom-menu" className="public-bottom-menu" aria-label="Map menu">
+    <nav data-testid="public-bottom-menu" className="public-bottom-menu" aria-label={messages.mapMenu}>
       <button
         type="button"
         data-testid="public-menu-all"
         className="public-menu-item"
         aria-pressed={selectedCategoryId === null}
         onClick={() => onSelectCategory(null)}
-        title="All"
+        title={messages.all}
       >
-        <MenuItemFace path={ALL_GLYPH_PATH} label="All" />
+        <MenuItemFace path={ALL_GLYPH_PATH} label={messages.all} />
       </button>
       {menu.map((item) => {
         if (item.type === 'LIVE_CAMERAS') {

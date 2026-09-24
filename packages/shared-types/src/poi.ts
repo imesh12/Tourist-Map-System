@@ -1,12 +1,23 @@
 import type { PoiProvider, PoiSourceType, PoiStatus } from './enums.js';
 import type { CategoryId, CustomerId, MapId, PoiId } from './ids.js';
 import type { LocalizedText } from './language.js';
+import type { PublicContentLanguage } from './language.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
+import type { TranslationMetadata } from './translation.js';
 
 /** checkpoint 1B.17A — a POI's translated fields. See `CategoryTranslations`'s own doc comment (./category.js) for the general pattern; a POI has two translatable human-facing fields (`name`, `description`) rather than one. */
 export interface PoiTranslations {
   readonly name?: LocalizedText;
   readonly description?: LocalizedText;
+  readonly address?: LocalizedText;
+}
+
+export interface PoiProviderLocalization {
+  readonly provider: 'GOOGLE_PLACES';
+  readonly name?: Partial<Record<PublicContentLanguage, string>>;
+  readonly address?: Partial<Record<PublicContentLanguage, string>>;
+  readonly primaryTypeDisplayName?: Partial<Record<PublicContentLanguage, string>>;
+  readonly weekdayDescriptions?: Partial<Record<PublicContentLanguage, readonly string[]>>;
 }
 
 /**
@@ -98,6 +109,9 @@ export interface Poi {
   readonly hasPhoto?: boolean;
   /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment above. */
   readonly translations?: PoiTranslations;
+  /** Provider-neutral generation state for translated fields; optional for legacy documents. */
+  readonly translationMetadata?: TranslationMetadata;
+  readonly providerLocalization?: PoiProviderLocalization;
   readonly status: PoiStatus;
   readonly createdAt: FirestoreTimestampLike;
   readonly updatedAt: FirestoreTimestampLike;

@@ -69,6 +69,24 @@ describe('GooglePlacesProvider.getPlaceDetails — hasPhoto derivation', () => {
   });
 });
 
+describe('GooglePlacesProvider localization', () => {
+  it('sends Nearby Search languageCode in the body and Place Details languageCode in the query', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ places: [] }))
+      .mockResolvedValueOnce(jsonResponse({ displayName: { text: '도쿄 타워' }, formattedAddress: '도쿄', primaryTypeDisplayName: { text: '관광 명소' }, regularOpeningHours: { weekdayDescriptions: ['월요일'] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new GooglePlacesProvider(API_KEY);
+    await provider.discoverNearby({ center: { latitude: 1, longitude: 2 }, radiusMeters: 100, includedTypes: ['restaurant'], languageCode: 'ko' });
+    const [, searchOptions] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(searchOptions.body as string).languageCode).toBe('ko');
+    const localized = await provider.getPlaceLocalizedDetails('ChIJ_x', 'ko');
+    expect(localized?.name).toBe('도쿄 타워');
+    const [detailsUrl, detailsOptions] = fetchMock.mock.calls[1]!;
+    expect(String(detailsUrl)).toContain('languageCode=ko');
+    expect((detailsOptions.headers as Record<string, string>)['X-Goog-FieldMask']).toBe('displayName,formattedAddress,primaryTypeDisplayName,regularOpeningHours');
+  });
+});
+
 describe('GooglePlacesProvider.getPlacePhotoRefs', () => {
   it('returns EVERY usable photo in order (name, dimensions, filtered attributions), capped, using the narrow photo field mask', async () => {
     const fetchMock = vi.fn().mockResolvedValue(

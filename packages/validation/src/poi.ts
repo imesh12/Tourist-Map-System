@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { POI_PROVIDERS, POI_SOURCE_TYPES, POI_STATUSES } from 'shared-types';
 import { categoryIdSchema, customerIdSchema, mapIdSchema, poiIdSchema } from './ids.js';
-import { localizedTextSchema } from './language.js';
+import { localizedTextSchema, publicContentLanguageSchema } from './language.js';
 import { latitudeSchema, longitudeSchema } from './map.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
+import { TRANSLATION_STATUSES } from 'shared-types';
 
 /**
  * POI domain + input schemas — checkpoint 1B.3, see
@@ -34,8 +35,28 @@ export const poiTranslationsSchema = z
   .object({
     name: localizedTextSchema(NAME_MAX_LENGTH).optional(),
     description: localizedTextSchema(DESCRIPTION_MAX_LENGTH).optional(),
+    address: localizedTextSchema(ADDRESS_MAX_LENGTH).optional(),
   })
   .strict();
+export const poiProviderLocalizationSchema = z.object({
+  provider: z.literal('GOOGLE_PLACES'),
+  name: localizedTextSchema(NAME_MAX_LENGTH).optional(),
+  address: localizedTextSchema(ADDRESS_MAX_LENGTH).optional(),
+  primaryTypeDisplayName: localizedTextSchema(150).optional(),
+  weekdayDescriptions: z.record(publicContentLanguageSchema, z.array(z.string().trim().min(1).max(200))).optional(),
+}).strict();
+
+const translationMetadataEntrySchema = z.object({
+  status: z.enum(TRANSLATION_STATUSES),
+  sourceFingerprint: z.string().regex(/^[0-9a-f]{8}$/),
+  provider: z.string().trim().min(1).max(100).optional(),
+  generatedAt: z.string().datetime().optional(),
+}).strict();
+
+/** Provider-neutral, optional metadata for generated POI translations. */
+export const poiTranslationMetadataSchema = z.record(
+  z.record(publicContentLanguageSchema, translationMetadataEntrySchema),
+);
 
 /** Stored `location` shape — a plain `{latitude, longitude}` object, see shared-types' `Poi` doc comment for why not a Firestore `GeoPoint`. */
 export const poiLocationSchema = z.object({
@@ -67,6 +88,8 @@ export const poiSchema = z.object({
   hasPhoto: poiHasPhotoSchema.optional(),
   // checkpoint 1B.17A — optional, backward compatible, mirrors `categorySchema.translations`.
   translations: poiTranslationsSchema.optional(),
+  translationMetadata: poiTranslationMetadataSchema.optional(),
+  providerLocalization: poiProviderLocalizationSchema.optional(),
   status: poiStatusSchema,
   createdAt: firestoreTimestampLikeSchema,
   updatedAt: firestoreTimestampLikeSchema,

@@ -103,6 +103,26 @@ describe('poiSchema — translations (checkpoint 1B.17A, scenario 19)', () => {
   });
 });
 
+describe('poiSchema — translation metadata', () => {
+  it('accepts optional provider-neutral metadata and remains backward compatible', () => {
+    const result = poiSchema.safeParse({
+      ...validPoi,
+      translations: { name: { en: 'Sakura Restaurant' } },
+      translationMetadata: {
+        name: { en: { status: 'AUTO', sourceFingerprint: 'deadbeef', provider: 'FAKE_TRANSLATION' } },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(poiSchema.safeParse(validPoi).success).toBe(true);
+  });
+
+  it('rejects malformed metadata and keeps metadata server-owned', () => {
+    expect(poiSchema.safeParse({ ...validPoi, translationMetadata: { name: { en: { status: 'AUTO', sourceFingerprint: 'bad' } } } }).success).toBe(false);
+    expect(poiCreateInputSchema.safeParse({ ...validCreateInput, translationMetadata: {} }).success).toBe(false);
+    expect(poiUpdateInputSchema.safeParse({ status: 'ENABLED', translationMetadata: {} }).success).toBe(false);
+  });
+});
+
 describe('poiCreateInputSchema/poiUpdateInputSchema — translations (checkpoint 1B.17B §7/§10)', () => {
   it('create: accepts a valid translations bag for name and description', () => {
     const result = poiCreateInputSchema.safeParse({

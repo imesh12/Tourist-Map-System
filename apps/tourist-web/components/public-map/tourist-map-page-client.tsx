@@ -7,6 +7,8 @@ import { resolveBrandingVars } from '@/lib/public-map/branding';
 import type { PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
 import { PublicMapShell } from './public-map-shell';
 import { TouristMap } from './tourist-map';
+import { resolveTouristMessages } from '@/lib/public-map/messages';
+import { TouristMessagesProvider } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.17B §12 — the ONE client component that owns the tourist
@@ -73,10 +75,13 @@ export function TouristMapPageClient({ snapshot, initialLanguage, isEmbed = fals
     () => ({ ...resolveBrandingVars(snapshot.map.branding) }) as CSSProperties,
     [snapshot.map.branding],
   );
+  const messages = useMemo(() => resolveTouristMessages(language, snapshot.defaultLanguage), [language, snapshot.defaultLanguage]);
 
   return (
-    <PublicMapShell mapName={snapshot.map.name} brandingStyle={brandingStyle} isEmbed={isEmbed}>
-      <TouristMap snapshot={snapshot} language={language} onLanguageChange={handleLanguageChange} photoPinTemplate={photoPinTemplate} />
-    </PublicMapShell>
+    <TouristMessagesProvider messages={messages}>
+      <PublicMapShell mapName={snapshot.map.name} brandingStyle={brandingStyle} isEmbed={isEmbed}>
+        <TouristMap snapshot={snapshot} language={language} onLanguageChange={handleLanguageChange} photoPinTemplate={photoPinTemplate} />
+      </PublicMapShell>
+    </TouristMessagesProvider>
   );
 }

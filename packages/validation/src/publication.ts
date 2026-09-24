@@ -18,7 +18,7 @@ import { mapThemeSchema } from './map-theme.js';
 import { menuItemTranslationsSchema } from './menu-item.js';
 import { pageTranslationsSchema } from './page.js';
 import { liveCameraLocationSchema, liveCameraPlaybackSchema, liveCameraTranslationsSchema } from './live-camera.js';
-import { poiProviderPlaceIdSchema, poiProviderSchema, poiTranslationsSchema } from './poi.js';
+import { poiProviderLocalizationSchema, poiProviderPlaceIdSchema, poiProviderSchema, poiTranslationsSchema } from './poi.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
 
 /**
@@ -178,6 +178,7 @@ const publishedPoiSchema = z
     address: z.string().optional(),
     description: z.string().optional(),
     translations: poiTranslationsSchema.optional(),
+    providerLocalization: poiProviderLocalizationSchema.optional(),
     photo: publishedPoiPhotoSchema.optional(),
     place: publishedPoiPlaceSchema.optional(),
   })

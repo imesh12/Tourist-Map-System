@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { PublicContentLanguage } from 'shared-types';
+import type { PublicContentLanguage, TranslationMetadata } from 'shared-types';
 import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
 
 /** Mirrors `liveCameraNameSchema`/`liveCameraDescriptionSchema`'s own bounds (packages/validation/src/live-camera.ts). */
@@ -34,7 +34,10 @@ export interface CameraFormValues {
   readonly transport: CameraTransportChoice;
   readonly playbackUrl: string;
   readonly translations: TranslationsFieldsState;
+  readonly translationMetadata?: TranslationMetadata;
 }
+
+export interface GeneratedCameraTranslations { readonly translations: TranslationsFieldsState; readonly translationMetadata?: TranslationMetadata }
 
 interface CameraFormDrawerProps {
   readonly mode: 'create' | 'edit';
@@ -46,6 +49,9 @@ interface CameraFormDrawerProps {
   readonly fieldErrors: readonly string[];
   readonly onCancel: () => void;
   readonly onSubmit: (values: CameraFormValues) => void;
+  readonly translationMetadata?: TranslationMetadata;
+  readonly onGenerateTranslations?: (sources: { readonly name: string; readonly description: string }) => Promise<GeneratedCameraTranslations | undefined>;
+  readonly isGeneratingTranslations?: boolean;
 }
 
 export function CameraFormDrawer({
@@ -58,6 +64,9 @@ export function CameraFormDrawer({
   fieldErrors,
   onCancel,
   onSubmit,
+  translationMetadata,
+  onGenerateTranslations,
+  isGeneratingTranslations,
 }: CameraFormDrawerProps) {
   const [name, setName] = useState(initialValues.name);
   const [description, setDescription] = useState(initialValues.description);
@@ -67,6 +76,7 @@ export function CameraFormDrawer({
   const [transport, setTransport] = useState<CameraTransportChoice>(initialValues.transport);
   const [playbackUrl, setPlaybackUrl] = useState(initialValues.playbackUrl);
   const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
+  const [currentTranslationMetadata, setCurrentTranslationMetadata] = useState(translationMetadata);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -83,7 +93,15 @@ export function CameraFormDrawer({
     if (isSaving) {
       return;
     }
-    onSubmit({ name, description, latitude, longitude, status, transport, playbackUrl, translations });
+    onSubmit({ name, description, latitude, longitude, status, transport, playbackUrl, translations, translationMetadata: currentTranslationMetadata });
+  }
+
+  async function handleGenerateTranslations(): Promise<void> {
+    const result = await onGenerateTranslations?.({ name, description });
+    if (result) {
+      setTranslations(result.translations);
+      setCurrentTranslationMetadata(result.translationMetadata);
+    }
   }
 
   return (
@@ -156,6 +174,9 @@ export function CameraFormDrawer({
               defaultLanguage={defaultLanguage}
               value={translations}
               onChange={setTranslations}
+              metadata={currentTranslationMetadata}
+              onGenerate={onGenerateTranslations ? () => void handleGenerateTranslations() : undefined}
+              generating={isGeneratingTranslations}
               disabled={isSaving}
             />
 

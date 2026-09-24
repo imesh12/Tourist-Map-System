@@ -4,6 +4,7 @@ import { categoryIconSchema } from './category.js';
 import { categoryIdSchema, customerIdSchema, mapIdSchema, menuItemIdSchema, pageIdSchema } from './ids.js';
 import { localizedTextSchema } from './language.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
+import { poiTranslationMetadataSchema } from './poi.js';
 
 /**
  * MenuItem domain + input schemas — checkpoint 1B.5, see
@@ -72,6 +73,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       label: menuItemLabelSchema,
       // checkpoint 1B.17A — optional, backward compatible, shared by every branch below.
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
       categoryId: categoryIdSchema,
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema,
@@ -88,6 +90,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       type: z.literal('FEATURE'),
       label: menuItemLabelSchema,
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
       featureKey: menuItemFeatureKeySchema,
       order: menuItemOrderSchema,
       status: menuItemStatusSchema,
@@ -106,6 +109,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       type: z.literal('PAGE'),
       label: menuItemLabelSchema,
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
       pageId: pageIdSchema,
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema,
@@ -122,6 +126,7 @@ export const menuItemSchema = z.discriminatedUnion('type', [
       type: z.literal('LIVE_CAMERAS'),
       label: menuItemLabelSchema,
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
       icon: menuItemIconSchema.optional(),
       order: menuItemOrderSchema,
       status: menuItemStatusSchema,
@@ -160,6 +165,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
     })
     .strict(),
   z
@@ -170,6 +176,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
     })
     .strict(),
   /**
@@ -190,6 +197,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
     })
     .strict(),
   z
@@ -200,6 +208,7 @@ export const menuItemCreateInputSchema = z.discriminatedUnion('type', [
       order: menuItemOrderSchema.optional(),
       status: menuItemStatusSchema.optional(),
       translations: menuItemTranslationsSchema.optional(),
+      translationMetadata: poiTranslationMetadataSchema.optional(),
     })
     .strict(),
 ]);
@@ -236,6 +245,7 @@ export const menuItemUpdateInputSchema = z
     // checkpoint 1B.17B §10 — a FULL-replace object, same convention
     // `categoryUpdateInputSchema.translations`'s own doc comment documents.
     translations: menuItemTranslationsSchema.optional(),
+    translationMetadata: poiTranslationMetadataSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });

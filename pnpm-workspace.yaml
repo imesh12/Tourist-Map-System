@@ -4,7 +4,11 @@ packages:
   - "firebase/functions"
 
 allowBuilds:
+  '@firebase/util': true
+  esbuild: true
+  protobufjs: true
   re2: false
+  unrs-resolver: true
 
 # Deliberate, explicit build-script allowlist (pnpm blocks all dependency
 # lifecycle/postinstall scripts by default). Only these four are approved,

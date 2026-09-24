@@ -59,6 +59,7 @@
  * fields — never `providerPlaceId`, a photo resource name, or review text.
  * Photos stay fully dynamic; only this flat metadata is frozen.
  */
+import type { PublicContentLanguage } from 'shared-types';
 
 export interface ExternalPoiLocation {
   readonly latitude: number;
@@ -109,6 +110,15 @@ export interface ExternalPoiSearchParams {
   readonly radiusMeters: number;
   /** Provider-specific type vocabulary for this search (e.g. Google Places "included types") — sourced from the linked `PlatformCategoryRegistryEntry.googlePlaces.includedTypes` (packages/shared-types/src/platform-category.ts), never from client input. */
   readonly includedTypes: readonly string[];
+  readonly languageCode?: PublicContentLanguage;
+}
+
+export interface ExternalPoiLocalizedDetails {
+  readonly language: PublicContentLanguage;
+  readonly name?: string;
+  readonly address?: string;
+  readonly primaryTypeDisplayName?: string;
+  readonly weekdayDescriptions?: readonly string[];
 }
 
 /** One credited author of a Google Places photo — Photo Experience Prototype checkpoint. Mirrors the Places API (New) `Photo.authorAttributions[]` shape exactly (`displayName`/`uri`/`photoUri` per Google's docs); `photoUri` is deliberately NOT modeled here — it is Google's own ephemeral attribution-linked image URL, distinct from (and never a substitute for) `getPlacePhotoMedia()`'s own fresh `getMedia` fetch, and this codebase never persists or forwards it anywhere. */
@@ -171,6 +181,7 @@ export interface ExternalPoiPlaceMetadata {
 export interface ExternalPoiProvider {
   discoverNearby(params: ExternalPoiSearchParams): Promise<readonly ExternalPoiCandidate[]>;
   getPlaceDetails(providerPlaceId: string): Promise<ExternalPoiDetails | undefined>;
+  getPlaceLocalizedDetails(providerPlaceId: string, language: PublicContentLanguage): Promise<ExternalPoiLocalizedDetails | undefined>;
   /**
    * Fresh (never cached) resolution of ALL of a place's usable photos, in
    * Google's own order, capped to a bounded gallery size by the adapter. An

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import type { PublicContentLanguage } from 'shared-types';
 import { liveCameraCreateInputSchema, liveCameraUpdateInputSchema, type LiveCameraParsed } from 'validation';
 import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
-import { CameraFormDrawer, type CameraFormValues, type CameraTransportChoice } from './camera-form-drawer';
+import { CameraFormDrawer, type CameraFormValues, type CameraTransportChoice, type GeneratedCameraTranslations } from './camera-form-drawer';
 import { DeleteCameraDialog } from './delete-camera-dialog';
 
 /**
@@ -54,6 +54,7 @@ function emptyFormValues(): CameraFormValues {
     transport: 'NONE',
     playbackUrl: '',
     translations: {},
+    translationMetadata: undefined,
   };
 }
 
@@ -67,6 +68,7 @@ function cameraToFormValues(camera: LiveCameraParsed): CameraFormValues {
     transport: camera.playback?.transport ?? 'NONE',
     playbackUrl: camera.playback?.playbackUrl ?? '',
     translations: camera.translations ?? {},
+    translationMetadata: camera.translationMetadata,
   };
 }
 
@@ -92,6 +94,7 @@ export function CamerasManager({ mapId, mapName, initialCameras, canEdit, enable
 
   const [drawer, setDrawer] = useState<DrawerState>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingTranslations, setIsGeneratingTranslations] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
 
@@ -173,7 +176,7 @@ export function CamerasManager({ mapId, mapName, initialCameras, canEdit, enable
       // own doc comment: `null`-as-clear is an UPDATE-only signal, since
       // there is nothing to clear on a brand-new document).
       ...(playback ? { playback } : {}),
-      ...(Object.keys(values.translations).length > 0 ? { translations: values.translations } : {}),
+      ...(Object.keys(values.translations).length > 0 ? { translations: values.translations, translationMetadata: values.translationMetadata } : {}),
     });
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
@@ -221,6 +224,7 @@ export function CamerasManager({ mapId, mapName, initialCameras, canEdit, enable
       // full-replace semantics, same convention `translations` below uses.
       playback: buildPlaybackPayload(values.transport, values.playbackUrl),
       translations: values.translations,
+      translationMetadata: values.translationMetadata,
     });
     if (!parsed.success) {
       setFieldErrors(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'form'}: ${issue.message}`));
@@ -245,6 +249,16 @@ export function CamerasManager({ mapId, mapName, initialCameras, canEdit, enable
     } finally {
       setIsSaving(false);
     }
+  }
+
+  async function handleGenerateTranslations(camera: LiveCameraParsed, sources: { readonly name: string; readonly description: string }): Promise<GeneratedCameraTranslations | undefined> {
+    setIsGeneratingTranslations(true);
+    try {
+      const response = await fetch(`/api/maps/${mapId}/cameras/${camera.cameraId}/translations/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sources) });
+      if (!response.ok) { setFormError('Translations could not be generated. Please try again.'); return undefined; }
+      return (await response.json()) as GeneratedCameraTranslations;
+    } catch { setFormError('Translations could not be generated. Please try again.'); return undefined; }
+    finally { setIsGeneratingTranslations(false); }
   }
 
   async function handleToggleEnabled(camera: LiveCameraParsed): Promise<void> {
@@ -430,6 +444,9 @@ export function CamerasManager({ mapId, mapName, initialCameras, canEdit, enable
           formError={formError}
           fieldErrors={fieldErrors}
           onCancel={closeDrawer}
+          translationMetadata={drawer.mode === 'edit' ? drawer.camera.translationMetadata : undefined}
+          onGenerateTranslations={drawer.mode === 'edit' ? (sources) => handleGenerateTranslations(drawer.camera, sources) : undefined}
+          isGeneratingTranslations={isGeneratingTranslations}
           onSubmit={(values) => (drawer.mode === 'create' ? handleCreateSubmit(values) : handleEditSubmit(drawer.camera, values))}
         />
       ) : null}

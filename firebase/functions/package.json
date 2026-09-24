@@ -18,10 +18,10 @@
     "test:provisioning": "pnpm run build:deps && vitest run --config vitest.provisioning.config.ts"
   },
   "dependencies": {
-    "@google-cloud/translate": "^9.4.2",
     "firebase-admin": "13.0.2",
     "firebase-functions": "6.2.0",
     "shared-types": "workspace:*",
+    "translation-server": "workspace:*",
     "validation": "workspace:*",
     "zod": "3.24.1"
   },

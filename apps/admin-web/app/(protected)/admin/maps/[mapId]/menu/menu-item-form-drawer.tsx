@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { CategoryIcon, PublicContentLanguage } from 'shared-types';
+import type { CategoryIcon, PublicContentLanguage, TranslationMetadata } from 'shared-types';
 import type { CategoryParsed, PageParsed } from 'validation';
 import { getPublicFeatureRegistryEntry, type PublicFeatureRegistryEntry } from 'shared-types';
 import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
@@ -41,7 +41,9 @@ export interface MenuItemFormValues {
   readonly status: 'ENABLED' | 'DISABLED';
   /** checkpoint 1B.17B — `{ label?: LocalizedText }`, mirroring `MenuItemTranslations`. Never auto-populated from the linked category/page/feature — only the legacy `label` field's own auto-fill-until-touched behavior exists (see `handleCategoryChange`/`handleFeatureChange`/`handlePageChange` below), and this must not be extended to translations (§9). */
   readonly translations: TranslationsFieldsState;
+  readonly translationMetadata?: TranslationMetadata;
 }
+export interface GeneratedMenuTranslations { readonly translations: TranslationsFieldsState; readonly translationMetadata?: TranslationMetadata }
 
 interface MenuItemFormDrawerProps {
   readonly mode: 'create' | 'edit';
@@ -65,6 +67,9 @@ interface MenuItemFormDrawerProps {
   readonly fieldErrors: readonly string[];
   readonly onCancel: () => void;
   readonly onSubmit: (values: MenuItemFormValues) => void;
+  readonly translationMetadata?: TranslationMetadata;
+  readonly onGenerateTranslations?: (label: string) => Promise<GeneratedMenuTranslations | undefined>;
+  readonly isGeneratingTranslations?: boolean;
 }
 
 export function MenuItemFormDrawer({
@@ -83,6 +88,9 @@ export function MenuItemFormDrawer({
   fieldErrors,
   onCancel,
   onSubmit,
+  translationMetadata,
+  onGenerateTranslations,
+  isGeneratingTranslations,
 }: MenuItemFormDrawerProps) {
   const [type, setType] = useState<'CATEGORY' | 'FEATURE' | 'PAGE' | 'LIVE_CAMERAS'>(initialValues.type);
   const [categoryId, setCategoryId] = useState(initialValues.categoryId || selectableCategories[0]?.categoryId || '');
@@ -93,6 +101,7 @@ export function MenuItemFormDrawer({
   const [icon, setIcon] = useState(initialValues.icon);
   const [status, setStatus] = useState<'ENABLED' | 'DISABLED'>(initialValues.status);
   const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
+  const [currentTranslationMetadata, setCurrentTranslationMetadata] = useState(translationMetadata);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -155,7 +164,13 @@ export function MenuItemFormDrawer({
       icon: type === 'CATEGORY' || type === 'PAGE' || type === 'LIVE_CAMERAS' ? icon : '',
       status,
       translations,
+      translationMetadata: currentTranslationMetadata,
     });
+  }
+
+  async function handleGenerateTranslations(): Promise<void> {
+    const result = await onGenerateTranslations?.(label);
+    if (result) { setTranslations(result.translations); setCurrentTranslationMetadata(result.translationMetadata); }
   }
 
   const noCategoriesAvailable = type === 'CATEGORY' && mode === 'create' && selectableCategories.length === 0;
@@ -476,6 +491,9 @@ export function MenuItemFormDrawer({
                 defaultLanguage={defaultLanguage}
                 value={translations}
                 onChange={setTranslations}
+                metadata={currentTranslationMetadata}
+                onGenerate={onGenerateTranslations ? () => void handleGenerateTranslations() : undefined}
+                generating={isGeneratingTranslations}
                 disabled={isSaving}
               />
             ) : null}

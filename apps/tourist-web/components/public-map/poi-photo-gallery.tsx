@@ -9,6 +9,7 @@ import {
   type PoiPhotoAttribution,
   type PoiPhotoMeta,
 } from '@/lib/public-map/poi-photo-source';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Photo Experience Prototype checkpoint (gallery expansion) — the
@@ -45,13 +46,14 @@ export interface PoiPhotoGalleryProps {
 type MetaStatus = 'loading' | 'ok' | 'unavailable';
 
 function CreditLine({ attributions }: { readonly attributions: readonly PoiPhotoAttribution[] }) {
+  const messages = useTouristMessages();
   if (attributions.length === 0) {
     return null;
   }
   const hasLink = attributions.some((entry) => entry.uri);
   return (
     <figcaption data-testid="poi-detail-cover-credit" className="poi-detail-cover-credit">
-      Photo by{' '}
+      {messages.photoBy}{' '}
       {hasLink
         ? attributions.map((entry, index) => (
             <span key={`${entry.displayName}-${index}`}>
@@ -71,6 +73,7 @@ function CreditLine({ attributions }: { readonly attributions: readonly PoiPhoto
 }
 
 export function PoiPhotoGallery({ mapId, poiId, photoApiBaseUrl, enabled }: PoiPhotoGalleryProps) {
+  const messages = useTouristMessages();
   const [metaStatus, setMetaStatus] = useState<MetaStatus>('loading');
   const [count, setCount] = useState(1);
   const [index, setIndex] = useState(0);
@@ -185,7 +188,7 @@ export function PoiPhotoGallery({ mapId, poiId, photoApiBaseUrl, enabled }: PoiP
             type="button"
             data-testid="poi-detail-gallery-prev"
             className="poi-detail-gallery-nav poi-detail-gallery-nav--prev"
-            aria-label="Previous photo"
+            aria-label={messages.previousPhoto}
             onClick={() => go(-1)}
           >
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -196,7 +199,7 @@ export function PoiPhotoGallery({ mapId, poiId, photoApiBaseUrl, enabled }: PoiP
             type="button"
             data-testid="poi-detail-gallery-next"
             className="poi-detail-gallery-nav poi-detail-gallery-nav--next"
-            aria-label="Next photo"
+            aria-label={messages.nextPhoto}
             onClick={() => go(1)}
           >
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">

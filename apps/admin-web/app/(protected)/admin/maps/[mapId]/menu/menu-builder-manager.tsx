@@ -7,7 +7,7 @@ import { Breadcrumb } from '@/components/admin-shell/breadcrumb';
 import { DEFAULT_PAGE_MENU_ICON } from '@/lib/tenant/menu-projection';
 import { CATEGORY_ICON_META } from '../categories/category-icons';
 import { DeleteMenuItemDialog } from './delete-menu-item-dialog';
-import { MenuItemFormDrawer, type MenuItemFormValues } from './menu-item-form-drawer';
+import { MenuItemFormDrawer, type MenuItemFormValues, type GeneratedMenuTranslations } from './menu-item-form-drawer';
 
 /**
  * The `/admin/menu` manager — checkpoint 1B.5, same shape
@@ -60,6 +60,7 @@ function emptyFormValues(defaultCategoryId: string, defaultFeatureKey: string, d
     icon: '',
     status: 'ENABLED',
     translations: {},
+    translationMetadata: undefined,
   };
 }
 
@@ -76,6 +77,7 @@ function menuItemToFormValues(menuItem: MenuItemParsed): MenuItemFormValues {
     icon: menuItem.type === 'CATEGORY' || menuItem.type === 'PAGE' || menuItem.type === 'LIVE_CAMERAS' ? (menuItem.icon ?? '') : '',
     status: menuItem.status,
     translations: menuItem.translations ?? {},
+    translationMetadata: menuItem.translationMetadata,
   };
 }
 
@@ -86,6 +88,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
 
   const [drawer, setDrawer] = useState<DrawerState>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingTranslations, setIsGeneratingTranslations] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
 
@@ -181,7 +184,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     // checkpoint 1B.17B — omitted entirely on every branch when nothing was
     // translated, same "nothing to send yet" convention every other create
     // payload in this checkpoint already establishes.
-    const translationsField = Object.keys(values.translations).length > 0 ? { translations: values.translations } : {};
+    const translationsField = Object.keys(values.translations).length > 0 ? { translations: values.translations, translationMetadata: values.translationMetadata } : {};
     const payload =
       values.type === 'CATEGORY'
         ? {
@@ -247,6 +250,7 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
       // clear semantics — see `PATCH /api/maps/{mapId}/menu-items/{menuItemId}`'s
       // own doc comment).
       translations: values.translations,
+      translationMetadata: values.translationMetadata,
     };
     const parsed = menuItemUpdateInputSchema.safeParse(payload);
     if (!parsed.success) {
@@ -272,6 +276,16 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
     } finally {
       setIsSaving(false);
     }
+  }
+
+  async function handleGenerateTranslations(menuItem: MenuItemParsed, label: string): Promise<GeneratedMenuTranslations | undefined> {
+    setIsGeneratingTranslations(true);
+    try {
+      const response = await fetch(`/api/maps/${mapId}/menu-items/${menuItem.menuItemId}/translations/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) });
+      if (!response.ok) { setFormError('Translations could not be generated. Please try again.'); return undefined; }
+      return (await response.json()) as GeneratedMenuTranslations;
+    } catch { setFormError('Translations could not be generated. Please try again.'); return undefined; }
+    finally { setIsGeneratingTranslations(false); }
   }
 
   async function patchMenuItemRaw(menuItemId: string, patch: Record<string, unknown>): Promise<boolean> {
@@ -542,6 +556,9 @@ export function MenuBuilderManager({ mapId, mapName, initialMenuItems, categorie
           formError={formError}
           fieldErrors={fieldErrors}
           onCancel={closeDrawer}
+          translationMetadata={drawer.mode === 'edit' ? drawer.menuItem.translationMetadata : undefined}
+          onGenerateTranslations={drawer.mode === 'edit' ? (label) => handleGenerateTranslations(drawer.menuItem, label) : undefined}
+          isGeneratingTranslations={isGeneratingTranslations}
           onSubmit={(values) => (drawer.mode === 'create' ? handleCreateSubmit(values) : handleEditSubmit(drawer.menuItem, values))}
         />
       ) : null}

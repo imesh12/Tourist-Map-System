@@ -9,7 +9,7 @@ import { categorySupportsGooglePlacesDiscovery } from '@/lib/tenant/category-cap
 import { CATEGORY_ICON_META } from '../categories/category-icons';
 import { DeletePoiDialog } from './delete-poi-dialog';
 import { DiscoverPlacesDrawer } from './discover-places-drawer';
-import { PoiFormDrawer, type PoiFormValues } from './poi-form-drawer';
+import { PoiFormDrawer, type GeneratedPoiTranslations, type PoiFormValues } from './poi-form-drawer';
 
 /**
  * The `/admin/pois` manager — checkpoint 1B.3, same shape
@@ -108,6 +108,7 @@ export function PoisManager({
   const [drawer, setDrawer] = useState<DrawerState>(undefined);
   const [isDiscoverOpen, setIsDiscoverOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingTranslations, setIsGeneratingTranslations] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [fieldErrors, setFieldErrors] = useState<readonly string[]>([]);
 
@@ -300,6 +301,48 @@ export function PoisManager({
     }
     await refetchPois();
     setBusyPoiId(undefined);
+  }
+
+  async function handleGenerateTranslations(poi: PoiParsed, sourceOverrides?: { readonly name?: string; readonly address?: string; readonly description?: string }): Promise<GeneratedPoiTranslations | undefined> {
+    setFormError(undefined);
+    setIsGeneratingTranslations(true);
+    try {
+      const response = await fetch(`/api/maps/${mapId}/pois/${poi.poiId}/translations/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sourceOverrides ?? {}) });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { code?: string; message?: string };
+        const error = new Error(body.message ?? 'Translation could not be generated.') as Error & { code?: string; details?: string };
+        error.code = body.code;
+        error.details = body.code;
+        throw error;
+      }
+      const result = (await response.json()) as GeneratedPoiTranslations;
+      await refetchPois();
+      setFormError(undefined);
+      return result;
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code?: unknown }).code) : '';
+      const details = typeof error === 'object' && error !== null && 'details' in error ? String((error as { details?: unknown }).details) : '';
+      const reason = `${code} ${details}`;
+      if (reason.includes('unauthenticated')) {
+        setFormError('Your Admin session has expired. Please sign in again.');
+      } else if (reason.includes('permission-denied') || reason.includes('translation/forbidden')) {
+        setFormError('You are not authorized to generate translations for this map.');
+      } else if (reason.includes('no-target-languages')) {
+        setFormError('Enable at least one target language before generating translations.');
+      } else if (reason.includes('no-source-content')) {
+        setFormError('Add source-language content before generating translations.');
+      } else if (reason.includes('failed-precondition') || reason.includes('configuration')) {
+        setFormError('Translation is not configured on the server.');
+      } else if (reason.includes('concurrent-change')) {
+        setFormError('The POI changed while translations were being generated. Reload and try again.');
+      } else if (reason.includes('not-found')) {
+        setFormError('The POI or map could not be found.');
+      } else {
+        setFormError('Translations could not be generated. Please try again.');
+      }
+    } finally {
+      setIsGeneratingTranslations(false);
+    }
   }
 
   function requestDelete(poi: PoiParsed): void {
@@ -516,6 +559,9 @@ export function PoisManager({
           isSaving={isSaving}
           formError={formError}
           fieldErrors={fieldErrors}
+          translationMetadata={drawer.mode === 'edit' ? drawer.poi.translationMetadata : undefined}
+          onGenerateTranslations={drawer.mode === 'edit' && drawer.poi.sourceType === 'CLIENT_CUSTOM' ? (sourceOverrides) => handleGenerateTranslations(drawer.poi, sourceOverrides) : undefined}
+          isGeneratingTranslations={isGeneratingTranslations}
           onCancel={closeDrawer}
           onSubmit={(values) => (drawer.mode === 'create' ? handleCreateSubmit(values) : handleEditSubmit(drawer.poi, values))}
           readOnlyExceptStatus={drawer.mode === 'edit' && drawer.poi.sourceType === 'GOOGLE_PLACES'}

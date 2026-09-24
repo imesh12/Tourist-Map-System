@@ -10,7 +10,9 @@ import {
   type ExternalPoiPlaceMetadata,
   type ExternalPoiProvider,
   type ExternalPoiSearchParams,
+  type ExternalPoiLocalizedDetails,
 } from './external-provider';
+import type { PublicContentLanguage } from 'shared-types';
 
 /**
  * `GooglePlacesProvider` — checkpoint 1B.4's concrete `ExternalPoiProvider`
@@ -77,6 +79,7 @@ const SEARCH_FIELD_MASK = [
   'places.photos',
 ].join(',');
 const DETAILS_FIELD_MASK = ['id', 'displayName', 'location', 'formattedAddress', 'photos'].join(',');
+const LOCALIZED_FIELD_MASK = ['displayName', 'formattedAddress', 'primaryTypeDisplayName', 'regularOpeningHours'].join(',');
 
 /** Photo Experience Prototype checkpoint — see this file's header comment for why this is a separate, narrower-scoped-to-photos field mask from `DETAILS_FIELD_MASK` above. */
 const PHOTO_REF_FIELD_MASK = ['photos.name', 'photos.widthPx', 'photos.heightPx', 'photos.authorAttributions'].join(',');
@@ -280,6 +283,7 @@ export class GooglePlacesProvider implements ExternalPoiProvider {
             radius: params.radiusMeters,
           },
         },
+        ...(params.languageCode ? { languageCode: params.languageCode } : {}),
       }),
     });
 
@@ -327,6 +331,16 @@ export class GooglePlacesProvider implements ExternalPoiProvider {
       // authoritative/persistable photo reference.
       hasPhoto: (place.photos?.length ?? 0) > 0,
     };
+  }
+
+  async getPlaceLocalizedDetails(providerPlaceId: string, language: PublicContentLanguage): Promise<ExternalPoiLocalizedDetails | undefined> {
+    const url = new URL(`${PLACE_DETAILS_BASE_URL}/${encodeURIComponent(providerPlaceId)}`);
+    url.searchParams.set('languageCode', language);
+    const response = await fetch(url.toString(), { method: 'GET', headers: { 'X-Goog-Api-Key': this.apiKey, 'X-Goog-FieldMask': LOCALIZED_FIELD_MASK } });
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(`Google Places localized details failed with status ${response.status}`);
+    const place = (await response.json()) as GooglePlaceResult;
+    return { language, ...(place.displayName?.text ? { name: place.displayName.text } : {}), ...(place.formattedAddress ? { address: place.formattedAddress } : {}), ...(place.primaryTypeDisplayName?.text ? { primaryTypeDisplayName: place.primaryTypeDisplayName.text } : {}), ...(place.regularOpeningHours?.weekdayDescriptions ? { weekdayDescriptions: place.regularOpeningHours.weekdayDescriptions.filter((text): text is string => typeof text === 'string') } : {}) };
   }
 
   /**

@@ -56,6 +56,9 @@ importers:
       shared-types:
         specifier: workspace:*
         version: link:../../packages/shared-types
+      translation-server:
+        specifier: workspace:*
+        version: link:../../packages/translation-server
       validation:
         specifier: workspace:*
         version: link:../../packages/validation
@@ -142,9 +145,6 @@ importers:
 
   firebase/functions:
     dependencies:
-      '@google-cloud/translate':
-        specifier: ^9.4.2
-        version: 9.4.2(supports-color@7.2.0)
       firebase-admin:
         specifier: 13.0.2
         version: 13.0.2(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)(supports-color@7.2.0)
@@ -154,6 +154,9 @@ importers:
       shared-types:
         specifier: workspace:*
         version: link:../../packages/shared-types
+      translation-server:
+        specifier: workspace:*
+        version: link:../../packages/translation-server
       validation:
         specifier: workspace:*
         version: link:../../packages/validation
@@ -207,6 +210,37 @@ importers:
       '@eslint/js':
         specifier: 9.18.0
         version: 9.18.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.67.0
+        version: 8.67.0(eslint@9.18.0(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@24.13.3)(supports-color@7.2.0)
+
+  packages/translation-server:
+    dependencies:
+      '@google-cloud/translate':
+        specifier: ^9.4.2
+        version: 9.4.2(supports-color@7.2.0)
+      firebase-admin:
+        specifier: 13.0.2
+        version: 13.0.2(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)(supports-color@7.2.0)
+      shared-types:
+        specifier: workspace:*
+        version: link:../shared-types
+      validation:
+        specifier: workspace:*
+        version: link:../validation
+    devDependencies:
+      '@eslint/js':
+        specifier: 9.18.0
+        version: 9.18.0
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
       typescript:
         specifier: 6.0.3
         version: 6.0.3

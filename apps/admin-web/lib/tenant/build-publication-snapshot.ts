@@ -10,6 +10,7 @@ import {
   type PublishedPoiPhotoProviderRef,
   type PublishedPoiPlace,
   type PublishedPoiPriceLevel,
+  type PoiProviderLocalization,
 } from 'shared-types';
 import type { CategoryParsed, LiveCameraParsed, MapParsed, MenuItemParsed, PageParsed, PoiParsed } from 'validation';
 import type { ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
@@ -164,6 +165,7 @@ export function buildPublicationContent(
    * publication with an empty `liveCameras` array, never `undefined`.
    */
   liveCameras: readonly LiveCameraParsed[] = [],
+  providerLocalizationByPoiId: ReadonlyMap<string, PoiProviderLocalization> = new Map(),
 ): PublicationContent {
   const publishedCategories: PublishedCategory[] = categories
     .filter((category) => category.enabled)
@@ -207,6 +209,7 @@ export function buildPublicationContent(
         ...(poi.address ? { address: poi.address } : {}),
         ...(poi.description ? { description: poi.description } : {}),
         ...(poi.translations ? { translations: poi.translations } : {}),
+        ...((providerLocalizationByPoiId.get(poi.poiId) ?? poi.providerLocalization) ? { providerLocalization: providerLocalizationByPoiId.get(poi.poiId) ?? poi.providerLocalization } : {}),
         ...(hasResolvablePhoto ? { photo: { available: true as const } } : {}),
         ...(place ? { place } : {}),
       };

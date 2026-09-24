@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { mapSchema, type PoiParsed } from 'validation';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
-import type { ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
+import type { ExternalPoiLocalizedDetails, ExternalPoiPlaceMetadata } from '@/lib/pois/external-provider';
+import type { PoiProviderLocalization, PublicContentLanguage } from 'shared-types';
 import { getExternalPoiProvider } from '@/lib/pois/provider-registry';
 import { buildPublicationContent } from '@/lib/tenant/build-publication-snapshot';
 import { generatePublicationId } from '@/lib/tenant/generate-publication-id';
@@ -53,6 +54,32 @@ async function resolvePlaceMetadata(pois: readonly PoiParsed[]): Promise<Map<str
       result.set(poiId, metadata);
     }
   }
+  return result;
+}
+
+async function resolveProviderLocalization(pois: readonly PoiParsed[], languages: readonly PublicContentLanguage[], firestore: ReturnType<typeof getFirebaseAdminFirestore>, mapId: string): Promise<Map<string, PoiProviderLocalization>> {
+  const result = new Map<string, PoiProviderLocalization>();
+  const provider = getExternalPoiProvider();
+  if (!provider) return result;
+  const targets = pois.filter((poi): poi is PoiParsed & { providerPlaceId: string } => poi.sourceType === 'GOOGLE_PLACES' && Boolean(poi.providerPlaceId));
+  await Promise.all(targets.map(async (poi) => {
+    const existing = poi.providerLocalization;
+    const values: Record<string, ExternalPoiLocalizedDetails> = {};
+    for (const language of languages) {
+      if (existing?.name?.[language] && existing?.address?.[language] && existing?.primaryTypeDisplayName?.[language] && existing?.weekdayDescriptions?.[language]) continue;
+      const cacheRef = firestore.doc(`maps/${mapId}/providerLocalizations/GOOGLE_PLACES_${encodeURIComponent(poi.providerPlaceId)}_${language}`);
+      const cacheSnap = await cacheRef.get();
+      const cached = cacheSnap.exists ? cacheSnap.data() as Partial<CachedPlaceLocalization> : undefined;
+      const fetchedAt = typeof cached?.fetchedAt === 'string' ? Date.parse(cached.fetchedAt) : NaN;
+      const cachedValue = isCachedLocalizedDetails(cached?.value) ? cached.value : undefined;
+      if (cached?.provider === 'GOOGLE_PLACES' && cached.providerPlaceId === poi.providerPlaceId && cached.language === language && Number.isFinite(fetchedAt) && Date.now() - fetchedAt < LOCALIZED_CACHE_TTL_MS) { if (cachedValue) values[language] = cachedValue; continue; }
+      try { const localized = await provider.getPlaceLocalizedDetails(poi.providerPlaceId, language); await cacheRef.set({ provider: 'GOOGLE_PLACES', providerPlaceId: poi.providerPlaceId, language, fetchedAt: new Date().toISOString(), ...(localized ? { value: localized } : {}) }); if (localized) values[language] = localized; } catch { if (cachedValue) values[language] = cachedValue; }
+    }
+    const names = { ...(existing?.name ?? {}) }; const addresses = { ...(existing?.address ?? {}) }; const types = { ...(existing?.primaryTypeDisplayName ?? {}) }; const weekdays: Partial<Record<PublicContentLanguage, readonly string[]>> = { ...(existing?.weekdayDescriptions ?? {}) };
+    for (const [language, value] of Object.entries(values)) { if (value.name) names[language as PublicContentLanguage] = value.name; if (value.address) addresses[language as PublicContentLanguage] = value.address; if (value.primaryTypeDisplayName) types[language as PublicContentLanguage] = value.primaryTypeDisplayName; if (value.weekdayDescriptions) weekdays[language as PublicContentLanguage] = value.weekdayDescriptions; }
+    const merged: PoiProviderLocalization = { provider: 'GOOGLE_PLACES', name: names, address: addresses, primaryTypeDisplayName: types, weekdayDescriptions: weekdays };
+    if (Object.keys(merged.name ?? {}).length || Object.keys(merged.address ?? {}).length || Object.keys(merged.primaryTypeDisplayName ?? {}).length || Object.keys(merged.weekdayDescriptions ?? {}).length) result.set(poi.poiId, merged);
+  }));
   return result;
 }
 
@@ -121,6 +148,19 @@ interface RouteParams {
 }
 
 class PublishMapGoneError extends Error {}
+const LOCALIZED_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+interface CachedPlaceLocalization { readonly provider: 'GOOGLE_PLACES'; readonly providerPlaceId: string; readonly language: PublicContentLanguage; readonly fetchedAt: string; readonly value?: ExternalPoiLocalizedDetails; }
+
+function isCachedLocalizedDetails(value: unknown): value is ExternalPoiLocalizedDetails {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.language !== 'string') return false;
+  if (candidate.name !== undefined && typeof candidate.name !== 'string') return false;
+  if (candidate.address !== undefined && typeof candidate.address !== 'string') return false;
+  if (candidate.primaryTypeDisplayName !== undefined && typeof candidate.primaryTypeDisplayName !== 'string') return false;
+  if (candidate.weekdayDescriptions !== undefined && (!Array.isArray(candidate.weekdayDescriptions) || candidate.weekdayDescriptions.some((line) => typeof line !== 'string'))) return false;
+  return true;
+}
 
 export async function POST(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   if (!isTrustedOrigin(request)) {
@@ -157,8 +197,9 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   // before commit is at most a moment stale" tradeoff the file header
   // already documents for categories/pois).
   const placeMetadataByPoiId = await resolvePlaceMetadata(pois);
-
   const firestore = getFirebaseAdminFirestore();
+  const providerLocalizationByPoiId = await resolveProviderLocalization(pois, result.context.map.enabledLanguages, firestore, resolvedMapId);
+
   const publicationId = generatePublicationId();
 
   try {
@@ -183,7 +224,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       // `result.context.map` resolved at the top of the request — see the
       // file header comment for exactly why that distinction is the fix for
       // "publication version 2 uses the old map name".
-      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages, placeMetadataByPoiId, liveCameras);
+      const content = buildPublicationContent(mapParsed.data, categories, pois, menuItems, pages, placeMetadataByPoiId, liveCameras, providerLocalizationByPoiId);
 
       const nextVersion = (mapParsed.data.publication?.version ?? 0) + 1;
       const publishedAt = FieldValue.serverTimestamp();

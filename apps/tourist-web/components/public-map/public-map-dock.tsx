@@ -4,6 +4,7 @@ import type { MapBranding, PublicContentLanguage, PublicationMenuItem } from 'sh
 import { brandMonogram } from '@/lib/public-map/branding';
 import { LanguageSelector } from './language-selector';
 import { PublicBottomMenu } from './public-bottom-menu';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.16 §3/§4 — the floating navigation dock: one polished,
@@ -62,6 +63,7 @@ export function PublicMapDock({
   currentLanguage,
   onLanguageChange,
 }: PublicMapDockProps) {
+  const messages = useTouristMessages();
   const logoUrl = branding?.logoUrl;
   // Hairline separators between the dock's logical sections (§1: "subtle
   // dividers between logical sections... Search and utility actions visually
@@ -86,7 +88,7 @@ export function PublicMapDock({
         <span className="public-map-dock-brand-text">
           <h1 className="tourist-map-branding-name">{mapName}</h1>
           <span className="tourist-map-attribution" data-testid="tourist-map-attribution">
-            Powered by Tourist Map System
+            {messages.poweredBy}
           </span>
         </span>
       </div>

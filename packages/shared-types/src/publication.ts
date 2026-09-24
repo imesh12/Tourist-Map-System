@@ -4,7 +4,7 @@ import type { PublicContentLanguage } from './language.js';
 import type { MenuItemTranslations } from './menu-item.js';
 import type { PageTranslations } from './page.js';
 import type { LiveCameraLocation, LiveCameraPlayback, LiveCameraTranslations } from './live-camera.js';
-import type { PoiTranslations } from './poi.js';
+import type { PoiProviderLocalization, PoiTranslations } from './poi.js';
 import type { FirestoreTimestampLike } from './timestamp.js';
 import type { MapAreaConfig, MapBranding, MapProviderConfig, MapTheme } from './map.js';
 
@@ -212,6 +212,7 @@ export interface PublishedPoi {
   readonly description?: string;
   /** checkpoint 1B.17A — see `PoiTranslations`'s own doc comment (./poi.js). */
   readonly translations?: PoiTranslations;
+  readonly providerLocalization?: PoiProviderLocalization;
   /** Photo Experience Prototype checkpoint — see `PublishedPoiPhoto`'s own doc comment. Absent whenever no photo was available at publish time (never a placeholder/false value — mirrors `address`/`description`'s own "absent, not falsy" optionality convention on this same interface). */
   readonly photo?: PublishedPoiPhoto;
   /** Photo Experience Prototype checkpoint (rich-detail expansion) — see `PublishedPoiPlace`'s own doc comment. Absent for every non-`GOOGLE_PLACES` POI, every publication predating this expansion, and any `GOOGLE_PLACES` POI whose Details lookup failed / returned nothing public-safe at Publish time. */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import type { MapAreaBounds, MapProviderName, PublicContentLanguage } from 'shared-types';
+import type { MapAreaBounds, MapProviderName, PublicContentLanguage, TranslationMetadata } from 'shared-types';
 import type { CategoryParsed } from 'validation';
 import { TranslationEditor, type TranslationsFieldsState } from '@/components/translation-editor';
 import { CATEGORY_ICON_META } from '../categories/category-icons';
@@ -45,6 +45,11 @@ export interface PoiFormValues {
   readonly translations: TranslationsFieldsState;
 }
 
+export interface GeneratedPoiTranslations {
+  readonly translations: TranslationsFieldsState;
+  readonly translationMetadata?: TranslationMetadata;
+}
+
 interface PoiFormDrawerProps {
   readonly mode: 'create' | 'edit';
   readonly initialValues: PoiFormValues;
@@ -58,6 +63,9 @@ interface PoiFormDrawerProps {
   readonly isSaving: boolean;
   readonly formError?: string;
   readonly fieldErrors: readonly string[];
+  readonly translationMetadata?: TranslationMetadata;
+  readonly onGenerateTranslations?: (sourceOverrides?: { readonly name?: string; readonly address?: string; readonly description?: string }) => Promise<GeneratedPoiTranslations | undefined>;
+  readonly isGeneratingTranslations?: boolean;
   readonly onCancel: () => void;
   readonly onSubmit: (values: PoiFormValues) => void;
   /**
@@ -91,6 +99,9 @@ export function PoiFormDrawer({
   isSaving,
   formError,
   fieldErrors,
+  translationMetadata,
+  onGenerateTranslations,
+  isGeneratingTranslations,
   onCancel,
   onSubmit,
   readOnlyExceptStatus = false,
@@ -104,6 +115,14 @@ export function PoiFormDrawer({
   const [longitude, setLongitude] = useState(initialValues.longitude);
   const [status, setStatus] = useState<'ENABLED' | 'DISABLED'>(initialValues.status);
   const [translations, setTranslations] = useState<TranslationsFieldsState>(initialValues.translations);
+  const [currentTranslationMetadata, setCurrentTranslationMetadata] = useState(translationMetadata);
+
+  async function handleGenerateTranslations(): Promise<void> {
+    const result = await onGenerateTranslations?.({ name, address, description });
+    if (!result) return;
+    setTranslations(result.translations);
+    setCurrentTranslationMetadata(result.translationMetadata);
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -265,6 +284,7 @@ export function PoiFormDrawer({
                 idPrefix="poi"
                 fields={[
                   { key: 'name', label: 'Name', maxLength: POI_NAME_MAX_LENGTH },
+                  { key: 'address', label: 'Address', maxLength: 300 },
                   { key: 'description', label: 'Description', maxLength: POI_DESCRIPTION_MAX_LENGTH, multiline: true },
                 ]}
                 enabledLanguages={enabledLanguages}
@@ -272,6 +292,9 @@ export function PoiFormDrawer({
                 value={translations}
                 onChange={setTranslations}
                 disabled={isSaving}
+                metadata={currentTranslationMetadata}
+                onGenerate={onGenerateTranslations ? () => void handleGenerateTranslations() : undefined}
+                generating={isGeneratingTranslations}
               />
             )}
 

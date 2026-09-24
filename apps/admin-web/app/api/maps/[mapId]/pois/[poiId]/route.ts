@@ -1,6 +1,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isTranslationsWithinSupportedLanguages, poiSchema, poiUpdateInputSchema } from 'validation';
+import { fingerprintSourceText, markTranslationOverride, markTranslationStale, type PublicContentLanguage } from 'shared-types';
 import { isTrustedOrigin } from '@/lib/auth/origin-check';
 import { getFirebaseAdminFirestore } from '@/lib/firebase/admin';
 import { getOwnedMapContext, isIdentityDenialReason } from '@/lib/tenant/map-context';
@@ -142,6 +143,44 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     // request that includes `translations` for one.
     if (parsed.data.translations !== undefined) {
       update.translations = Object.keys(parsed.data.translations).length > 0 ? parsed.data.translations : FieldValue.delete();
+    }
+
+    // Source edits invalidate generated translations without touching manual
+    // overrides. Generation remains an explicit Admin action. A translated
+    // value edited in this form becomes an OVERRIDE for its own field.
+    if (existing.translationMetadata || parsed.data.translations !== undefined) {
+      const nextMetadata = JSON.parse(JSON.stringify(existing.translationMetadata ?? {})) as Record<string, Record<string, Parameters<typeof markTranslationStale>[0]>>;
+      for (const field of ['name', 'description'] as const) {
+        const source =
+          parsed.data.translations?.[field]?.[result.context.map.defaultLanguage] ??
+          existing.translations?.[field]?.[result.context.map.defaultLanguage] ??
+          parsed.data[field];
+        if (source && nextMetadata[field]) {
+          for (const language of Object.keys(nextMetadata[field])) {
+            nextMetadata[field][language] = markTranslationStale(nextMetadata[field][language]!, source);
+          }
+        }
+        const nextField = parsed.data.translations?.[field];
+        if (parsed.data.translations?.[field] !== undefined && nextMetadata[field]) {
+          for (const language of Object.keys(nextMetadata[field])) {
+            if (!nextField || !(language in nextField)) delete nextMetadata[field][language];
+          }
+        }
+        if (nextField) {
+          nextMetadata[field] ??= {};
+          for (const [language, value] of Object.entries(nextField)) {
+            if (language === result.context.map.defaultLanguage) continue;
+            const previousValue = (existing.translations?.[field] ?? {})[language as PublicContentLanguage];
+            if (value !== previousValue) {
+              const previousMetadata = nextMetadata[field][language];
+              nextMetadata[field][language] = previousMetadata
+                ? markTranslationOverride(previousMetadata, source ?? value)
+                : { status: 'OVERRIDE', sourceFingerprint: fingerprintSourceText(source ?? value) };
+            }
+          }
+        }
+      }
+      update.translationMetadata = nextMetadata;
     }
 
     await poiRef.update(update);

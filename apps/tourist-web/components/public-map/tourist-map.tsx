@@ -15,7 +15,8 @@ import type { PublicMapSnapshotParsed } from 'validation';
 import { ensureGoogleMapsApiConfigured } from '@/lib/public-map/google-maps-loader';
 import { computeBoundsForPois } from '@/lib/public-map/map-camera-utils';
 import { buildMarkerIcon, resolveMarkerVisualConfig, type PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
-import { myLocationErrorMessage, requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
+import { requestMyLocation, type MyLocationFailureReason } from '@/lib/public-map/my-location';
+import { useTouristMessages } from './tourist-messages-context';
 import { createLiveCameraMarkerLayer, type LiveCameraMarkerLayer } from '@/lib/public-map/live-camera-marker-layer';
 import { LivePlaybackSession } from '@/lib/public-map/live-playback';
 import { resolveCameraPlaybackAdapterFactory } from '@/lib/public-map/live-camera-e2e';
@@ -117,6 +118,7 @@ export interface TouristMapProps {
 }
 
 export function TouristMap({ snapshot, language, onLanguageChange, photoPinTemplate }: TouristMapProps) {
+  const messages = useTouristMessages();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const diagnosticsRef = useRef<HTMLDListElement | null>(null);
   const mapRef = useRef<google.maps.Map | undefined>(undefined);
@@ -203,9 +205,33 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         name: resolveLocalizedText({
           requestedLanguage: language,
           defaultLanguage,
-          translations: poi.translations?.name,
+          translations: { ...(poi.providerLocalization?.name ?? {}), ...(poi.translations?.name ?? {}) },
           legacyValue: poi.name,
         }),
+        address:
+          resolveLocalizedText({
+            requestedLanguage: language,
+            defaultLanguage,
+            translations: { ...(poi.providerLocalization?.address ?? {}), ...(poi.translations?.address ?? {}) },
+            legacyValue: poi.address,
+          }) || undefined,
+        place: poi.place
+          ? {
+              ...poi.place,
+              ...(poi.providerLocalization?.primaryTypeDisplayName
+                ? {
+                    primaryTypeDisplayName: resolveLocalizedText({ requestedLanguage: language, defaultLanguage, translations: poi.providerLocalization.primaryTypeDisplayName, legacyValue: poi.place.primaryTypeDisplayName }),
+                  }
+                : {}),
+              ...(poi.providerLocalization?.weekdayDescriptions
+                ? {
+                    openingHours: poi.place.openingHours
+                      ? { ...poi.place.openingHours, weekdayDescriptions: poi.providerLocalization.weekdayDescriptions[language] ?? poi.providerLocalization.weekdayDescriptions[defaultLanguage] ?? poi.place.openingHours.weekdayDescriptions }
+                      : poi.place.openingHours,
+                  }
+                : {}),
+            }
+          : undefined,
         description:
           resolveLocalizedText({
             requestedLanguage: language,
@@ -538,7 +564,7 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
             userLocationMarkerRef.current = new google.maps.Marker({
               map: mapRef.current,
               position: point,
-              title: 'Your location',
+              title: messages.myLocationMarker,
               zIndex: 2000,
               icon: { url: spec.url, scaledSize: new google.maps.Size(spec.width, spec.height), anchor: new google.maps.Point(spec.anchorX, spec.anchorY) },
             });
@@ -549,7 +575,7 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
       },
       onError: (reason) => setMyLocation({ status: 'error', reason }),
     });
-  }, []);
+  }, [messages.myLocationMarker]);
 
   // §8 — auto-dismiss the transient My Location toast a few seconds after it
   // appears (or re-appears). Never touches `myLocation`, so the diagnostics
@@ -570,7 +596,7 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
     }
     let cancelled = false;
     setStatus('loading');
-    ensureGoogleMapsApiConfigured(apiKey);
+    ensureGoogleMapsApiConfigured(apiKey, language);
 
     importLibrary('maps')
       .then(({ Map }) => {
@@ -721,24 +747,24 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
   }, [selectedCameraId]);
 
   const unavailableMessage = mapProvider.provider === 'GOOGLE_MAPS' && !apiKey
-    ? 'Map preview is unavailable in this environment.'
+    ? messages.mapUnavailable
     : mapProvider.provider === 'MAPBOX' && !mapboxToken
-      ? 'Mapbox map requires NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to be configured.'
+      ? messages.mapboxTokenMissing
       : status === 'error'
-        ? "We couldn't load this map right now."
+        ? messages.mapLoadError
         : null;
 
   return (
     <>
       {canLoadLiveMap && status === 'loading' ? (
         <p data-testid="tourist-map-loading" className="tourist-map-message-text" role="status">
-          Loading map…
+          {messages.loadingMap}
         </p>
       ) : null}
       {mapProvider.provider === 'MAPBOX' ? (
-        <MapboxMap area={area} style={mapProvider.style} theme={theme} pois={visiblePois} categories={categoryById} cameras={localizedCameras} selectedPoiId={selectedPoiId} selectedCameraId={selectedCameraId} onSelectPoi={handleSelectPoi} onSelectCamera={handleSelectCamera} photoImageByPoiId={photoImageByPoiId} photoPinTemplate={photoPinTemplate} onReady={() => setStatus('ready')} />
+        <MapboxMap area={area} style={mapProvider.style} theme={theme} language={language} pois={visiblePois} categories={categoryById} cameras={localizedCameras} selectedPoiId={selectedPoiId} selectedCameraId={selectedCameraId} onSelectPoi={handleSelectPoi} onSelectCamera={handleSelectCamera} photoImageByPoiId={photoImageByPoiId} photoPinTemplate={photoPinTemplate} onReady={() => setStatus('ready')} />
       ) : (
-        <div ref={containerRef} data-testid="tourist-map" role="img" aria-label={`Map of ${snapshot.map.name}`} className="tourist-map-canvas" />
+        <div ref={containerRef} data-testid="tourist-map" role="img" aria-label={`${messages.mapOf} ${snapshot.map.name}`} className="tourist-map-canvas" />
       )}
       {unavailableMessage ? <TouristMapUnavailable message={unavailableMessage} /> : null}
       {visiblePois.length === 0 ? (
@@ -746,7 +772,7 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
         // current filter (or the published content itself) leaves nothing
         // to show.
         <p data-testid="public-poi-empty-state" className="public-poi-empty-state" role="status">
-          {pois.length === 0 ? 'No places have been published yet.' : 'No places in this category yet.'}
+          {pois.length === 0 ? messages.noPublishedPlaces : messages.noCategoryPlaces}
         </p>
       ) : null}
       {selectedPoi ? (
@@ -769,12 +795,12 @@ export function TouristMap({ snapshot, language, onLanguageChange, photoPinTempl
       {myLocation.status === 'success' && locationToast !== null ? (
         <p key={locationToast} data-testid="my-location-status" className="my-location-banner" role="status">
           <span className="my-location-banner-dot" aria-hidden="true" />
-          Showing your current location.
+          {messages.showingLocation}
         </p>
       ) : null}
       {myLocation.status === 'error' && locationToast !== null ? (
         <p key={locationToast} data-testid="my-location-message" className="my-location-banner my-location-banner--error" role="status">
-          {myLocationErrorMessage(myLocation.reason)}
+          {messages.locationErrors[myLocation.reason]}
         </p>
       ) : null}
       {searchOpen ? (

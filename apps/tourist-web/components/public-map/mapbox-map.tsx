@@ -2,17 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
-import type { CategoryIcon, MapAreaConfig, MapStyle, MapTheme, PublishedLiveCamera, PublishedPoi } from 'shared-types';
+import type { CategoryIcon, MapAreaConfig, MapStyle, MapTheme, PublishedLiveCamera, PublishedPoi, PublicContentLanguage } from 'shared-types';
 import { buildMarkerIcon, resolveMarkerVisualConfig } from '@/lib/public-map/marker-style-adapter';
 import { categoryIconMeta } from '@/lib/public-map/category-icon-meta';
 import { mapThemeToMapboxConfig } from 'map-theme-adapter';
 import type { PhotoPinTemplate } from '@/lib/public-map/marker-style-adapter';
+import { syncMapboxLanguage } from '@/lib/public-map/mapbox-language';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface Props {
   readonly area: MapAreaConfig;
   readonly style: MapStyle;
   readonly theme: MapTheme;
+  readonly language: PublicContentLanguage;
   readonly pois: readonly PublishedPoi[];
   readonly categories: ReadonlyMap<string, { readonly icon: CategoryIcon }>;
   readonly cameras: readonly PublishedLiveCamera[];
@@ -25,7 +27,7 @@ interface Props {
   readonly onReady: (map: mapboxgl.Map) => void;
 }
 
-export function MapboxMap({ area, style, theme, pois, categories, cameras, selectedPoiId, selectedCameraId, onSelectPoi, onSelectCamera, photoImageByPoiId, photoPinTemplate, onReady }: Props) {
+export function MapboxMap({ area, style, theme, language, pois, categories, cameras, selectedPoiId, selectedCameraId, onSelectPoi, onSelectCamera, photoImageByPoiId, photoPinTemplate, onReady }: Props) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -41,23 +43,33 @@ export function MapboxMap({ area, style, theme, pois, categories, cameras, selec
     setMapReady(false);
     mapboxgl.accessToken = token;
     const mapConfig = mapThemeToMapboxConfig(style, theme);
-    const map = new mapboxgl.Map({ container: containerRef.current, style: mapConfig.styleUrl, center: [area.center?.lng ?? 139.7671, area.center?.lat ?? 35.6812], zoom: area.defaultZoom ?? 5, ...(area.type === 'BOUNDED' && area.bounds ? { maxBounds: [[area.bounds.west, area.bounds.south], [area.bounds.east, area.bounds.north]] } : {}) });
+    const map = new mapboxgl.Map({ container: containerRef.current, style: mapConfig.styleUrl, language, center: [area.center?.lng ?? 139.7671, area.center?.lat ?? 35.6812], zoom: area.defaultZoom ?? 5, ...(area.type === 'BOUNDED' && area.bounds ? { maxBounds: [[area.bounds.west, area.bounds.south], [area.bounds.east, area.bounds.north]] } : {}) });
     mapRef.current = map;
     map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-    map.on('load', () => {
+    const applyLanguage = () => { syncMapboxLanguage(map, language); };
+    const handleLoad = () => {
       if (mapConfig.styleUrl === 'mapbox://styles/mapbox/standard') {
         for (const [key, value] of Object.entries(mapConfig.standardConfig)) {
           map.setConfigProperty('basemap', key, value);
         }
       }
+      applyLanguage();
       if (area.type === 'BOUNDED' && area.bounds) map.fitBounds([[area.bounds.west, area.bounds.south], [area.bounds.east, area.bounds.north]], { padding: 24, duration: 0 });
       setMapReady(true);
       onReady(map);
-    });
-    return () => { setMapReady(false); for (const marker of markersRef.current) marker.remove(); markersRef.current = []; map.remove(); mapRef.current = null; };
+    };
+    const handleStyleLoad = () => { applyLanguage(); };
+    map.on('load', handleLoad);
+    map.on('style.load', handleStyleLoad);
+    return () => { setMapReady(false); map.off('load', handleLoad); map.off('style.load', handleStyleLoad); for (const marker of markersRef.current) marker.remove(); markersRef.current = []; map.remove(); mapRef.current = null; };
   // The map instance is intentionally recreated only when this runtime key
   // changes; content and selection use the separate marker effect below.
   }, [mapRuntimeKey]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncMapboxLanguage(map, language);
+  }, [language, mapReady]);
   useEffect(() => {
     const map = mapRef.current;
     const poi = pois.find((entry) => entry.poiId === selectedPoiId);

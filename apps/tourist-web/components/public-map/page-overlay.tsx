@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { PublishedPage } from 'shared-types';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.11 §12 — the selected-Page information overlay. Mirrors
@@ -38,6 +39,7 @@ export interface PageOverlayProps {
 }
 
 export function PageOverlay({ page, onClose }: PageOverlayProps) {
+  const messages = useTouristMessages();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const headingId = `page-overlay-title-${page.pageId}`;
 
@@ -66,7 +68,7 @@ export function PageOverlay({ page, onClose }: PageOverlayProps) {
         type="button"
         data-testid="page-overlay-close"
         className="page-overlay-close"
-        aria-label="Close page"
+        aria-label={messages.closePage}
         onClick={onClose}
       >
         <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">

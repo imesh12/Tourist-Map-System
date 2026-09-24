@@ -1,6 +1,7 @@
 'use client';
 
 import { listPublicContentLanguages, type PublicContentLanguage } from 'shared-types';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * Checkpoint 1B.17B §12 — the public tourist language selector. Reads ONLY
@@ -25,6 +26,7 @@ export interface LanguageSelectorProps {
 }
 
 export function LanguageSelector({ supportedLanguages, currentLanguage, onChange }: LanguageSelectorProps) {
+  const messages = useTouristMessages();
   if (supportedLanguages.length <= 1) {
     return null;
   }
@@ -35,7 +37,7 @@ export function LanguageSelector({ supportedLanguages, currentLanguage, onChange
     <select
       data-testid="tourist-language-selector"
       className="tourist-language-selector"
-      aria-label="Choose language"
+      aria-label={messages.chooseLanguage}
       value={currentLanguage}
       onChange={(event) => onChange(event.target.value as PublicContentLanguage)}
     >

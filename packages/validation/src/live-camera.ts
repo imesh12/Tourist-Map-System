@@ -4,6 +4,7 @@ import { customerIdSchema, liveCameraIdSchema, mapIdSchema } from './ids.js';
 import { localizedTextSchema } from './language.js';
 import { latitudeSchema, longitudeSchema } from './map.js';
 import { firestoreTimestampLikeSchema } from './timestamp.js';
+import { poiTranslationMetadataSchema } from './poi.js';
 
 /**
  * LiveCamera domain + input schemas — LIVE CAMERAS FOUNDATION checkpoint,
@@ -225,6 +226,7 @@ export const liveCameraSchema = z.object({
   mapId: mapIdSchema,
   name: liveCameraNameSchema,
   translations: liveCameraTranslationsSchema.optional(),
+  translationMetadata: poiTranslationMetadataSchema.optional(),
   description: liveCameraDescriptionSchema.optional(),
   location: liveCameraLocationSchema,
   status: liveCameraStatusSchema,
@@ -253,6 +255,7 @@ export const liveCameraCreateInputSchema = z
     status: liveCameraStatusSchema.optional(),
     playback: liveCameraPlaybackSchema.optional(),
     translations: liveCameraTranslationsSchema.optional(),
+    translationMetadata: poiTranslationMetadataSchema.optional(),
   })
   .strict();
 export type LiveCameraCreateInput = z.infer<typeof liveCameraCreateInputSchema>;
@@ -285,6 +288,7 @@ export const liveCameraUpdateInputSchema = z
     status: liveCameraStatusSchema.optional(),
     playback: liveCameraPlaybackSchema.nullable().optional(),
     translations: liveCameraTranslationsSchema.optional(),
+    translationMetadata: poiTranslationMetadataSchema.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });

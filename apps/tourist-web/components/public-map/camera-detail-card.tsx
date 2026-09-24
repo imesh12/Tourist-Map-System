@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublishedLiveCamera } from 'shared-types';
 import { useLivePlayback, type LivePlaybackAdapterFactory, type LivePlaybackSession } from '@/lib/public-map/live-playback';
 import { resolveCameraPlaybackAdapterFactory } from '@/lib/public-map/live-camera-e2e';
+import { useTouristMessages } from './tourist-messages-context';
 
 /**
  * LIVE CAMERAS FOUNDATION checkpoint — the selected-camera detail
@@ -43,6 +44,7 @@ export interface CameraDetailCardProps {
 }
 
 export function CameraDetailCard({ camera, onClose, playbackAdapterFactory, autoPlayOnMount = false, playbackSession }: CameraDetailCardProps) {
+  const messages = useTouristMessages();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const headingId = `camera-detail-name-${camera.cameraId}`;
   const fallback = useLivePlayback(camera.playback, resolveCameraPlaybackAdapterFactory(playbackAdapterFactory));
@@ -102,7 +104,7 @@ export function CameraDetailCard({ camera, onClose, playbackAdapterFactory, auto
         type="button"
         data-testid="camera-detail-close"
         className="poi-detail-close"
-        aria-label="Close camera details"
+        aria-label={messages.closeCameraDetails}
         onClick={handleClose}
       >
         <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -117,7 +119,7 @@ export function CameraDetailCard({ camera, onClose, playbackAdapterFactory, auto
               <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.5h7L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" />
               <circle cx="12" cy="13" r="3.2" />
             </svg>
-            Live Camera
+            {messages.liveCamera}
           </span>
           <h2 id={headingId} data-testid="camera-detail-name" className="poi-detail-name">
             {camera.name}
@@ -140,18 +142,18 @@ export function CameraDetailCard({ camera, onClose, playbackAdapterFactory, auto
 
           {!isConfigured ? (
             <p data-testid="camera-detail-not-configured" className="camera-detail-status camera-detail-status--muted">
-              Live stream is not configured.
+              {messages.streamNotConfigured}
             </p>
           ) : state.status === 'idle' ? (
             <button type="button" data-testid="camera-detail-play" className="camera-detail-play-button" onClick={play}>
               <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true" className="camera-detail-play-icon">
                 <path d="M8 5v14l11-7z" />
               </svg>
-              Play Live
+              {messages.playLive}
             </button>
           ) : state.status === 'connecting' ? (
             <p data-testid="camera-detail-connecting" className="camera-detail-status">
-              Connecting…
+              {messages.connecting}
             </p>
           ) : state.status === 'error' ? (
             <p data-testid="camera-detail-error" className="camera-detail-status camera-detail-status--error">
@@ -159,7 +161,7 @@ export function CameraDetailCard({ camera, onClose, playbackAdapterFactory, auto
             </p>
           ) : (
             <button type="button" data-testid="camera-detail-stop" className="camera-detail-stop-button" onClick={stop}>
-              Stop
+              {messages.stop}
             </button>
           )}
         </div>

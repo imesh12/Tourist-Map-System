@@ -5,6 +5,7 @@ import type { PublishedCategory, PublishedPoi, PublishedPoiPlace } from 'shared-
 import { categoryIconMeta } from '@/lib/public-map/category-icon-meta';
 import { resolveOpeningStatus } from '@/lib/public-map/opening-hours';
 import { PoiPhotoGallery } from './poi-photo-gallery';
+import { useTouristMessages } from './tourist-messages-context';
 
 // A long authored description is collapsed to a few lines with a "Read more"
 // toggle (checkpoint 1B.16 §9). Purely presentational: it clamps/reveals the
@@ -73,17 +74,18 @@ const CROSS_PATH = 'M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 1
  * placeholder for unavailable data. Values are never inferred.
  */
 function ServiceChips({ place }: { readonly place: PublishedPoiPlace }) {
+  const messages = useTouristMessages();
   const chips = [
-    { key: 'dine-in', label: 'Dine-in', value: place.dineIn },
-    { key: 'takeaway', label: 'Takeaway', value: place.takeout },
-    { key: 'delivery', label: 'Delivery', value: place.delivery },
+    { key: 'dine-in', label: messages.dineIn, value: place.dineIn },
+    { key: 'takeaway', label: messages.takeaway, value: place.takeout },
+    { key: 'delivery', label: messages.delivery, value: place.delivery },
   ].filter((chip): chip is { key: string; label: string; value: boolean } => typeof chip.value === 'boolean');
   if (chips.length === 0) {
     return null;
   }
   return (
     <div className="poi-detail-section">
-      <ul data-testid="poi-detail-services" className="poi-detail-chips" aria-label="Service options">
+      <ul data-testid="poi-detail-services" className="poi-detail-chips" aria-label={messages.serviceOptions}>
         {chips.map((chip) => (
           <li
             key={chip.key}
@@ -143,6 +145,7 @@ const PHONE_PATH =
   'M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.36 2.3.56 3.5.56a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.2.2 2.4.56 3.5a1 1 0 0 1-.24 1Z';
 
 function OpeningHours({ place }: { readonly place: PublishedPoiPlace }) {
+  const messages = useTouristMessages();
   const [expanded, setExpanded] = useState(false);
   const status = useMemo(() => resolveOpeningStatus(place.openingHours, place.utcOffsetMinutes), [place.openingHours, place.utcOffsetMinutes]);
   const weekday = place.openingHours?.weekdayDescriptions ?? [];
@@ -159,7 +162,7 @@ function OpeningHours({ place }: { readonly place: PublishedPoiPlace }) {
             data-testid="poi-detail-hours-state"
             className={status.state === 'open' ? 'poi-detail-hours-badge poi-detail-hours-badge--open' : 'poi-detail-hours-badge poi-detail-hours-badge--closed'}
           >
-            {status.state === 'open' ? 'Open now' : 'Closed'}
+            {status.state === 'open' ? messages.openNow : messages.closed}
           </span>
         ) : null}
         {status.detail ? <span className="poi-detail-hours-detail">{status.detail}</span> : null}
@@ -171,7 +174,7 @@ function OpeningHours({ place }: { readonly place: PublishedPoiPlace }) {
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? 'Hide hours' : 'See hours'}
+            {expanded ? messages.hideHours : messages.seeHours}
           </button>
         ) : null}
       </p>
@@ -187,6 +190,7 @@ function OpeningHours({ place }: { readonly place: PublishedPoiPlace }) {
 }
 
 export function PoiDetailCard({ poi, category, onClose, photoApiBaseUrl, mapId }: PoiDetailCardProps) {
+  const messages = useTouristMessages();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const headingId = `poi-detail-name-${poi.poiId}`;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -216,7 +220,7 @@ export function PoiDetailCard({ poi, category, onClose, photoApiBaseUrl, mapId }
   const place = poi.place;
   const typeText = place?.primaryTypeDisplayName;
   const hasRating = typeof place?.rating === 'number';
-  const priceText = place?.priceLevel === 'FREE' ? 'Free' : place?.priceLevelDisplay;
+  const priceText = place?.priceLevel === 'FREE' ? messages.free : place?.priceLevelDisplay;
   const hasStatsRow = hasRating || Boolean(priceText);
 
   return (
@@ -235,7 +239,7 @@ export function PoiDetailCard({ poi, category, onClose, photoApiBaseUrl, mapId }
         type="button"
         data-testid="poi-detail-close"
         className="poi-detail-close"
-        aria-label="Close place details"
+        aria-label={messages.closePlaceDetails}
         onClick={onClose}
       >
         <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -320,7 +324,7 @@ export function PoiDetailCard({ poi, category, onClose, photoApiBaseUrl, mapId }
                 aria-expanded={descriptionExpanded}
                 onClick={() => setDescriptionExpanded((value) => !value)}
               >
-                {descriptionExpanded ? 'Read less' : 'Read more'}
+                {descriptionExpanded ? messages.readLess : messages.readMore}
               </button>
             ) : null}
           </div>
